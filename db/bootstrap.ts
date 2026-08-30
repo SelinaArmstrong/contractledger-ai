@@ -138,7 +138,7 @@ const schemaStatements = [
 
 const suppliersSeed = [
   ['sup-apex', 'Apex Equipment LLC', 'apex equipment', 'Industrial Equipment', 'active', 'Rachel Kim', 'rachel.kim@example.com', 'received', 'current', '2027-02-15'],
-  ['sup-westline', 'Westline Engineering Group', 'westline engineering group', 'Professional Services', 'pending', 'Daniel Ortiz', 'daniel.ortiz@example.com', 'received', 'current', '2026-12-20'],
+  ['sup-westline', 'Westline Engineering Group LLC', 'westline engineering group', 'Professional Services', 'pending', 'Daniel Ortiz', 'daniel.ortiz@example.com', 'received', 'current', '2027-10-10'],
   ['sup-pacific', 'Pacific Safety Consulting Inc.', 'pacific safety consulting', 'Safety Consulting', 'active', 'Morgan Lee', 'morgan.lee@example.com', 'received', 'current', '2027-04-30'],
   ['sup-golden', 'Golden State Logistics LLC', 'golden state logistics', 'Logistics', 'active', 'Taylor Brooks', 'taylor.brooks@example.com', 'received', 'current', '2026-09-23'],
   ['sup-harbor', 'Harbor Technology Solutions Inc.', 'harbor technology solutions', 'Technology', 'active', 'Chris Allen', 'chris.allen@example.com', 'received', 'current', '2027-01-31'],
@@ -158,13 +158,24 @@ const contractsSeed = [
 ] as const;
 
 const intakeSeed = [
-  ['int-001', 'INT-2026-041', 'sup-westline', 'Westline Engineering Group', 'Professional Services Agreement', 'Professional Services Agreement', 28500000, 'under_review', 'in_progress', '2026-08-29'],
+  ['int-001', 'INT-2026-041', 'sup-westline', 'Westline Engineering Group LLC', 'Plant Modernization Engineering Support', 'Professional Services Agreement', 58500000, 'under_review', 'in_progress', '2026-08-29'],
   ['int-002', 'INT-2026-042', 'sup-apex', 'Apex Equipment LLC', 'Amendment No. 1 — Equipment Supply', 'Amendment', 7500000, 'approved_for_signature', 'complete', '2026-08-28'],
   ['int-003', 'INT-2026-043', 'sup-pacific', 'Pacific Safety Consulting Inc.', 'Master Services Agreement', 'Master Services Agreement', 41000000, 'executed', 'ready', '2026-08-27'],
 ] as const;
 
 function isoNow() {
   return new Date().toISOString();
+}
+
+async function syncEnhancedDemoScenario(db: D1Database, now: string) {
+  await db.batch([
+    db.prepare(`UPDATE suppliers SET legal_name = ?, insurance_expiration = ?, updated_at = ? WHERE id = ?`)
+      .bind('Westline Engineering Group LLC', '2027-10-10', now, 'sup-westline'),
+    db.prepare(`UPDATE contract_intakes SET proposed_supplier_name = ?, title = ?, proposed_value_cents = ?, updated_at = ? WHERE id = ?`)
+      .bind('Westline Engineering Group LLC', 'Plant Modernization Engineering Support', 58500000, now, 'int-001'),
+    db.prepare(`UPDATE review_findings SET source_page = ? WHERE id = ?`).bind(4, 'finding-001'),
+    db.prepare(`UPDATE review_findings SET source_page = ? WHERE id = ?`).bind(9, 'finding-002'),
+  ]);
 }
 
 export async function ensureWorkspaceDatabase() {
@@ -174,7 +185,10 @@ export async function ensureWorkspaceDatabase() {
   await db.batch(schemaStatements.map((statement) => db.prepare(statement)));
 
   const supplierCount = await db.prepare('SELECT COUNT(*) AS count FROM suppliers').first<{ count: number }>();
-  if ((supplierCount?.count ?? 0) > 0) return;
+  if ((supplierCount?.count ?? 0) > 0) {
+    await syncEnhancedDemoScenario(db, isoNow());
+    return;
+  }
 
   const now = isoNow();
   const supplierStatements = suppliersSeed.map((row) =>
@@ -216,6 +230,8 @@ export async function ensureWorkspaceDatabase() {
     db.prepare(`INSERT INTO review_findings (id, intake_id, field, rule_name, standard_text, observed_text, severity, source_page, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind('finding-002', 'int-001', 'governing_law', 'Governing law', 'California preferred', 'New York', 'medium', 12, 'open'),
   ]);
+
+  await syncEnhancedDemoScenario(db, now);
 
   await db.prepare('PRAGMA optimize').run();
 }

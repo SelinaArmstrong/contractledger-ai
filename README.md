@@ -20,7 +20,7 @@ The fictional policy checks are operational review prompts, not legal advice. AI
 - Open **Executed Intake**, load the executed demo, analyze, verify, and save. Show the new official contract, active supplier, and calculated renewal-notice deadline.
 - Use **Export Latest Registers** to download an `.xlsx` workbook containing Contract Register, Supplier Register, and Data Quality Exceptions sheets.
 
-The two sample agreements and all seeded organizations are fictional and are safe to use in a public interview demonstration.
+The two sample agreements form one realistic, fictional U.S. transaction: a ten-page draft and a thirteen-page executed version for the same supplier and project. The signed version reflects negotiated changes to payment, governing law, insurance, liability, intellectual property, subcontracting, data security, change control, and termination rights. All seeded organizations are fictional and safe to use in an interview demonstration.
 
 ## Local setup
 
@@ -61,4 +61,3 @@ The API key is server-side only. Uploaded document text is treated as untrusted 
 - `components/contract-ledger-app.tsx` — interview-ready application interface
 - `lib/export-registers.ts` — three-sheet Excel export
 - `public/demo-documents/` — fictional draft and executed agreements
-

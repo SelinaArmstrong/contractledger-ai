@@ -116,9 +116,15 @@ FICTIONAL DEMO COMPANY PLAYBOOK
 - Preferred payment terms: Net 30.
 - Preferred governing law: California.
 - Automatic renewal requires human review.
-- Service contracts should include insurance requirements.
+- Service contracts require CGL of USD 2M per occurrence, professional liability of USD 2M, cyber liability of USD 1M when company data is accessed, and a current certificate before work begins.
 - Contract values above USD 500,000 require CFO approval.
-- Liability caps above total fees or unlimited liability require human review.
+- Supplier liability should be capped at total fees, with carveouts for confidentiality, data security, indemnification, infringement, fraud, gross negligence, and willful misconduct.
+- Project-specific deliverables should be owned by Northstar, with a sufficient license to embedded supplier materials.
+- Subcontractors accessing a site, system, or company information require prior written consent.
+- Confirmed security incidents must be reported within 72 hours.
+- Northstar should have a 30-day termination-for-convenience right without an early termination fee.
+- Changes affecting scope, fees, or schedule require a signed change order; project-manager email alone is insufficient.
+- Invoice and compliance records should be retained for four years after final payment.
 
 OUTPUT
 Return exactly one JSON object with these keys:
@@ -128,9 +134,24 @@ Every field from documentTitle through paymentTerms must be an object:
 {"value": string|number|null, "confidence": number from 0 to 1, "sourcePage": number|null, "sourceQuote": string|null}
 
 contractValue must be a numeric USD amount without commas or symbols when determinable. Dates should use YYYY-MM-DD when determinable. renewalType should be automatic, optional, none, or null. findings must contain only playbook differences or operational exceptions supported by the document. keyDates must contain only material renewal, notice, insurance, deliverable, or closeout dates. Never invent missing information; use null and add a warning.
+Use the formal agreement heading for documentTitle, not the project name or subtitle. Do not put compliant terms or confirmation-only observations in findings, even with info severity. If renewalType is automatic, include the required human renewal review as a finding.
 
 DOCUMENT
 ${text}`;
+}
+
+function parseModelJson(content: string) {
+  const withoutFence = content
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim();
+  const firstBrace = withoutFence.indexOf('{');
+  const lastBrace = withoutFence.lastIndexOf('}');
+  if (firstBrace < 0 || lastBrace <= firstBrace) {
+    throw new Error('DeepSeek returned an incomplete extraction. Please try the analysis again.');
+  }
+  return JSON.parse(withoutFence.slice(firstBrace, lastBrace + 1)) as unknown;
 }
 
 export async function POST(request: Request) {
@@ -175,7 +196,7 @@ export async function POST(request: Request) {
               schema: z.toJSONSchema(analysisSchema),
             },
           },
-          max_output_tokens: 3_000,
+          max_output_tokens: 4_500,
         }),
         signal: controller.signal,
       });
@@ -201,7 +222,23 @@ export async function POST(request: Request) {
       return Response.json({ error: 'DeepSeek returned an empty result.' }, { status: 502 });
     }
 
-    const validated = analysisSchema.parse(JSON.parse(content));
+    const parsed = analysisSchema.parse(parseModelJson(content));
+    const validated = {
+      ...parsed,
+      findings: parsed.findings.filter((finding) => finding.severity !== 'info'),
+    };
+    if (
+      String(validated.renewalType.value).toLowerCase() === 'automatic'
+      && !validated.findings.some((finding) => finding.rule.toLowerCase().includes('renew'))
+    ) {
+      validated.findings.push({
+        rule: 'Automatic renewal requires human review',
+        observed: String(validated.renewalType.sourceQuote ?? 'The agreement renews automatically.'),
+        standard: 'Automatic renewal requires a documented business-owner review before the notice deadline.',
+        severity: 'medium',
+        sourcePage: validated.renewalType.sourcePage,
+      });
+    }
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 160);
     const storageKey = `uploads/${stage}/${crypto.randomUUID()}-${safeName}`;
     await env.FILES.put(storageKey, await file.arrayBuffer(), {

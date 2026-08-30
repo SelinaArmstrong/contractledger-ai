@@ -224,7 +224,7 @@ export function ContractLedgerApp() {
   const loadDemoDocument = async () => {
     const fileName = stage === 'draft'
       ? '01_Draft_Professional_Services_Agreement.pdf'
-      : '02_Executed_Master_Services_Agreement.pdf';
+      : '02_Executed_Professional_Services_Agreement.pdf';
     const response = await fetch(`/demo-documents/${fileName}`);
     const blob = await response.blob();
     setSelectedFile(new File([blob], fileName, { type: 'application/pdf' }));
