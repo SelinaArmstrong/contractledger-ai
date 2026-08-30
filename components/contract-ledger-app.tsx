@@ -1311,55 +1311,90 @@ function ContractRegisterView({
             </div>
           }
         />
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-[#f7f9fa]">
-              <TableHead className="px-5">Contract</TableHead>
-              <TableHead>Supplier</TableHead>
-              <TableHead>Current value</TableHead>
-              <TableHead>Expiration</TableHead>
-              <TableHead>Renewal</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {contracts.map((item) => (
-              <TableRow key={String(item.id)}>
-                <TableCell className="px-5 py-3.5">
-                  <button
-                    type="button"
-                    onClick={() => onSelect(String(item.id))}
-                    className="text-left"
-                  >
-                    <span className="font-medium text-[#1d718f] hover:underline">
-                      {valueText(item.contract_number)}
-                    </span>
-                    <span className="mt-1 block text-[11px] text-slate-500">
-                      {valueText(item.title)} · {valueText(item.contract_type)}
-                    </span>
-                  </button>
-                </TableCell>
-                <TableCell className="text-xs">
-                  {valueText(item.supplier_name)}
-                </TableCell>
-                <TableCell className="text-xs font-medium">
-                  {moneyFromCents(item.current_value_cents)}
-                </TableCell>
-                <TableCell className="text-xs">
-                  {valueText(item.expiration_date)}
-                </TableCell>
-                <TableCell className="text-xs">
-                  {titleCase(item.renewal_type)}
-                </TableCell>
-                <TableCell>
-                  <StatusBadge tone={toneForStatus(item.status)}>
-                    {titleCase(item.status)}
-                  </StatusBadge>
-                </TableCell>
+        <div className="overflow-x-auto">
+          <Table className="min-w-[1680px]">
+            <TableHeader>
+              <TableRow className="bg-[#f7f9fa]">
+                <TableHead className="px-5">Contract</TableHead>
+                <TableHead>Supplier</TableHead>
+                <TableHead>Contract amount</TableHead>
+                <TableHead>Contract type</TableHead>
+                <TableHead>Department</TableHead>
+                <TableHead>Owner</TableHead>
+                <TableHead>Original value</TableHead>
+                <TableHead>Amendments</TableHead>
+                <TableHead>Effective date</TableHead>
+                <TableHead>Expiration date</TableHead>
+                <TableHead>Renewal terms</TableHead>
+                <TableHead>Notice deadline</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Last updated</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {contracts.map((item) => (
+                <TableRow key={String(item.id)}>
+                  <TableCell className="px-5 py-3.5">
+                    <button
+                      type="button"
+                      onClick={() => onSelect(String(item.id))}
+                      className="text-left"
+                    >
+                      <span className="font-medium text-[#1d718f] hover:underline">
+                        {valueText(item.title)}
+                      </span>
+                      <span className="mt-1 block text-[11px] text-slate-500">
+                        {valueText(item.contract_number)} · View source document
+                      </span>
+                    </button>
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {valueText(item.supplier_name)}
+                  </TableCell>
+                  <TableCell className="text-xs font-medium">
+                    {moneyFromCents(item.current_value_cents)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {valueText(item.contract_type)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {valueText(item.department)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {valueText(item.owner)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {moneyFromCents(item.original_value_cents)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {moneyFromCents(item.amendment_value_cents)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {valueText(item.effective_date)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {valueText(item.expiration_date)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {titleCase(item.renewal_type)} ·{' '}
+                    {valueText(item.notice_days)} days
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {valueText(item.notice_deadline)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    <StatusBadge tone={toneForStatus(item.status)}>
+                      {titleCase(item.status)}
+                    </StatusBadge>
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {valueText(item.last_updated)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </Panel>
     </>
   );
@@ -1399,67 +1434,81 @@ function SupplierRegisterView({
             </div>
           }
         />
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-[#f7f9fa]">
-              <TableHead className="px-5">Supplier</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Contracts</TableHead>
-              <TableHead>Total current value</TableHead>
-              <TableHead>W-9</TableHead>
-              <TableHead>Insurance</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {suppliers.map((item) => (
-              <TableRow key={String(item.id)}>
-                <TableCell className="px-5 py-3.5">
-                  <button
-                    type="button"
-                    onClick={() => onSelect(String(item.id))}
-                    className="text-left"
-                  >
-                    <span className="font-medium text-[#1d718f] hover:underline">
-                      {valueText(item.legal_name)}
-                    </span>
-                    <span className="mt-1 block text-[11px] text-slate-500">
-                      {valueText(item.primary_contact)} ·{' '}
-                      {valueText(item.email)}
-                    </span>
-                  </button>
-                </TableCell>
-                <TableCell className="text-xs">
-                  {valueText(item.category)}
-                </TableCell>
-                <TableCell className="text-xs">
-                  {valueText(item.active_contract_count)}
-                </TableCell>
-                <TableCell className="text-xs font-medium">
-                  {moneyFromCents(item.total_contract_value_cents)}
-                </TableCell>
-                <TableCell>
-                  <StatusBadge tone={toneForStatus(item.w9_status)}>
-                    {titleCase(item.w9_status)}
-                  </StatusBadge>
-                </TableCell>
-                <TableCell>
-                  <div className="text-xs">
-                    {titleCase(item.insurance_status)}
-                  </div>
-                  <div className="mt-1 text-[10px] text-slate-500">
-                    {valueText(item.insurance_expiration)}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <StatusBadge tone={toneForStatus(item.status)}>
-                    {titleCase(item.status)}
-                  </StatusBadge>
-                </TableCell>
+        <div className="overflow-x-auto">
+          <Table className="min-w-[1460px]">
+            <TableHeader>
+              <TableRow className="bg-[#f7f9fa]">
+                <TableHead className="px-5">Supplier</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Primary contact</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Active contracts</TableHead>
+                <TableHead>Total contract value</TableHead>
+                <TableHead>W-9</TableHead>
+                <TableHead>Insurance status</TableHead>
+                <TableHead>Insurance expiration</TableHead>
+                <TableHead>Last updated</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {suppliers.map((item) => (
+                <TableRow key={String(item.id)}>
+                  <TableCell className="px-5 py-3.5">
+                    <button
+                      type="button"
+                      onClick={() => onSelect(String(item.id))}
+                      className="text-left"
+                    >
+                      <span className="font-medium text-[#1d718f] hover:underline">
+                        {valueText(item.legal_name)}
+                      </span>
+                      <span className="mt-1 block text-[11px] text-slate-500">
+                        {valueText(item.id)} · View supplier files
+                      </span>
+                    </button>
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {valueText(item.category)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    <StatusBadge tone={toneForStatus(item.status)}>
+                      {titleCase(item.status)}
+                    </StatusBadge>
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {valueText(item.primary_contact)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {valueText(item.email)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {valueText(item.active_contract_count)}
+                  </TableCell>
+                  <TableCell className="text-xs font-medium">
+                    {moneyFromCents(item.total_contract_value_cents)}
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge tone={toneForStatus(item.w9_status)}>
+                      {titleCase(item.w9_status)}
+                    </StatusBadge>
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge tone={toneForStatus(item.insurance_status)}>
+                      {titleCase(item.insurance_status)}
+                    </StatusBadge>
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {valueText(item.insurance_expiration)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {valueText(item.updated_at)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </Panel>
     </>
   );
@@ -1780,27 +1829,6 @@ function KeyDateList({ items }: { items: Workspace['keyDates'] }) {
   );
 }
 
-function DetailField({
-  label,
-  value,
-  money = false,
-}: {
-  label: string;
-  value: unknown;
-  money?: boolean;
-}) {
-  return (
-    <div className="rounded-lg border border-[#e1e7ea] bg-[#f8fafb] p-3">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-        {label}
-      </p>
-      <p className="mt-1.5 text-xs font-medium text-[#243d4a]">
-        {money ? moneyFromCents(value) : valueText(value)}
-      </p>
-    </div>
-  );
-}
-
 function RecordDetailDialog({
   workspace,
   selection,
@@ -1821,25 +1849,19 @@ function RecordDetailDialog({
       ? workspace.suppliers.find((item) => item.id === selection.id)
       : workspace.suppliers.find((item) => item.id === contract?.supplier_id);
   const record = selection.type === 'contract' ? contract : supplier;
-  if (!record) return null;
-
   const documents = workspace.documents.filter((item) =>
     selection.type === 'contract'
       ? item.contract_id === selection.id
-      : item.supplier_id === selection.id,
+      : item.supplier_id === selection.id &&
+        item.lifecycle_stage === 'supplier_record',
   );
-  const obligations = workspace.keyDates.filter((item) =>
-    selection.type === 'contract'
-      ? item.contract_id === selection.id
-      : item.supplier_id === selection.id,
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(
+    documents[0] ? String(documents[0].id) : null,
   );
-  const linkedContracts =
-    selection.type === 'supplier'
-      ? workspace.contracts.filter((item) => item.supplier_id === selection.id)
-      : [];
-  const audits = workspace.auditLogs
-    .filter((item) => item.entity_id === selection.id)
-    .slice(0, 8);
+  if (!record) return null;
+  const selectedDocument =
+    documents.find((item) => String(item.id) === selectedDocumentId) ??
+    documents[0];
   const title =
     selection.type === 'contract'
       ? valueText(contract?.title)
@@ -1861,7 +1883,7 @@ function RecordDetailDialog({
         open
         aria-modal="true"
         aria-labelledby="detail-dialog-title"
-        className="relative m-0 max-h-[92vh] w-full max-w-[980px] overflow-y-auto rounded-xl bg-white p-0 text-sm shadow-2xl ring-1 ring-slate-900/10"
+        className="relative m-0 max-h-[94vh] w-full max-w-[1280px] overflow-y-auto rounded-xl bg-white p-0 text-sm shadow-2xl ring-1 ring-slate-900/10"
       >
         <button
           type="button"
@@ -1878,7 +1900,9 @@ function RecordDetailDialog({
             ) : (
               <Building2 className="size-3.5" />
             )}
-            {selection.type} record
+            {selection.type === 'contract'
+              ? 'Contract source document'
+              : 'Supplier qualification files'}
           </div>
           <h2
             id="detail-dialog-title"
@@ -1889,58 +1913,85 @@ function RecordDetailDialog({
           <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
         </div>
         <div className="space-y-6 p-6">
-          {selection.type === 'contract' && contract ? (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <DetailField label="Supplier" value={contract.supplier_name} />
-              <DetailField
-                label="Current value"
-                value={contract.current_value_cents}
-                money
-              />
-              <DetailField
-                label="Effective date"
-                value={contract.effective_date}
-              />
-              <DetailField
-                label="Expiration date"
-                value={contract.expiration_date}
-              />
-              <DetailField
-                label="Contract type"
-                value={contract.contract_type}
-              />
-              <DetailField label="Department" value={contract.department} />
-              <DetailField label="Owner" value={contract.owner} />
-              <DetailField
-                label="Renewal / notice"
-                value={`${titleCase(contract.renewal_type)} · ${valueText(contract.notice_days)} days`}
-              />
-            </div>
-          ) : supplier ? (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <DetailField label="Status" value={titleCase(supplier.status)} />
-              <DetailField label="Category" value={supplier.category} />
-              <DetailField
-                label="Primary contact"
-                value={supplier.primary_contact}
-              />
-              <DetailField label="Email" value={supplier.email} />
-              <DetailField
-                label="Active contracts"
-                value={supplier.active_contract_count}
-              />
-              <DetailField
-                label="Total value"
-                value={supplier.total_contract_value_cents}
-                money
-              />
-              <DetailField label="W-9" value={titleCase(supplier.w9_status)} />
-              <DetailField
-                label="Insurance"
-                value={`${titleCase(supplier.insurance_status)} · ${valueText(supplier.insurance_expiration)}`}
-              />
-            </div>
-          ) : null}
+          <section>
+            {documents.length && selectedDocument ? (
+              <div className="grid overflow-hidden rounded-xl border border-[#d7e1e6] bg-[#f6f8f9] lg:grid-cols-[250px_minmax(0,1fr)]">
+                <aside className="border-b border-[#d7e1e6] bg-white p-3 lg:border-b-0 lg:border-r">
+                  <p className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+                    Available files
+                  </p>
+                  <div className="space-y-1">
+                    {documents.map((item) => {
+                      const active =
+                        String(item.id) === String(selectedDocument.id);
+                      return (
+                        <button
+                          key={String(item.id)}
+                          type="button"
+                          onClick={() => setSelectedDocumentId(String(item.id))}
+                          className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-2.5 text-left ${active ? 'bg-[#e7f3f7] text-[#174f68]' : 'text-slate-600 hover:bg-slate-50'}`}
+                        >
+                          <FileText className="mt-0.5 size-4 shrink-0" />
+                          <span className="min-w-0">
+                            <span className="block truncate text-xs font-medium">
+                              {valueText(item.file_name)}
+                            </span>
+                            <span className="mt-0.5 block text-[10px] opacity-70">
+                              {titleCase(item.file_type)} ·{' '}
+                              {valueText(item.uploaded_at)}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </aside>
+                <div className="min-w-0 bg-[#eef2f4]">
+                  <div className="flex items-center justify-between gap-3 border-b border-[#d7e1e6] bg-white px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-medium text-[#203845]">
+                        {valueText(selectedDocument.file_name)}
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-slate-500">
+                        Original file content ·{' '}
+                        {titleCase(selectedDocument.mime_type)}
+                      </p>
+                    </div>
+                    <a
+                      href={`/api/document?id=${encodeURIComponent(String(selectedDocument.id))}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[#d4dfe4] bg-white px-3 py-1.5 text-[11px] font-medium text-[#27657c]"
+                    >
+                      <ExternalLink className="size-3.5" />
+                      Open separately
+                    </a>
+                  </div>
+                  <iframe
+                    title={valueText(selectedDocument.file_name)}
+                    src={`/api/document?id=${encodeURIComponent(String(selectedDocument.id))}`}
+                    className="h-[62vh] min-h-[520px] w-full bg-white"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed border-[#cbd7dd] bg-[#f8fafb] px-6 text-center">
+                <span className="flex size-12 items-center justify-center rounded-full bg-[#e8f2f5] text-[#347d96]">
+                  <FileText className="size-6" />
+                </span>
+                <h3 className="mt-4 text-sm font-semibold text-[#203845]">
+                  {selection.type === 'contract'
+                    ? 'No executed source document linked'
+                    : 'No supplier qualification file linked'}
+                </h3>
+                <p className="mt-2 max-w-md text-xs leading-5 text-slate-500">
+                  {selection.type === 'contract'
+                    ? 'This legacy register record has no digital file attached. Register an executed contract through Executed Intake and its verified PDF will open here as the source of truth.'
+                    : 'The status may come from a legacy register, but no digital file is attached. Upload a W-9 or insurance certificate below to centralize the source document.'}
+                </p>
+              </div>
+            )}
+          </section>
 
           {selection.type === 'supplier' && supplier ? (
             <SupplierDocumentUpload
@@ -1948,103 +1999,6 @@ function RecordDetailDialog({
               onUploaded={onRefresh}
             />
           ) : null}
-
-          <section>
-            <h3 className="text-sm font-semibold text-[#203845]">Documents</h3>
-            <div className="mt-3 overflow-hidden rounded-xl border border-[#e1e7ea]">
-              {documents.length ? (
-                documents.map((item) => (
-                  <a
-                    key={String(item.id)}
-                    href={`/api/document?id=${encodeURIComponent(String(item.id))}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-3 border-b border-[#e8edef] px-4 py-3 text-xs last:border-0 hover:bg-slate-50"
-                  >
-                    <FileText className="size-4 text-[#347d96]" />
-                    <span className="min-w-0 flex-1 truncate">
-                      <span className="font-medium text-[#234252]">
-                        {valueText(item.file_name)}
-                      </span>
-                      <span className="mt-0.5 block text-[10px] text-slate-500">
-                        {titleCase(item.file_type)} ·{' '}
-                        {titleCase(item.lifecycle_stage)} ·{' '}
-                        {valueText(item.uploaded_at)}
-                      </span>
-                    </span>
-                    <ExternalLink className="size-3.5 text-slate-400" />
-                  </a>
-                ))
-              ) : (
-                <p className="px-4 py-5 text-xs text-slate-500">
-                  No stored files are linked to this record yet.
-                </p>
-              )}
-            </div>
-          </section>
-
-          {linkedContracts.length ? (
-            <section>
-              <h3 className="text-sm font-semibold text-[#203845]">
-                Linked contracts
-              </h3>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {linkedContracts.map((item) => (
-                  <div
-                    key={String(item.id)}
-                    className="rounded-lg border border-[#e1e7ea] p-3"
-                  >
-                    <p className="text-xs font-medium text-[#234252]">
-                      {valueText(item.contract_number)} ·{' '}
-                      {valueText(item.title)}
-                    </p>
-                    <p className="mt-1 text-[10px] text-slate-500">
-                      {moneyFromCents(item.current_value_cents)} · expires{' '}
-                      {valueText(item.expiration_date)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ) : null}
-
-          <section>
-            <h3 className="text-sm font-semibold text-[#203845]">
-              Obligations and key dates
-            </h3>
-            <div className="mt-3 rounded-xl border border-[#e1e7ea]">
-              <KeyDateList items={obligations} />
-            </div>
-          </section>
-          <section>
-            <h3 className="text-sm font-semibold text-[#203845]">
-              Audit trail
-            </h3>
-            <div className="mt-3 space-y-2">
-              {audits.length ? (
-                audits.map((item) => (
-                  <div
-                    key={String(item.id)}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#e1e7ea] px-3 py-2 text-[11px]"
-                  >
-                    <span>
-                      <strong className="font-medium text-[#234252]">
-                        {titleCase(item.action)}
-                      </strong>{' '}
-                      · {valueText(item.actor)}
-                    </span>
-                    <span className="text-slate-500">
-                      {valueText(item.created_at)}
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <p className="rounded-lg border border-[#e1e7ea] px-3 py-4 text-xs text-slate-500">
-                  No changes have been logged for this record.
-                </p>
-              )}
-            </div>
-          </section>
         </div>
       </dialog>
     </div>

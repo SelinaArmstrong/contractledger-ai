@@ -435,6 +435,41 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
     db
       .prepare(`UPDATE review_findings SET source_page = ? WHERE id = ?`)
       .bind(9, 'finding-002'),
+    db
+      .prepare(`INSERT OR IGNORE INTO documents
+      (id, supplier_id, contract_id, file_name, file_type, lifecycle_stage, storage_key, mime_type, page_count, ai_status, uploaded_at)
+      VALUES (?, ?, ?, ?, ?, 'executed', ?, 'application/pdf', 4, 'verified', ?)`)
+      .bind(
+        'doc-demo-contract-harbor',
+        'sup-harbor',
+        'con-001',
+        '03_Executed_Technology_Support_Services_Agreement.pdf',
+        'executed_agreement',
+        'public:/demo-documents/03_Executed_Technology_Support_Services_Agreement.pdf',
+        now,
+      ),
+    db
+      .prepare(`INSERT OR IGNORE INTO documents
+      (id, supplier_id, file_name, file_type, lifecycle_stage, storage_key, mime_type, page_count, ai_status, uploaded_at)
+      VALUES (?, ?, ?, 'w9', 'supplier_record', ?, 'application/pdf', 1, 'verified', ?)`)
+      .bind(
+        'doc-demo-w9-harbor',
+        'sup-harbor',
+        '04_Harbor_Technology_Demo_W9.pdf',
+        'public:/demo-documents/04_Harbor_Technology_Demo_W9.pdf',
+        now,
+      ),
+    db
+      .prepare(`INSERT OR IGNORE INTO documents
+      (id, supplier_id, file_name, file_type, lifecycle_stage, storage_key, mime_type, page_count, ai_status, uploaded_at)
+      VALUES (?, ?, ?, 'insurance_certificate', 'supplier_record', ?, 'application/pdf', 1, 'verified', ?)`)
+      .bind(
+        'doc-demo-coi-harbor',
+        'sup-harbor',
+        '05_Harbor_Technology_Demo_Insurance_Certificate.pdf',
+        'public:/demo-documents/05_Harbor_Technology_Demo_Insurance_Certificate.pdf',
+        now,
+      ),
   ]);
 }
 
