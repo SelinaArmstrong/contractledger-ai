@@ -36,6 +36,8 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+On macOS, double-click `Start ContractLedger AI.command` for an interview-ready local launch. Keep the terminal window open while demonstrating the app and press Control-C when finished.
+
 Useful checks:
 
 ```bash
