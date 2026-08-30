@@ -505,11 +505,57 @@ function DashboardView({ workspace, onOpen, onExport, exporting, onNavigate }: {
         <article className="relative overflow-hidden rounded-xl border border-[#b9d9e5] bg-[#edf8fb] p-5"><div className="absolute right-5 top-5 flex size-10 items-center justify-center rounded-lg bg-white/80 text-[#257a98]"><FileSearch className="size-5" /></div><p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#43849a]">Pre-execution</p><h2 className="mt-2 text-lg font-semibold text-[#14364a]">Review a new contract</h2><p className="mt-1 max-w-[440px] text-[12px] leading-5 text-[#557280]">Extract proposed terms, compare the draft to the demo playbook, and create a pending supplier. Draft values stay outside the official register.</p><Button onClick={() => onOpen('draft')} className="mt-5 h-9 bg-[#1d718f] hover:bg-[#185f78]"><Upload />Upload draft<ArrowRight /></Button></article>
         <article className="relative overflow-hidden rounded-xl border border-[#cbd8dc] bg-white p-5"><div className="absolute right-5 top-5 flex size-10 items-center justify-center rounded-lg bg-[#eef3f5] text-[#274b5c]"><FileCheck2 className="size-5" /></div><p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Post-execution</p><h2 className="mt-2 text-lg font-semibold text-[#1b2e3a]">Register an executed contract</h2><p className="mt-1 max-w-[440px] text-[12px] leading-5 text-slate-500">Verify the signed version, update both official registers, and activate renewal and key-date monitoring.</p><Button onClick={() => onOpen('executed')} variant="outline" className="mt-5 h-9 border-[#bfcdd3] bg-white text-[#244757]"><Upload />Upload executed copy<ArrowRight /></Button></article>
       </section>
+      <DemoTransactionComparison />
       <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]">
         <Panel className="overflow-hidden"><PanelHeader title="AI review queue" description="Human confirmation is required before official records change." action={<Button variant="ghost" size="sm" onClick={() => onNavigate('New Contract Review')} className="text-[#2e7188]">View all</Button>} /><IntakeTable intakes={workspace?.intakes.slice(0, 4) ?? []} /></Panel>
         <Panel><PanelHeader title="Priority alerts" description="Renewal, supplier, and data quality" action={<Clock3 className="size-4 text-slate-400" />} /><KeyDateList items={workspace?.keyDates.slice(0, 4) ?? []} /><div className="mx-5 mb-5 flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2.5 text-[11px] text-emerald-800"><CircleCheck className="size-4" />Official records use verified values only</div></Panel>
       </div>
     </>
+  );
+}
+
+function DemoTransactionComparison() {
+  const changes = [
+    ['Contract value', '$585,000 proposed', '$475,000 official'],
+    ['Payment terms', 'Net 60', 'Net 30'],
+    ['Governing law', 'New York', 'California'],
+    ['Renewal notice', 'Automatic · 45 days', 'Automatic · 60 days'],
+    ['Supplier status', 'Pending', 'Active after verification'],
+    ['Official register impact', '$0', '+$475,000'],
+    ['Human review', '15 playbook differences', '1 renewal decision'],
+  ];
+  return (
+    <Panel className="mb-7 overflow-hidden border-[#c9dbe2]">
+      <PanelHeader
+        title="Fictional transaction — negotiation outcome"
+        description="The same Westline project moves from proposed data to an executed source of truth."
+        action={<Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-800">Same supplier · Same project</Badge>}
+      />
+      <div className="overflow-x-auto">
+        <Table className="min-w-[700px]">
+          <TableHeader>
+            <TableRow className="bg-[#f7f9fa]">
+              <TableHead className="w-[28%] px-5">Control point</TableHead>
+              <TableHead className="w-[36%]"><span className="mr-2 inline-block size-2 rounded-full bg-amber-500" />Draft · pre-execution</TableHead>
+              <TableHead className="w-[36%]"><span className="mr-2 inline-block size-2 rounded-full bg-emerald-500" />Executed · source of truth</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {changes.map(([label, draft, executed]) => (
+              <TableRow key={label}>
+                <TableCell className="px-5 py-3 text-xs font-medium text-[#294454]">{label}</TableCell>
+                <TableCell className="text-xs text-slate-500">{draft}</TableCell>
+                <TableCell className="text-xs font-medium text-[#1f5f4c]">{executed}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <div className="flex flex-col gap-2 border-t border-[#e3e9ed] bg-[#f7fbfc] px-5 py-3 text-[11px] text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+        <span className="flex items-center gap-2"><ShieldCheck className="size-3.5 text-[#2f7b94]" />Draft terms support review and supplier onboarding only.</span>
+        <span className="flex items-center gap-2"><CircleCheck className="size-3.5 text-emerald-600" />Only the verified executed copy updates official totals and alerts.</span>
+      </div>
+    </Panel>
   );
 }
 

@@ -15,6 +15,7 @@ The fictional policy checks are operational review prompts, not legal advice. AI
 ## Interview demo
 
 - Start on **Portfolio Dashboard** and explain that only executed contracts count toward the official value.
+- Use the **Fictional transaction — negotiation outcome** table to explain how the same supplier and project changed from the proposed draft to the signed source of truth.
 - Open **Draft Review**, choose **Use demo PDF**, then run **Analyze with DeepSeek**. Point out source quotes, confidence indicators, and playbook deviations.
 - Save the verified draft and show that the supplier is `Pending` while the official contract total is unchanged.
 - Open **Executed Intake**, load the executed demo, analyze, verify, and save. Show the new official contract, active supplier, and calculated renewal-notice deadline.
