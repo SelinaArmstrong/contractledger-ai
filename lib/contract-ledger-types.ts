@@ -58,4 +58,6 @@ export type Workspace = {
   suppliers: Array<Record<string, string | number | null>>;
   intakes: Array<Record<string, string | number | null>>;
   keyDates: Array<Record<string, string | number | null>>;
+  documents: Array<Record<string, string | number | null>>;
+  auditLogs: Array<Record<string, string | number | null>>;
 };

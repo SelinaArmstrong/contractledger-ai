@@ -97,13 +97,33 @@ export async function exportCurrentRegisters(workspace: Workspace) {
     { header: 'Exception', key: 'exception', width: 46 },
     { header: 'Priority', key: 'priority', width: 14 },
     { header: 'Next Date', key: 'date', width: 18 },
+    { header: 'Status', key: 'status', width: 16 },
+    { header: 'Owner', key: 'owner', width: 24 },
+    { header: 'Renewal Decision', key: 'decision', width: 22 },
+    { header: 'Completed At', key: 'completedAt', width: 24 },
+    { header: 'Notes', key: 'notes', width: 40 },
   ];
   workspace.suppliers.forEach((supplier) => {
     if (supplier.w9_status === 'missing') {
-      exceptionSheet.addRow({ recordType: 'Supplier', record: supplier.legal_name, exception: 'W-9 is missing', priority: 'Medium', date: '' });
+      exceptionSheet.addRow({
+        recordType: 'Supplier',
+        record: supplier.legal_name,
+        exception: 'W-9 is missing',
+        priority: 'Medium',
+        date: '',
+      });
     }
-    if (supplier.insurance_status === 'missing' || supplier.insurance_status === 'expired') {
-      exceptionSheet.addRow({ recordType: 'Supplier', record: supplier.legal_name, exception: 'Insurance documentation requires review', priority: 'High', date: supplier.insurance_expiration ?? '' });
+    if (
+      supplier.insurance_status === 'missing' ||
+      supplier.insurance_status === 'expired'
+    ) {
+      exceptionSheet.addRow({
+        recordType: 'Supplier',
+        record: supplier.legal_name,
+        exception: 'Insurance documentation requires review',
+        priority: 'High',
+        date: supplier.insurance_expiration ?? '',
+      });
     }
   });
   workspace.keyDates.forEach((item) =>
@@ -113,22 +133,40 @@ export async function exportCurrentRegisters(workspace: Workspace) {
       exception: item.title,
       priority: item.type === 'non_renewal_notice' ? 'High' : 'Medium',
       date: item.due_date,
+      status: item.status,
+      owner: item.owner,
+      decision: item.decision,
+      completedAt: item.completed_at,
+      notes: item.notes,
     }),
   );
 
   [contractSheet, supplierSheet, exceptionSheet].forEach((sheet) => {
     const header = sheet.getRow(1);
     header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF16384C' } };
+    header.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF16384C' },
+    };
     header.alignment = { vertical: 'middle' };
     header.height = 24;
-    sheet.autoFilter = { from: 'A1', to: `${sheet.getColumn(sheet.columnCount).letter}${sheet.rowCount}` };
+    sheet.autoFilter = {
+      from: 'A1',
+      to: `${sheet.getColumn(sheet.columnCount).letter}${sheet.rowCount}`,
+    };
     sheet.eachRow((row, rowNumber) => {
       if (rowNumber > 1 && rowNumber % 2 === 0) {
-        row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F6F8' } };
+        row.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFF1F6F8' },
+        };
       }
       row.eachCell((cell) => {
-        cell.border = { bottom: { style: 'hair', color: { argb: 'FFD7E1E6' } } };
+        cell.border = {
+          bottom: { style: 'hair', color: { argb: 'FFD7E1E6' } },
+        };
       });
     });
   });

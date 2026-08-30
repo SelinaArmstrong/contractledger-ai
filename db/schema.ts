@@ -1,4 +1,10 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import {
+  index,
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 
 export const suppliers = sqliteTable(
   'suppliers',
@@ -8,15 +14,21 @@ export const suppliers = sqliteTable(
     normalizedName: text('normalized_name').notNull(),
     dbaName: text('dba_name'),
     category: text('category').notNull(),
-    status: text('status', { enum: ['pending', 'active', 'inactive', 'rejected', 'archived'] })
+    status: text('status', {
+      enum: ['pending', 'active', 'inactive', 'rejected', 'archived'],
+    })
       .notNull()
       .default('pending'),
     primaryContact: text('primary_contact'),
     email: text('email'),
-    w9Status: text('w9_status', { enum: ['missing', 'received', 'expired', 'not_required'] })
+    w9Status: text('w9_status', {
+      enum: ['missing', 'received', 'expired', 'not_required'],
+    })
       .notNull()
       .default('missing'),
-    insuranceStatus: text('insurance_status', { enum: ['missing', 'current', 'expired', 'not_required'] })
+    insuranceStatus: text('insurance_status', {
+      enum: ['missing', 'current', 'expired', 'not_required'],
+    })
       .notNull()
       .default('missing'),
     insuranceExpiration: text('insurance_expiration'),
@@ -41,11 +53,20 @@ export const contractIntakes = sqliteTable(
     contractType: text('contract_type').notNull(),
     proposedValueCents: integer('proposed_value_cents'),
     status: text('status', {
-      enum: ['draft', 'under_review', 'revision_requested', 'approved_for_signature', 'not_awarded', 'executed'],
+      enum: [
+        'draft',
+        'under_review',
+        'revision_requested',
+        'approved_for_signature',
+        'not_awarded',
+        'executed',
+      ],
     })
       .notNull()
       .default('draft'),
-    reviewStatus: text('review_status', { enum: ['pending', 'in_progress', 'ready', 'complete'] })
+    reviewStatus: text('review_status', {
+      enum: ['pending', 'in_progress', 'ready', 'complete'],
+    })
       .notNull()
       .default('pending'),
     receivedAt: text('received_at').notNull(),
@@ -76,12 +97,16 @@ export const contracts = sqliteTable(
     currentValueCents: integer('current_value_cents').notNull(),
     effectiveDate: text('effective_date').notNull(),
     expirationDate: text('expiration_date'),
-    renewalType: text('renewal_type', { enum: ['automatic', 'optional', 'none'] })
+    renewalType: text('renewal_type', {
+      enum: ['automatic', 'optional', 'none'],
+    })
       .notNull()
       .default('none'),
     noticeDays: integer('notice_days'),
     noticeDeadline: text('notice_deadline'),
-    status: text('status', { enum: ['executed', 'active', 'expired', 'terminated', 'closed'] })
+    status: text('status', {
+      enum: ['executed', 'active', 'expired', 'terminated', 'closed'],
+    })
       .notNull()
       .default('executed'),
     lastUpdated: text('last_updated').notNull(),
@@ -89,7 +114,10 @@ export const contracts = sqliteTable(
   (table) => [
     uniqueIndex('idx_contracts_number').on(table.contractNumber),
     index('idx_contracts_supplier_id').on(table.supplierId),
-    index('idx_contracts_status_expiration').on(table.status, table.expirationDate),
+    index('idx_contracts_status_expiration').on(
+      table.status,
+      table.expirationDate,
+    ),
     index('idx_contracts_notice_deadline').on(table.noticeDeadline),
   ],
 );
@@ -104,11 +132,15 @@ export const documents = sqliteTable(
     parentDocumentId: text('parent_document_id'),
     fileName: text('file_name').notNull(),
     fileType: text('file_type').notNull(),
-    lifecycleStage: text('lifecycle_stage', { enum: ['draft', 'executed', 'supplier_document'] }).notNull(),
+    lifecycleStage: text('lifecycle_stage', {
+      enum: ['draft', 'executed', 'supplier_record'],
+    }).notNull(),
     storageKey: text('storage_key').notNull(),
     mimeType: text('mime_type').notNull(),
     pageCount: integer('page_count'),
-    aiStatus: text('ai_status', { enum: ['queued', 'processing', 'needs_review', 'verified', 'failed'] })
+    aiStatus: text('ai_status', {
+      enum: ['queued', 'processing', 'needs_review', 'verified', 'failed'],
+    })
       .notNull()
       .default('queued'),
     uploadedAt: text('uploaded_at').notNull(),
@@ -146,9 +178,15 @@ export const keyDates = sqliteTable(
     title: text('title').notNull(),
     dueDate: text('due_date').notNull(),
     internalReviewDate: text('internal_review_date'),
-    status: text('status', { enum: ['upcoming', 'due', 'complete', 'dismissed'] })
+    status: text('status', { enum: ['upcoming', 'due', 'completed'] })
       .notNull()
       .default('upcoming'),
+    owner: text('owner'),
+    completedAt: text('completed_at'),
+    decision: text('decision', {
+      enum: ['under_review', 'renew', 'do_not_renew', 'not_applicable'],
+    }),
+    notes: text('notes'),
     sourceClause: text('source_clause'),
     sourcePage: integer('source_page'),
   },
@@ -169,9 +207,13 @@ export const reviewFindings = sqliteTable(
     ruleName: text('rule_name').notNull(),
     standardText: text('standard_text').notNull(),
     observedText: text('observed_text').notNull(),
-    severity: text('severity', { enum: ['info', 'low', 'medium', 'high'] }).notNull(),
+    severity: text('severity', {
+      enum: ['info', 'low', 'medium', 'high'],
+    }).notNull(),
     sourcePage: integer('source_page'),
-    status: text('status', { enum: ['open', 'accepted', 'resolved', 'dismissed'] })
+    status: text('status', {
+      enum: ['open', 'accepted', 'resolved', 'dismissed'],
+    })
       .notNull()
       .default('open'),
   },
@@ -189,7 +231,9 @@ export const auditLogs = sqliteTable(
     details: text('details'),
     createdAt: text('created_at').notNull(),
   },
-  (table) => [index('idx_audit_logs_entity').on(table.entityType, table.entityId)],
+  (table) => [
+    index('idx_audit_logs_entity').on(table.entityType, table.entityId),
+  ],
 );
 
 export type Supplier = typeof suppliers.$inferSelect;
