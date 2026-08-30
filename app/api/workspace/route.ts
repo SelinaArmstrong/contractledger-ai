@@ -110,7 +110,16 @@ export async function getWorkspace() {
         ELSE 'onboarding'
       END AS relationship_stage,
       (SELECT COUNT(*) FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record') AS qualification_document_count,
-      (SELECT MIN(d.expiration_date) FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND d.expiration_date IS NOT NULL) AS next_document_expiration
+      (SELECT MIN(d.expiration_date) FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND d.expiration_date >= date('now')) AS next_document_expiration,
+      (SELECT COUNT(*) FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND d.expiration_date < date('now') AND COALESCE(d.review_status, '') != 'not_applicable') AS expired_qualification_document_count,
+      (SELECT MIN(candidate.expiration_date) FROM (
+        SELECT s.insurance_expiration AS expiration_date
+        UNION ALL
+        SELECT d.expiration_date FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record'
+      ) candidate WHERE candidate.expiration_date >= date('now')) AS next_compliance_expiration,
+      CASE WHEN s.insurance_expiration < date('now') OR EXISTS (
+        SELECT 1 FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND d.expiration_date < date('now') AND COALESCE(d.review_status, '') != 'not_applicable'
+      ) THEN 1 ELSE 0 END AS has_expired_compliance
       FROM suppliers s LEFT JOIN contracts c ON c.supplier_id = s.id
       GROUP BY s.id ORDER BY s.legal_name`)
       .all(),

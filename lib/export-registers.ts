@@ -91,7 +91,12 @@ export async function exportCurrentRegisters(workspace: Workspace) {
     { header: 'Insurance Expiration', key: 'insuranceExpiration', width: 22 },
     { header: 'Qualification Files', key: 'qualificationFiles', width: 20 },
     {
-      header: 'Next Document Expiration',
+      header: 'Expired Qualification Files',
+      key: 'expiredQualificationFiles',
+      width: 24,
+    },
+    {
+      header: 'Next Compliance Expiration',
       key: 'nextDocumentExpiration',
       width: 24,
     },
@@ -138,7 +143,8 @@ export async function exportCurrentRegisters(workspace: Workspace) {
       insurance: supplier.insurance_status,
       insuranceExpiration: supplier.insurance_expiration,
       qualificationFiles: supplier.qualification_document_count,
-      nextDocumentExpiration: supplier.next_document_expiration,
+      expiredQualificationFiles: supplier.expired_qualification_document_count,
+      nextDocumentExpiration: supplier.next_compliance_expiration,
       updated: supplier.updated_at,
     }),
   );

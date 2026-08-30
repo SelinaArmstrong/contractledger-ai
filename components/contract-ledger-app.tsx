@@ -1824,8 +1824,8 @@ function SupplierOnboardingDialog({
         }
       }}
     >
-      <DialogContent className="max-h-[92vh] max-w-[1080px] overflow-y-auto p-0">
-        <DialogHeader className="border-b border-[#e1e7ea] px-6 py-5">
+      <DialogContent className="h-[84vh] min-h-[620px] w-[96vw] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-[1440px]">
+        <DialogHeader className="border-b border-[#e1e7ea] px-6 py-4">
           <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
             <Building2 className="size-3.5" />
             Independent supplier onboarding
@@ -1840,8 +1840,8 @@ function SupplierOnboardingDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 px-6 py-5">
-          <section>
+        <div className="grid min-h-0 overflow-hidden xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <section className="min-h-0 overflow-y-auto px-6 py-5">
             <h3 className="text-sm font-semibold text-[#203845]">
               Supplier master data
             </h3>
@@ -1849,7 +1849,7 @@ function SupplierOnboardingDialog({
               A vendor number is generated automatically when this record is
               saved.
             </p>
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
               <Input
                 value={supplier.legalName}
                 onChange={(event) =>
@@ -1989,7 +1989,7 @@ function SupplierOnboardingDialog({
             </div>
           </section>
 
-          <section className="border-t border-[#e1e7ea] pt-5">
+          <section className="min-h-0 overflow-y-auto border-t border-[#e1e7ea] px-6 py-5 xl:border-l xl:border-t-0">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
               <div>
                 <h3 className="text-sm font-semibold text-[#203845]">
@@ -2112,15 +2112,14 @@ function SupplierOnboardingDialog({
                 </div>
               ))}
             </div>
+            {error ? (
+              <Alert variant="destructive" className="mt-4">
+                <AlertCircle />
+                <AlertTitle>Supplier record needs attention</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
           </section>
-
-          {error ? (
-            <Alert variant="destructive">
-              <AlertCircle />
-              <AlertTitle>Supplier record needs attention</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          ) : null}
         </div>
 
         <DialogFooter className="mx-0 mb-0 px-6 py-4">
@@ -2161,6 +2160,73 @@ function SupplierRegisterView({
   onSelect: (id: string) => void;
   onAdd: () => void;
 }) {
+  const [relationshipFilter, setRelationshipFilter] = useState('all');
+  const [supplierStatusFilter, setSupplierStatusFilter] = useState('all');
+  const [qualificationFilter, setQualificationFilter] = useState('all');
+  const [riskFilter, setRiskFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [stateFilter, setStateFilter] = useState('all');
+  const [w9Filter, setW9Filter] = useState('all');
+  const [insuranceFilter, setInsuranceFilter] = useState('all');
+  const [documentExpiryFilter, setDocumentExpiryFilter] = useState('all');
+  const options = (key: string) =>
+    Array.from(
+      new Set(
+        suppliers
+          .map((item) => valueText(item[key]))
+          .filter((value) => value !== 'Not found'),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+  const today = new Date().toISOString().slice(0, 10);
+  const expiryCutoffDate = new Date(`${today}T12:00:00Z`);
+  expiryCutoffDate.setUTCDate(expiryCutoffDate.getUTCDate() + 90);
+  const expiryCutoff = expiryCutoffDate.toISOString().slice(0, 10);
+  const visibleSuppliers = suppliers.filter((item) => {
+    if (
+      relationshipFilter !== 'all' &&
+      item.relationship_stage !== relationshipFilter
+    )
+      return false;
+    if (supplierStatusFilter !== 'all' && item.status !== supplierStatusFilter)
+      return false;
+    if (
+      qualificationFilter !== 'all' &&
+      item.qualification_status !== qualificationFilter
+    )
+      return false;
+    if (riskFilter !== 'all' && item.risk_tier !== riskFilter) return false;
+    if (categoryFilter !== 'all' && item.category !== categoryFilter)
+      return false;
+    if (stateFilter !== 'all' && item.state !== stateFilter) return false;
+    if (w9Filter !== 'all' && item.w9_status !== w9Filter) return false;
+    if (insuranceFilter !== 'all' && item.insurance_status !== insuranceFilter)
+      return false;
+    const nextExpiry =
+      typeof item.next_compliance_expiration === 'string'
+        ? item.next_compliance_expiration
+        : '';
+    if (documentExpiryFilter === 'expiring_90_days')
+      return Boolean(
+        nextExpiry && nextExpiry >= today && nextExpiry <= expiryCutoff,
+      );
+    const hasExpiredCompliance = Number(item.has_expired_compliance ?? 0) > 0;
+    if (documentExpiryFilter === 'expired') return hasExpiredCompliance;
+    if (documentExpiryFilter === 'no_expiration')
+      return !nextExpiry && !hasExpiredCompliance;
+    return true;
+  });
+  const clearFilters = () => {
+    setRelationshipFilter('all');
+    setSupplierStatusFilter('all');
+    setQualificationFilter('all');
+    setRiskFilter('all');
+    setCategoryFilter('all');
+    setStateFilter('all');
+    setW9Filter('all');
+    setInsuranceFilter('all');
+    setDocumentExpiryFilter('all');
+  };
+
   return (
     <>
       <PageHeading
@@ -2177,7 +2243,7 @@ function SupplierRegisterView({
       <Panel className="overflow-hidden">
         <PanelHeader
           title="Supplier master data"
-          description={`${suppliers.length} supplier record${suppliers.length === 1 ? '' : 's'}`}
+          description={`${visibleSuppliers.length} of ${suppliers.length} supplier record${suppliers.length === 1 ? '' : 's'} shown`}
           action={
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -2190,6 +2256,87 @@ function SupplierRegisterView({
             </div>
           }
         />
+        <div className="border-b border-[#e3e9ed] bg-[#f8fafb] p-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <FilterSelect
+              label="Relationship stage"
+              value={relationshipFilter}
+              onChange={setRelationshipFilter}
+              options={options('relationship_stage')}
+              titleCaseOptions
+            />
+            <FilterSelect
+              label="Supplier status"
+              value={supplierStatusFilter}
+              onChange={setSupplierStatusFilter}
+              options={options('status')}
+              titleCaseOptions
+            />
+            <FilterSelect
+              label="Qualification status"
+              value={qualificationFilter}
+              onChange={setQualificationFilter}
+              options={options('qualification_status')}
+              titleCaseOptions
+            />
+            <FilterSelect
+              label="Risk tier"
+              value={riskFilter}
+              onChange={setRiskFilter}
+              options={options('risk_tier')}
+              titleCaseOptions
+            />
+            <FilterSelect
+              label="Category"
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              options={options('category')}
+            />
+            <FilterSelect
+              label="State"
+              value={stateFilter}
+              onChange={setStateFilter}
+              options={options('state')}
+            />
+            <FilterSelect
+              label="W-9 status"
+              value={w9Filter}
+              onChange={setW9Filter}
+              options={options('w9_status')}
+              titleCaseOptions
+            />
+            <FilterSelect
+              label="Insurance status"
+              value={insuranceFilter}
+              onChange={setInsuranceFilter}
+              options={options('insurance_status')}
+              titleCaseOptions
+            />
+            <FilterSelect
+              label="Qualification / insurance expiry"
+              value={documentExpiryFilter}
+              onChange={setDocumentExpiryFilter}
+              options={['expiring_90_days', 'expired', 'no_expiration']}
+              titleCaseOptions
+            />
+            <div className="flex items-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={clearFilters}
+                className="h-9 w-full bg-white"
+              >
+                <RotateCcw />
+                Clear filters
+              </Button>
+            </div>
+          </div>
+          <p className="mt-3 text-[10px] text-slate-500">
+            Filters can be combined with keyword search. “Expiring 90 days” uses
+            the earliest dated qualification or insurance record on each
+            supplier.
+          </p>
+        </div>
         <div className="overflow-x-auto">
           <Table className="min-w-[2200px]">
             <TableHeader>
@@ -2212,7 +2359,7 @@ function SupplierRegisterView({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {suppliers.map((item) => (
+              {visibleSuppliers.map((item) => (
                 <TableRow key={String(item.id)}>
                   <TableCell className="px-5 py-3.5">
                     <button
@@ -2350,14 +2497,31 @@ function SupplierRegisterView({
                       {valueText(item.qualification_document_count)} files
                     </div>
                     <div className="mt-1 text-[10px] text-slate-500">
-                      Next expiry {valueText(item.next_document_expiration)}
+                      Next expiry {valueText(item.next_compliance_expiration)}
                     </div>
+                    {Number(item.expired_qualification_document_count ?? 0) >
+                    0 ? (
+                      <div className="mt-1 text-[10px] font-medium text-rose-600">
+                        {valueText(item.expired_qualification_document_count)}{' '}
+                        expired
+                      </div>
+                    ) : null}
                   </TableCell>
                   <TableCell className="text-xs">
                     {valueText(item.updated_at)}
                   </TableCell>
                 </TableRow>
               ))}
+              {!visibleSuppliers.length ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={15}
+                    className="h-36 text-center text-xs text-slate-500"
+                  >
+                    No suppliers match the current search and filters.
+                  </TableCell>
+                </TableRow>
+              ) : null}
             </TableBody>
           </Table>
         </div>
