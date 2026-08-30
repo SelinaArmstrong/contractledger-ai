@@ -6,12 +6,27 @@ import { getWorkspace } from '@/app/api/workspace/route';
 
 const fieldsSchema = z.object({
   supplierId: z.string().min(1),
-  documentType: z.enum(['w9', 'insurance_certificate']),
+  documentType: z.enum([
+    'w9',
+    'insurance_certificate',
+    'business_license',
+    'business_registration',
+    'good_standing',
+    'professional_license',
+    'diversity_certification',
+    'safety_qualification',
+    'cybersecurity_assessment',
+    'sanctions_debarment_check',
+    'quality_certification',
+    'other_qualification',
+  ]),
   expirationDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional()
     .or(z.literal('')),
+  issuer: z.string().trim().max(160).optional().or(z.literal('')),
+  documentNumber: z.string().trim().max(100).optional().or(z.literal('')),
 });
 
 function safeFileName(name: string) {
@@ -28,6 +43,8 @@ export async function POST(request: Request) {
       supplierId: form.get('supplierId'),
       documentType: form.get('documentType'),
       expirationDate: form.get('expirationDate') ?? '',
+      issuer: form.get('issuer') ?? '',
+      documentNumber: form.get('documentNumber') ?? '',
     });
     const file = form.get('file');
     if (!(file instanceof File))
@@ -75,28 +92,43 @@ export async function POST(request: Request) {
       },
     });
 
-    const updates =
+    const documentStatusUpdate =
       fields.documentType === 'w9'
         ? env.DB.prepare(
             "UPDATE suppliers SET w9_status = 'received', updated_at = ? WHERE id = ?",
           ).bind(now, fields.supplierId)
-        : env.DB.prepare(
-            "UPDATE suppliers SET insurance_status = 'current', insurance_expiration = ?, updated_at = ? WHERE id = ?",
-          ).bind(fields.expirationDate, now, fields.supplierId);
+        : fields.documentType === 'insurance_certificate'
+          ? env.DB.prepare(
+              "UPDATE suppliers SET insurance_status = 'current', insurance_expiration = ?, updated_at = ? WHERE id = ?",
+            ).bind(fields.expirationDate, now, fields.supplierId)
+          : env.DB.prepare(
+              'UPDATE suppliers SET updated_at = ? WHERE id = ?',
+            ).bind(now, fields.supplierId);
+    const qualificationUpdate = env.DB.prepare(`UPDATE suppliers SET
+      qualification_status = CASE WHEN qualification_status IS NULL OR qualification_status = 'pending' THEN 'in_review' ELSE qualification_status END,
+      qualification_review_date = ?, updated_at = ? WHERE id = ?`).bind(
+      now.slice(0, 10),
+      now,
+      fields.supplierId,
+    );
 
     await env.DB.batch([
       env.DB.prepare(`INSERT INTO documents
-        (id, supplier_id, file_name, file_type, lifecycle_stage, storage_key, mime_type, ai_status, uploaded_at)
-        VALUES (?, ?, ?, ?, 'supplier_record', ?, ?, 'verified', ?)`).bind(
+        (id, supplier_id, file_name, file_type, lifecycle_stage, storage_key, mime_type, issuer, document_number, expiration_date, review_status, ai_status, uploaded_at)
+        VALUES (?, ?, ?, ?, 'supplier_record', ?, ?, ?, ?, ?, 'pending', 'verified', ?)`).bind(
         documentId,
         fields.supplierId,
         file.name,
         fields.documentType,
         storageKey,
         file.type,
+        fields.issuer || null,
+        fields.documentNumber || null,
+        fields.expirationDate || null,
         now,
       ),
-      updates,
+      documentStatusUpdate,
+      qualificationUpdate,
       env.DB.prepare(`INSERT INTO audit_logs (id, entity_type, entity_id, action, actor, details, created_at)
         VALUES (?, 'supplier', ?, 'supplier_document_uploaded', 'Selina Armstrong', ?, ?)`).bind(
         `audit-${crypto.randomUUID()}`,

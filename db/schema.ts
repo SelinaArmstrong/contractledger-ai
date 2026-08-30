@@ -13,6 +13,7 @@ export const suppliers = sqliteTable(
     legalName: text('legal_name').notNull(),
     normalizedName: text('normalized_name').notNull(),
     dbaName: text('dba_name'),
+    vendorNumber: text('vendor_number'),
     category: text('category').notNull(),
     status: text('status', {
       enum: ['pending', 'active', 'inactive', 'rejected', 'archived'],
@@ -21,6 +22,20 @@ export const suppliers = sqliteTable(
       .default('pending'),
     primaryContact: text('primary_contact'),
     email: text('email'),
+    phone: text('phone'),
+    website: text('website'),
+    addressLine1: text('address_line1'),
+    addressLine2: text('address_line2'),
+    city: text('city'),
+    state: text('state'),
+    postalCode: text('postal_code'),
+    country: text('country'),
+    taxClassification: text('tax_classification'),
+    riskTier: text('risk_tier', { enum: ['low', 'medium', 'high'] }),
+    qualificationStatus: text('qualification_status', {
+      enum: ['pending', 'in_review', 'approved', 'expired'],
+    }),
+    qualificationReviewDate: text('qualification_review_date'),
     w9Status: text('w9_status', {
       enum: ['missing', 'received', 'expired', 'not_required'],
     })
@@ -104,6 +119,8 @@ export const contracts = sqliteTable(
       .default('none'),
     noticeDays: integer('notice_days'),
     noticeDeadline: text('notice_deadline'),
+    paymentTerms: text('payment_terms'),
+    governingLaw: text('governing_law'),
     status: text('status', {
       enum: ['executed', 'active', 'expired', 'terminated', 'closed'],
     })
@@ -138,6 +155,12 @@ export const documents = sqliteTable(
     storageKey: text('storage_key').notNull(),
     mimeType: text('mime_type').notNull(),
     pageCount: integer('page_count'),
+    issuer: text('issuer'),
+    documentNumber: text('document_number'),
+    expirationDate: text('expiration_date'),
+    reviewStatus: text('review_status', {
+      enum: ['pending', 'approved', 'rejected', 'expired', 'not_applicable'],
+    }),
     aiStatus: text('ai_status', {
       enum: ['queued', 'processing', 'needs_review', 'verified', 'failed'],
     })

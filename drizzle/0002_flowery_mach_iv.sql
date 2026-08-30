@@ -1,0 +1,19 @@
+ALTER TABLE `contracts` ADD `payment_terms` text;--> statement-breakpoint
+ALTER TABLE `contracts` ADD `governing_law` text;--> statement-breakpoint
+ALTER TABLE `documents` ADD `issuer` text;--> statement-breakpoint
+ALTER TABLE `documents` ADD `document_number` text;--> statement-breakpoint
+ALTER TABLE `documents` ADD `expiration_date` text;--> statement-breakpoint
+ALTER TABLE `documents` ADD `review_status` text;--> statement-breakpoint
+ALTER TABLE `suppliers` ADD `vendor_number` text;--> statement-breakpoint
+ALTER TABLE `suppliers` ADD `phone` text;--> statement-breakpoint
+ALTER TABLE `suppliers` ADD `website` text;--> statement-breakpoint
+ALTER TABLE `suppliers` ADD `address_line1` text;--> statement-breakpoint
+ALTER TABLE `suppliers` ADD `address_line2` text;--> statement-breakpoint
+ALTER TABLE `suppliers` ADD `city` text;--> statement-breakpoint
+ALTER TABLE `suppliers` ADD `state` text;--> statement-breakpoint
+ALTER TABLE `suppliers` ADD `postal_code` text;--> statement-breakpoint
+ALTER TABLE `suppliers` ADD `country` text;--> statement-breakpoint
+ALTER TABLE `suppliers` ADD `tax_classification` text;--> statement-breakpoint
+ALTER TABLE `suppliers` ADD `risk_tier` text;--> statement-breakpoint
+ALTER TABLE `suppliers` ADD `qualification_status` text;--> statement-breakpoint
+ALTER TABLE `suppliers` ADD `qualification_review_date` text;

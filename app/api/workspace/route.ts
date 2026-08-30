@@ -110,8 +110,11 @@ export async function getWorkspace() {
       .all(),
     db
       .prepare(`SELECT s.*,
-      COUNT(c.id) AS active_contract_count,
-      COALESCE(SUM(CASE WHEN c.status IN ('executed','active') THEN c.current_value_cents ELSE 0 END), 0) AS total_contract_value_cents
+      COALESCE(SUM(CASE WHEN c.status IN ('executed','active') THEN 1 ELSE 0 END), 0) AS active_contract_count,
+      COALESCE(SUM(CASE WHEN c.status IN ('executed','active') THEN c.current_value_cents ELSE 0 END), 0) AS total_contract_value_cents,
+      (SELECT GROUP_CONCAT(c2.contract_number || ' — ' || c2.title, '||') FROM contracts c2 WHERE c2.supplier_id = s.id) AS linked_contracts,
+      (SELECT COUNT(*) FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record') AS qualification_document_count,
+      (SELECT MIN(d.expiration_date) FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND d.expiration_date IS NOT NULL) AS next_document_expiration
       FROM suppliers s LEFT JOIN contracts c ON c.supplier_id = s.id
       GROUP BY s.id ORDER BY s.legal_name`)
       .all(),
@@ -311,8 +314,8 @@ export async function POST(request: Request) {
       await db.batch([
         db
           .prepare(`INSERT INTO contracts
-          (id, contract_number, supplier_id, title, contract_type, department, owner, original_value_cents, amendment_value_cents, current_value_cents, effective_date, expiration_date, renewal_type, notice_days, notice_deadline, status, last_updated)
-          VALUES (?, ?, ?, ?, ?, 'Procurement', 'Selina Armstrong', ?, 0, ?, ?, ?, ?, ?, ?, 'active', ?)`)
+          (id, contract_number, supplier_id, title, contract_type, department, owner, original_value_cents, amendment_value_cents, current_value_cents, effective_date, expiration_date, renewal_type, notice_days, notice_deadline, payment_terms, governing_law, status, last_updated)
+          VALUES (?, ?, ?, ?, ?, 'Procurement', 'Selina Armstrong', ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`)
           .bind(
             id,
             contractNumber,
@@ -328,6 +331,8 @@ export async function POST(request: Request) {
               : 'none',
             noticeDays,
             noticeDeadline,
+            stringValue(input.analysis.paymentTerms) || null,
+            stringValue(input.analysis.governingLaw) || null,
             now,
           ),
         db

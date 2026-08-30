@@ -263,6 +263,144 @@ def build_coi():
     return path
 
 
+def build_qualification_record(filename, title, subtitle, fields, sections, pre_table_space=10):
+    path = OUTPUT / filename
+    doc = SimpleDocTemplate(
+        str(path),
+        pagesize=LETTER,
+        rightMargin=0.72 * inch,
+        leftMargin=0.72 * inch,
+        topMargin=0.62 * inch,
+        bottomMargin=0.76 * inch,
+        title=title,
+    )
+    story = [
+        Paragraph(title, styles["DocTitle"]),
+        Paragraph(subtitle, styles["Subtitle"]),
+        Paragraph("FICTIONAL DEMO RECORD - NOT VALID FOR OFFICIAL USE", styles["Demo"]),
+        Spacer(1, pre_table_space),
+        info_table(fields),
+    ]
+    for heading_text, body in sections:
+        story.extend([Paragraph(heading_text, styles["Section"]), p(body)])
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    return path
+
+
+def build_business_license():
+    return build_qualification_record(
+        "06_Harbor_Technology_Demo_Business_License.pdf",
+        "BUSINESS LICENSE - DEMO",
+        "Supplier qualification record for Harbor Technology Solutions Inc.",
+        [
+            ("License holder", "Harbor Technology Solutions Inc."),
+            ("License number", "BL-DEMO-2026-0148"),
+            ("Issuing jurisdiction", "City and County Business Tax Office (fictional)"),
+            ("Business activity", "Technology consulting and managed support services"),
+            ("Business address", "455 Market Plaza, San Francisco, CA 94105"),
+            ("Issue date", "January 1, 2026"),
+            ("Expiration date", "December 31, 2026"),
+            ("Record status", "Active - fictional portfolio data"),
+        ],
+        [
+            ("Scope of review", "Procurement confirmed that the supplier name and address shown on this fictional local business license match vendor master record VND-1005."),
+            ("Renewal control", "The qualification record should be reviewed before December 31, 2026. A current local license may be required depending on the supplier's location and regulated activity."),
+        ],
+    )
+
+
+def build_good_standing():
+    return build_qualification_record(
+        "07_Harbor_Technology_Demo_Good_Standing_Record.pdf",
+        "BUSINESS REGISTRATION AND GOOD STANDING - DEMO",
+        "Internal supplier onboarding verification record",
+        [
+            ("Entity", "Harbor Technology Solutions Inc."),
+            ("Jurisdiction", "California"),
+            ("Entity number", "C-DEMO-482019"),
+            ("Entity type", "Stock Corporation"),
+            ("Formation date", "May 12, 2018"),
+            ("Standing", "Active / Good Standing (fictional)"),
+            ("Verification date", "January 18, 2026"),
+            ("Verified by", "Selina Armstrong, Contract Administrator"),
+        ],
+        [
+            ("Name and status check", "The legal entity name matches the W-9, insurance certificate, executed agreement, and supplier master record. No DBA discrepancy was identified."),
+            ("Control note", "This portfolio record demonstrates a Secretary of State entity-status check. A production workflow would retain the official search result or certificate and schedule re-verification according to company risk policy."),
+        ],
+    )
+
+
+def build_cybersecurity_assessment():
+    return build_qualification_record(
+        "08_Harbor_Technology_Demo_Cybersecurity_Assessment.pdf",
+        "SUPPLIER CYBERSECURITY ASSESSMENT - DEMO",
+        "Risk-based qualification for a technology supplier with system access",
+        [
+            ("Supplier", "Harbor Technology Solutions Inc."),
+            ("Assessment ID", "SEC-DEMO-2026-1005"),
+            ("Risk tier", "High - privileged system access"),
+            ("Assessment date", "January 19, 2026"),
+            ("Next review", "January 19, 2027"),
+            ("Reviewer", "Northstar Information Security (fictional)"),
+            ("Outcome", "Approved with annual review"),
+        ],
+        [
+            ("Controls reviewed", "Multi-factor authentication, least-privilege access, encryption, endpoint protection, incident notification, vulnerability management, backups, security training, subcontractor controls, and secure data return or deletion."),
+            ("Evidence received", "Fictional security policy, incident response summary, access-control standard, penetration-test executive summary, and cyber insurance certificate."),
+            ("Residual risk", "Annual reassessment is required because the supplier supports production systems. Material security incidents or scope changes trigger an earlier review."),
+        ],
+    )
+
+
+def build_sam_screening():
+    return build_qualification_record(
+        "09_Harbor_Technology_Demo_SAM_Exclusion_Screening.pdf",
+        "SAM EXCLUSION SCREENING - DEMO",
+        "Internal procurement verification - applicable to federal or policy-required screening",
+        [
+            ("Supplier", "Harbor Technology Solutions Inc."),
+            ("Search date", "January 18, 2026"),
+            ("Search terms", "Legal name and fictional entity identifier"),
+            ("Exclusion result", "No active exclusion identified (fictional result)"),
+            ("SAM registration", "Not required for this private-sector demo contract"),
+            ("Reviewed by", "Selina Armstrong, Contract Administrator"),
+            ("Next review", "At renewal or before a federally funded award"),
+        ],
+        [
+            ("Review distinction", "SAM.gov provides both entity registration and exclusion records. A supplier may require exclusion screening even when full federal entity registration is not required by the transaction."),
+            ("Evidence handling", "A production record would capture the official search date, search criteria, result, reviewer, and any entity identifier used, while following company privacy and record-retention rules."),
+        ],
+        pre_table_space=26,
+    )
+
+
+def build_professional_license():
+    return build_qualification_record(
+        "10_Westline_Engineering_Demo_Professional_License.pdf",
+        "PROFESSIONAL ENGINEERING LICENSE - DEMO",
+        "Service-specific qualification record for Westline Engineering Group LLC",
+        [
+            ("Licensed entity", "Westline Engineering Group LLC"),
+            ("License type", "Professional Engineering Firm Registration (fictional)"),
+            ("License number", "PEF-DEMO-28417"),
+            ("Jurisdiction", "California"),
+            ("Responsible professional", "Jordan Rivera, P.E. (fictional)"),
+            ("Issue date", "October 11, 2025"),
+            ("Expiration date", "October 10, 2027"),
+            ("Status", "Active - fictional portfolio data"),
+        ],
+        [
+            ("Scope verification", "The license category is consistent with the proposed plant modernization engineering support services. Procurement must confirm that required disciplines and responsible professionals remain active before award."),
+            ("Risk control", "Professional licensing is service-specific rather than universal. The system stores issuer, license number, expiration date, review status, and source document for renewal monitoring."),
+        ],
+    )
+
+
 if __name__ == "__main__":
-    for generated in (build_contract(), build_w9(), build_coi()):
+    for generated in (
+        build_contract(), build_w9(), build_coi(), build_business_license(),
+        build_good_standing(), build_cybersecurity_assessment(),
+        build_sam_screening(), build_professional_license(),
+    ):
         print(generated)

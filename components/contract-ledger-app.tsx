@@ -426,6 +426,15 @@ export function ContractLedgerApp() {
         item.supplier_name,
         item.contract_type,
         item.department,
+        item.owner,
+        item.status,
+        item.effective_date,
+        item.expiration_date,
+        item.payment_terms,
+        item.governing_law,
+        typeof item.current_value_cents === 'number'
+          ? String(item.current_value_cents / 100)
+          : '',
       ]
         .join(' ')
         .toLowerCase()
@@ -437,7 +446,25 @@ export function ContractLedgerApp() {
     const query = search.toLowerCase().trim();
     if (!workspace || !query) return workspace?.suppliers ?? [];
     return workspace.suppliers.filter((item) =>
-      [item.legal_name, item.category, item.status, item.primary_contact]
+      [
+        item.vendor_number,
+        item.legal_name,
+        item.dba_name,
+        item.category,
+        item.status,
+        item.primary_contact,
+        item.email,
+        item.phone,
+        item.city,
+        item.state,
+        item.tax_classification,
+        item.risk_tier,
+        item.qualification_status,
+        item.linked_contracts,
+        typeof item.total_contract_value_cents === 'number'
+          ? String(item.total_contract_value_cents / 100)
+          : '',
+      ]
         .join(' ')
         .toLowerCase()
         .includes(query),
@@ -1263,6 +1290,76 @@ function WorkflowCard({
   );
 }
 
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+  titleCaseOptions = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  titleCaseOptions?: boolean;
+}) {
+  return (
+    <label className="text-[11px] font-medium text-slate-600">
+      {label}
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
+      >
+        <option value="all">All</option>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {titleCaseOptions ? titleCase(option) : option}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function DateFilter({
+  label,
+  condition,
+  onConditionChange,
+  date,
+  onDateChange,
+}: {
+  label: string;
+  condition: string;
+  onConditionChange: (value: string) => void;
+  date: string;
+  onDateChange: (value: string) => void;
+}) {
+  return (
+    <label className="text-[11px] font-medium text-slate-600">
+      {label}
+      <div className="mt-1 flex">
+        <select
+          value={condition}
+          onChange={(event) => onConditionChange(event.target.value)}
+          className="h-9 rounded-l-md border border-r-0 border-input bg-white px-2 text-xs"
+        >
+          <option value="all">Any date</option>
+          <option value="on_or_before">On or before</option>
+          <option value="on_or_after">On or after</option>
+        </select>
+        <Input
+          type="date"
+          value={date}
+          onChange={(event) => onDateChange(event.target.value)}
+          aria-label={`${label} filter date`}
+          className="h-9 rounded-l-none bg-white text-xs"
+        />
+      </div>
+    </label>
+  );
+}
+
 function ContractRegisterView({
   contracts,
   search,
@@ -1278,6 +1375,66 @@ function ContractRegisterView({
   exporting: boolean;
   onSelect: (id: string) => void;
 }) {
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [supplierFilter, setSupplierFilter] = useState('all');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [amountComparison, setAmountComparison] = useState('all');
+  const [amountValue, setAmountValue] = useState('100000');
+  const [effectiveCondition, setEffectiveCondition] = useState('all');
+  const [effectiveDate, setEffectiveDate] = useState('');
+  const [expirationCondition, setExpirationCondition] = useState('all');
+  const [expirationDate, setExpirationDate] = useState('');
+  const options = (key: string) =>
+    Array.from(
+      new Set(
+        contracts
+          .map((item) => valueText(item[key]))
+          .filter((value) => value !== 'Not found'),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+  const visibleContracts = contracts.filter((item) => {
+    if (typeFilter !== 'all' && item.contract_type !== typeFilter) return false;
+    if (supplierFilter !== 'all' && item.supplier_name !== supplierFilter)
+      return false;
+    if (departmentFilter !== 'all' && item.department !== departmentFilter)
+      return false;
+    if (statusFilter !== 'all' && item.status !== statusFilter) return false;
+    const thresholdCents = Number(amountValue) * 100;
+    const currentCents = Number(item.current_value_cents ?? 0);
+    if (amountComparison === 'greater' && currentCents <= thresholdCents)
+      return false;
+    if (amountComparison === 'less' && currentCents >= thresholdCents)
+      return false;
+    const matchesDate = (
+      value: unknown,
+      condition: string,
+      filterDate: string,
+    ) => {
+      if (condition === 'all' || !filterDate) return true;
+      const dateValue = typeof value === 'string' ? value : '';
+      if (!dateValue) return false;
+      return condition === 'on_or_before'
+        ? dateValue <= filterDate
+        : dateValue >= filterDate;
+    };
+    return (
+      matchesDate(item.effective_date, effectiveCondition, effectiveDate) &&
+      matchesDate(item.expiration_date, expirationCondition, expirationDate)
+    );
+  });
+  const clearFilters = () => {
+    setTypeFilter('all');
+    setSupplierFilter('all');
+    setDepartmentFilter('all');
+    setStatusFilter('all');
+    setAmountComparison('all');
+    setAmountValue('100000');
+    setEffectiveCondition('all');
+    setEffectiveDate('');
+    setExpirationCondition('all');
+    setExpirationDate('');
+  };
   return (
     <>
       <PageHeading
@@ -1298,7 +1455,7 @@ function ContractRegisterView({
       <Panel className="overflow-hidden">
         <PanelHeader
           title="Current contract register"
-          description={`${contracts.length} verified record${contracts.length === 1 ? '' : 's'}`}
+          description={`${visibleContracts.length} of ${contracts.length} verified records shown`}
           action={
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -1311,8 +1468,90 @@ function ContractRegisterView({
             </div>
           }
         />
+        <div className="border-b border-[#e3e9ed] bg-[#f8fafb] p-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
+            <FilterSelect
+              label="Contract type"
+              value={typeFilter}
+              onChange={setTypeFilter}
+              options={options('contract_type')}
+            />
+            <FilterSelect
+              label="Supplier"
+              value={supplierFilter}
+              onChange={setSupplierFilter}
+              options={options('supplier_name')}
+            />
+            <FilterSelect
+              label="Department"
+              value={departmentFilter}
+              onChange={setDepartmentFilter}
+              options={options('department')}
+            />
+            <FilterSelect
+              label="Status"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={options('status')}
+              titleCaseOptions
+            />
+            <label className="text-[11px] font-medium text-slate-600">
+              Contract amount
+              <div className="mt-1 flex">
+                <select
+                  value={amountComparison}
+                  onChange={(event) => setAmountComparison(event.target.value)}
+                  className="h-9 rounded-l-md border border-r-0 border-input bg-white px-2 text-xs"
+                >
+                  <option value="all">Any amount</option>
+                  <option value="greater">Greater than</option>
+                  <option value="less">Less than</option>
+                </select>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1000"
+                  value={amountValue}
+                  onChange={(event) => setAmountValue(event.target.value)}
+                  aria-label="Contract amount in US dollars"
+                  className="h-9 rounded-l-none bg-white text-xs"
+                />
+              </div>
+            </label>
+            <DateFilter
+              label="Effective date"
+              condition={effectiveCondition}
+              onConditionChange={setEffectiveCondition}
+              date={effectiveDate}
+              onDateChange={setEffectiveDate}
+            />
+            <DateFilter
+              label="Expiration date"
+              condition={expirationCondition}
+              onConditionChange={setExpirationCondition}
+              date={expirationDate}
+              onDateChange={setExpirationDate}
+            />
+            <div className="flex items-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={clearFilters}
+                className="h-9 w-full bg-white"
+              >
+                <RotateCcw />
+                Clear filters
+              </Button>
+            </div>
+          </div>
+          <p className="mt-3 text-[10px] text-slate-500">
+            Amounts use current contract value in USD. Date filters are
+            inclusive; for example, “on or before 2026-08-30” includes August
+            30.
+          </p>
+        </div>
         <div className="overflow-x-auto">
-          <Table className="min-w-[1680px]">
+          <Table className="min-w-[1940px]">
             <TableHeader>
               <TableRow className="bg-[#f7f9fa]">
                 <TableHead className="px-5">Contract</TableHead>
@@ -1327,12 +1566,14 @@ function ContractRegisterView({
                 <TableHead>Expiration date</TableHead>
                 <TableHead>Renewal terms</TableHead>
                 <TableHead>Notice deadline</TableHead>
+                <TableHead>Payment terms</TableHead>
+                <TableHead>Governing law</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Last updated</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {contracts.map((item) => (
+              {visibleContracts.map((item) => (
                 <TableRow key={String(item.id)}>
                   <TableCell className="px-5 py-3.5">
                     <button
@@ -1381,6 +1622,12 @@ function ContractRegisterView({
                   </TableCell>
                   <TableCell className="text-xs">
                     {valueText(item.notice_deadline)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {valueText(item.payment_terms)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {valueText(item.governing_law)}
                   </TableCell>
                   <TableCell className="text-xs">
                     <StatusBadge tone={toneForStatus(item.status)}>
@@ -1435,19 +1682,23 @@ function SupplierRegisterView({
           }
         />
         <div className="overflow-x-auto">
-          <Table className="min-w-[1460px]">
+          <Table className="min-w-[2200px]">
             <TableHeader>
               <TableRow className="bg-[#f7f9fa]">
                 <TableHead className="px-5">Supplier</TableHead>
+                <TableHead>Vendor number</TableHead>
                 <TableHead>Category</TableHead>
+                <TableHead>Tax classification</TableHead>
+                <TableHead>Risk / qualification</TableHead>
+                <TableHead>Business address</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Primary contact</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Active contracts</TableHead>
+                <TableHead>Linked contracts</TableHead>
                 <TableHead>Total contract value</TableHead>
                 <TableHead>W-9</TableHead>
                 <TableHead>Insurance status</TableHead>
                 <TableHead>Insurance expiration</TableHead>
+                <TableHead>Qualification files</TableHead>
                 <TableHead>Last updated</TableHead>
               </TableRow>
             </TableHeader>
@@ -1464,12 +1715,46 @@ function SupplierRegisterView({
                         {valueText(item.legal_name)}
                       </span>
                       <span className="mt-1 block text-[11px] text-slate-500">
-                        {valueText(item.id)} · View supplier files
+                        {item.dba_name
+                          ? `DBA ${valueText(item.dba_name)} · `
+                          : ''}
+                        View supplier files
                       </span>
                     </button>
                   </TableCell>
                   <TableCell className="text-xs">
+                    {valueText(item.vendor_number)}
+                  </TableCell>
+                  <TableCell className="text-xs">
                     {valueText(item.category)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {valueText(item.tax_classification)}
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-xs font-medium">
+                      {titleCase(item.risk_tier)} risk
+                    </div>
+                    <div className="mt-1">
+                      <StatusBadge
+                        tone={toneForStatus(item.qualification_status)}
+                      >
+                        {titleCase(item.qualification_status)}
+                      </StatusBadge>
+                    </div>
+                    <div className="mt-1 text-[10px] text-slate-500">
+                      Reviewed {valueText(item.qualification_review_date)}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    <div>{valueText(item.address_line1)}</div>
+                    {item.address_line2 ? (
+                      <div>{valueText(item.address_line2)}</div>
+                    ) : null}
+                    <div className="mt-1 text-[10px] text-slate-500">
+                      {valueText(item.city)}, {valueText(item.state)}{' '}
+                      {valueText(item.postal_code)} · {valueText(item.country)}
+                    </div>
                   </TableCell>
                   <TableCell className="text-xs">
                     <StatusBadge tone={toneForStatus(item.status)}>
@@ -1477,13 +1762,43 @@ function SupplierRegisterView({
                     </StatusBadge>
                   </TableCell>
                   <TableCell className="text-xs">
-                    {valueText(item.primary_contact)}
+                    <div className="font-medium">
+                      {valueText(item.primary_contact)}
+                    </div>
+                    <div className="mt-1 text-[10px] text-slate-500">
+                      {valueText(item.email)} · {valueText(item.phone)}
+                    </div>
+                    {item.website ? (
+                      <a
+                        href={String(item.website)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1 block text-[10px] text-[#287693] hover:underline"
+                      >
+                        Website
+                      </a>
+                    ) : null}
                   </TableCell>
-                  <TableCell className="text-xs">
-                    {valueText(item.email)}
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    {valueText(item.active_contract_count)}
+                  <TableCell className="max-w-[290px] text-xs">
+                    {typeof item.linked_contracts === 'string' ? (
+                      <div className="space-y-1">
+                        {item.linked_contracts.split('||').map((contract) => (
+                          <div
+                            key={contract}
+                            className="rounded bg-slate-50 px-2 py-1 text-[10px] text-slate-600"
+                          >
+                            {contract}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-slate-400">
+                        No executed contracts
+                      </span>
+                    )}
+                    <div className="mt-1 text-[10px] text-slate-500">
+                      {valueText(item.active_contract_count)} active
+                    </div>
                   </TableCell>
                   <TableCell className="text-xs font-medium">
                     {moneyFromCents(item.total_contract_value_cents)}
@@ -1500,6 +1815,14 @@ function SupplierRegisterView({
                   </TableCell>
                   <TableCell className="text-xs">
                     {valueText(item.insurance_expiration)}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    <div className="font-medium">
+                      {valueText(item.qualification_document_count)} files
+                    </div>
+                    <div className="mt-1 text-[10px] text-slate-500">
+                      Next expiry {valueText(item.next_document_expiration)}
+                    </div>
                   </TableCell>
                   <TableCell className="text-xs">
                     {valueText(item.updated_at)}
@@ -1938,8 +2261,19 @@ function RecordDetailDialog({
                             </span>
                             <span className="mt-0.5 block text-[10px] opacity-70">
                               {titleCase(item.file_type)} ·{' '}
-                              {valueText(item.uploaded_at)}
+                              {valueText(item.review_status)}
                             </span>
+                            {item.issuer || item.document_number ? (
+                              <span className="mt-0.5 block truncate text-[10px] opacity-70">
+                                {valueText(item.issuer)} ·{' '}
+                                {valueText(item.document_number)}
+                              </span>
+                            ) : null}
+                            {item.expiration_date ? (
+                              <span className="mt-0.5 block text-[10px] opacity-70">
+                                Expires {valueText(item.expiration_date)}
+                              </span>
+                            ) : null}
                           </span>
                         </button>
                       );
@@ -1955,6 +2289,13 @@ function RecordDetailDialog({
                       <p className="mt-0.5 text-[10px] text-slate-500">
                         Original file content ·{' '}
                         {titleCase(selectedDocument.mime_type)}
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-slate-500">
+                        {titleCase(selectedDocument.file_type)} · Review{' '}
+                        {titleCase(selectedDocument.review_status)} · Issuer{' '}
+                        {valueText(selectedDocument.issuer)} · Document no.{' '}
+                        {valueText(selectedDocument.document_number)} · Expires{' '}
+                        {valueText(selectedDocument.expiration_date)}
                       </p>
                     </div>
                     <a
@@ -1987,7 +2328,7 @@ function RecordDetailDialog({
                 <p className="mt-2 max-w-md text-xs leading-5 text-slate-500">
                   {selection.type === 'contract'
                     ? 'This legacy register record has no digital file attached. Register an executed contract through Executed Intake and its verified PDF will open here as the source of truth.'
-                    : 'The status may come from a legacy register, but no digital file is attached. Upload a W-9 or insurance certificate below to centralize the source document.'}
+                    : 'The status may come from a legacy register, but no digital file is attached. Upload the applicable W-9, insurance, registration, license, or risk-review evidence below.'}
                 </p>
               </div>
             )}
@@ -2012,10 +2353,10 @@ function SupplierDocumentUpload({
   supplierId: string;
   onUploaded: () => Promise<void>;
 }) {
-  const [documentType, setDocumentType] = useState<
-    'w9' | 'insurance_certificate'
-  >('w9');
+  const [documentType, setDocumentType] = useState('w9');
   const [expirationDate, setExpirationDate] = useState('');
+  const [issuer, setIssuer] = useState('');
+  const [documentNumber, setDocumentNumber] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -2028,10 +2369,9 @@ function SupplierDocumentUpload({
       const form = new FormData();
       form.append('supplierId', supplierId);
       form.append('documentType', documentType);
-      form.append(
-        'expirationDate',
-        documentType === 'insurance_certificate' ? expirationDate : '',
-      );
+      form.append('expirationDate', expirationDate);
+      form.append('issuer', issuer);
+      form.append('documentNumber', documentNumber);
       form.append('file', file);
       const response = await fetch('/api/supplier-documents', {
         method: 'POST',
@@ -2042,6 +2382,9 @@ function SupplierDocumentUpload({
         throw new Error(body.error || 'Unable to upload the document.');
       setMessage('Document saved to the supplier record.');
       setFile(null);
+      setIssuer('');
+      setDocumentNumber('');
+      setExpirationDate('');
       await onUploaded();
     } catch (error) {
       setMessage(
@@ -2063,39 +2406,72 @@ function SupplierDocumentUpload({
         </h3>
       </div>
       <p className="mt-1 text-[11px] text-slate-500">
-        W-9 and insurance certificates update the supplier register and remain
-        available from this record.
+        Store tax, insurance, business registration, licensing, risk, safety,
+        diversity, and other qualification evidence. Upload creates a pending
+        human review record; it does not automatically approve the supplier.
       </p>
-      <div className="mt-4 grid gap-3 md:grid-cols-[180px_1fr_170px_auto]">
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <select
           value={documentType}
-          onChange={(event) =>
-            setDocumentType(
-              event.target.value as 'w9' | 'insurance_certificate',
-            )
-          }
+          onChange={(event) => setDocumentType(event.target.value)}
           className="h-9 rounded-md border border-input bg-white px-3 text-xs"
         >
           <option value="w9">W-9</option>
           <option value="insurance_certificate">Insurance certificate</option>
+          <option value="business_license">Business license</option>
+          <option value="business_registration">Business registration</option>
+          <option value="good_standing">
+            Certificate / record of good standing
+          </option>
+          <option value="professional_license">
+            Professional or occupational license
+          </option>
+          <option value="diversity_certification">
+            Diversity / small-business certification
+          </option>
+          <option value="safety_qualification">Safety qualification</option>
+          <option value="cybersecurity_assessment">
+            Cybersecurity assessment
+          </option>
+          <option value="sanctions_debarment_check">
+            Sanctions / debarment check
+          </option>
+          <option value="quality_certification">Quality certification</option>
+          <option value="other_qualification">
+            Other qualification document
+          </option>
         </select>
+        <Input
+          value={issuer}
+          onChange={(event) => setIssuer(event.target.value)}
+          placeholder="Issuer or verification source"
+          className="h-9 bg-white text-xs"
+        />
+        <Input
+          value={documentNumber}
+          onChange={(event) => setDocumentNumber(event.target.value)}
+          placeholder="License / document number"
+          className="h-9 bg-white text-xs"
+        />
+        <Input
+          type="date"
+          value={expirationDate}
+          onChange={(event) => setExpirationDate(event.target.value)}
+          aria-label="Qualification document expiration date"
+          className="h-9 bg-white text-xs"
+        />
         <Input
           type="file"
           accept="application/pdf,image/png,image/jpeg"
           onChange={(event) => setFile(event.target.files?.[0] ?? null)}
           className="h-9 bg-white text-xs file:mr-3 file:border-0 file:bg-transparent"
         />
-        {documentType === 'insurance_certificate' ? (
-          <Input
-            type="date"
-            value={expirationDate}
-            onChange={(event) => setExpirationDate(event.target.value)}
-            className="h-9 bg-white text-xs"
-          />
-        ) : (
-          <div />
-        )}
-        <Button size="sm" onClick={upload} disabled={saving}>
+        <Button
+          size="sm"
+          onClick={upload}
+          disabled={saving}
+          className="xl:col-start-4"
+        >
           {saving ? <LoaderCircle className="animate-spin" /> : <Upload />}
           Upload
         </Button>

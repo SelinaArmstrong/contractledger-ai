@@ -31,6 +31,8 @@ export async function exportCurrentRegisters(workspace: Workspace) {
     { header: 'Expiration Date', key: 'expirationDate', width: 16 },
     { header: 'Renewal Type', key: 'renewalType', width: 16 },
     { header: 'Notice Deadline', key: 'noticeDeadline', width: 18 },
+    { header: 'Payment Terms', key: 'paymentTerms', width: 18 },
+    { header: 'Governing Law', key: 'governingLaw', width: 20 },
     { header: 'Status', key: 'status', width: 14 },
     { header: 'Last Updated', key: 'lastUpdated', width: 24 },
   ];
@@ -49,6 +51,8 @@ export async function exportCurrentRegisters(workspace: Workspace) {
       expirationDate: contract.expiration_date,
       renewalType: contract.renewal_type,
       noticeDeadline: contract.notice_deadline,
+      paymentTerms: contract.payment_terms,
+      governingLaw: contract.governing_law,
       status: contract.status,
       lastUpdated: contract.last_updated,
     }),
@@ -59,31 +63,75 @@ export async function exportCurrentRegisters(workspace: Workspace) {
   });
   supplierSheet.columns = [
     { header: 'Supplier ID', key: 'id', width: 22 },
+    { header: 'Vendor Number', key: 'vendorNumber', width: 18 },
     { header: 'Legal Name', key: 'name', width: 36 },
+    { header: 'DBA Name', key: 'dba', width: 28 },
     { header: 'Category', key: 'category', width: 26 },
     { header: 'Status', key: 'status', width: 14 },
     { header: 'Primary Contact', key: 'contact', width: 24 },
     { header: 'Email', key: 'email', width: 32 },
+    { header: 'Phone', key: 'phone', width: 18 },
+    { header: 'Website', key: 'website', width: 32 },
+    { header: 'Address', key: 'address', width: 42 },
+    { header: 'Tax Classification', key: 'taxClassification', width: 22 },
+    { header: 'Risk Tier', key: 'riskTier', width: 14 },
+    { header: 'Qualification Status', key: 'qualificationStatus', width: 22 },
+    {
+      header: 'Qualification Review Date',
+      key: 'qualificationReviewDate',
+      width: 24,
+    },
     { header: 'Active Contracts', key: 'contractCount', width: 18 },
     { header: 'Total Current Contract Value', key: 'totalValue', width: 28 },
+    { header: 'Linked Contracts', key: 'linkedContracts', width: 54 },
     { header: 'W-9 Status', key: 'w9', width: 16 },
     { header: 'Insurance Status', key: 'insurance', width: 18 },
     { header: 'Insurance Expiration', key: 'insuranceExpiration', width: 22 },
+    { header: 'Qualification Files', key: 'qualificationFiles', width: 20 },
+    {
+      header: 'Next Document Expiration',
+      key: 'nextDocumentExpiration',
+      width: 24,
+    },
     { header: 'Last Updated', key: 'updated', width: 24 },
   ];
   workspace.suppliers.forEach((supplier) =>
     supplierSheet.addRow({
       id: supplier.id,
+      vendorNumber: supplier.vendor_number,
       name: supplier.legal_name,
+      dba: supplier.dba_name,
       category: supplier.category,
       status: supplier.status,
       contact: supplier.primary_contact,
       email: supplier.email,
+      phone: supplier.phone,
+      website: supplier.website,
+      address: [
+        supplier.address_line1,
+        supplier.address_line2,
+        supplier.city,
+        supplier.state,
+        supplier.postal_code,
+        supplier.country,
+      ]
+        .filter(Boolean)
+        .join(', '),
+      taxClassification: supplier.tax_classification,
+      riskTier: supplier.risk_tier,
+      qualificationStatus: supplier.qualification_status,
+      qualificationReviewDate: supplier.qualification_review_date,
       contractCount: supplier.active_contract_count,
       totalValue: dollars(supplier.total_contract_value_cents),
+      linkedContracts:
+        typeof supplier.linked_contracts === 'string'
+          ? supplier.linked_contracts.replaceAll('||', '\n')
+          : '',
       w9: supplier.w9_status,
       insurance: supplier.insurance_status,
       insuranceExpiration: supplier.insurance_expiration,
+      qualificationFiles: supplier.qualification_document_count,
+      nextDocumentExpiration: supplier.next_document_expiration,
       updated: supplier.updated_at,
     }),
   );
@@ -174,7 +222,7 @@ export async function exportCurrentRegisters(workspace: Workspace) {
   ['G', 'H', 'I'].forEach((column) => {
     contractSheet.getColumn(column).numFmt = '$#,##0.00';
   });
-  supplierSheet.getColumn('H').numFmt = '$#,##0.00';
+  supplierSheet.getColumn('totalValue').numFmt = '$#,##0.00';
 
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], {

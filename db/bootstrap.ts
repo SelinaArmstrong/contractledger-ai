@@ -6,10 +6,23 @@ const schemaStatements = [
     legal_name TEXT NOT NULL,
     normalized_name TEXT NOT NULL,
     dba_name TEXT,
+    vendor_number TEXT,
     category TEXT NOT NULL,
     status TEXT DEFAULT 'pending' NOT NULL,
     primary_contact TEXT,
     email TEXT,
+    phone TEXT,
+    website TEXT,
+    address_line1 TEXT,
+    address_line2 TEXT,
+    city TEXT,
+    state TEXT,
+    postal_code TEXT,
+    country TEXT,
+    tax_classification TEXT,
+    risk_tier TEXT,
+    qualification_status TEXT,
+    qualification_review_date TEXT,
     w9_status TEXT DEFAULT 'missing' NOT NULL,
     insurance_status TEXT DEFAULT 'missing' NOT NULL,
     insurance_expiration TEXT,
@@ -47,6 +60,8 @@ const schemaStatements = [
     renewal_type TEXT DEFAULT 'none' NOT NULL,
     notice_days INTEGER,
     notice_deadline TEXT,
+    payment_terms TEXT,
+    governing_law TEXT,
     status TEXT DEFAULT 'executed' NOT NULL,
     last_updated TEXT NOT NULL,
     FOREIGN KEY (intake_id) REFERENCES contract_intakes(id),
@@ -64,6 +79,10 @@ const schemaStatements = [
     storage_key TEXT NOT NULL,
     mime_type TEXT NOT NULL,
     page_count INTEGER,
+    issuer TEXT,
+    document_number TEXT,
+    expiration_date TEXT,
+    review_status TEXT,
     ai_status TEXT DEFAULT 'queued' NOT NULL,
     uploaded_at TEXT NOT NULL,
     FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
@@ -407,6 +426,147 @@ const intakeSeed = [
   ],
 ] as const;
 
+const supplierProfileSeed = [
+  [
+    'sup-apex',
+    'VND-1001',
+    '2900 Industrial Way',
+    null,
+    'Fremont',
+    'CA',
+    '94538',
+    'United States',
+    '510-555-0142',
+    'https://example.com/apex-equipment',
+    'LLC - Partnership',
+    'medium',
+    'approved',
+    '2026-02-01',
+  ],
+  [
+    'sup-westline',
+    'VND-1002',
+    '1800 Broadway, Suite 650',
+    null,
+    'Oakland',
+    'CA',
+    '94612',
+    'United States',
+    '510-555-0168',
+    'https://example.com/westline-engineering',
+    'C Corporation',
+    'high',
+    'in_review',
+    '2026-08-29',
+  ],
+  [
+    'sup-pacific',
+    'VND-1003',
+    '525 Capitol Mall, Suite 900',
+    null,
+    'Sacramento',
+    'CA',
+    '95814',
+    'United States',
+    '916-555-0136',
+    'https://example.com/pacific-safety',
+    'S Corporation',
+    'high',
+    'approved',
+    '2026-03-10',
+  ],
+  [
+    'sup-golden',
+    'VND-1004',
+    '760 Harbor Boulevard',
+    null,
+    'West Sacramento',
+    'CA',
+    '95691',
+    'United States',
+    '916-555-0181',
+    'https://example.com/golden-state-logistics',
+    'LLC - Partnership',
+    'high',
+    'approved',
+    '2026-04-01',
+  ],
+  [
+    'sup-harbor',
+    'VND-1005',
+    '455 Market Plaza',
+    null,
+    'San Francisco',
+    'CA',
+    '94105',
+    'United States',
+    '415-555-0118',
+    'https://example.com/harbor-technology',
+    'C Corporation',
+    'high',
+    'approved',
+    '2026-01-20',
+  ],
+  [
+    'sup-redwood',
+    'VND-1006',
+    '8140 Redwood Commerce Drive',
+    null,
+    'Santa Rosa',
+    'CA',
+    '95403',
+    'United States',
+    '707-555-0154',
+    'https://example.com/redwood-facilities',
+    'LLC - Partnership',
+    'high',
+    'in_review',
+    '2026-06-01',
+  ],
+  [
+    'sup-sierra',
+    'VND-1007',
+    '3400 Sierra College Boulevard',
+    'Suite 210',
+    'Rocklin',
+    'CA',
+    '95677',
+    'United States',
+    '916-555-0196',
+    'https://example.com/sierra-environmental',
+    'S Corporation',
+    'high',
+    'in_review',
+    '2026-07-01',
+  ],
+  [
+    'sup-northbay',
+    'VND-1008',
+    '1550 Commerce Lane',
+    null,
+    'Vallejo',
+    'CA',
+    '94591',
+    'United States',
+    '707-555-0177',
+    'https://example.com/north-bay-supply',
+    'C Corporation',
+    'low',
+    'approved',
+    '2025-09-01',
+  ],
+] as const;
+
+const contractTermsSeed = [
+  ['con-001', 'Net 30', 'California'],
+  ['con-002', 'Net 45', 'California'],
+  ['con-003', 'Net 30', 'California'],
+  ['con-004', 'Net 30', 'California'],
+  ['con-005', 'Net 30', 'California'],
+  ['con-006', 'Net 30', 'California'],
+  ['con-007', 'Net 45', 'California'],
+] as const;
+
 function isoNow() {
   return new Date().toISOString();
 }
@@ -437,8 +597,8 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
       .bind(9, 'finding-002'),
     db
       .prepare(`INSERT OR IGNORE INTO documents
-      (id, supplier_id, contract_id, file_name, file_type, lifecycle_stage, storage_key, mime_type, page_count, ai_status, uploaded_at)
-      VALUES (?, ?, ?, ?, ?, 'executed', ?, 'application/pdf', 4, 'verified', ?)`)
+      (id, supplier_id, contract_id, file_name, file_type, lifecycle_stage, storage_key, mime_type, page_count, review_status, ai_status, uploaded_at)
+      VALUES (?, ?, ?, ?, ?, 'executed', ?, 'application/pdf', 4, 'approved', 'verified', ?)`)
       .bind(
         'doc-demo-contract-harbor',
         'sup-harbor',
@@ -448,10 +608,29 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
         'public:/demo-documents/03_Executed_Technology_Support_Services_Agreement.pdf',
         now,
       ),
+    ...supplierProfileSeed.map((row) =>
+      db
+        .prepare(`UPDATE suppliers SET
+        vendor_number = COALESCE(vendor_number, ?), address_line1 = COALESCE(address_line1, ?),
+        address_line2 = COALESCE(address_line2, ?), city = COALESCE(city, ?), state = COALESCE(state, ?),
+        postal_code = COALESCE(postal_code, ?), country = COALESCE(country, ?), phone = COALESCE(phone, ?),
+        website = COALESCE(website, ?), tax_classification = COALESCE(tax_classification, ?),
+        risk_tier = COALESCE(risk_tier, ?), qualification_status = COALESCE(qualification_status, ?),
+        qualification_review_date = COALESCE(qualification_review_date, ?)
+        WHERE id = ?`)
+        .bind(...row.slice(1), row[0]),
+    ),
+    ...contractTermsSeed.map((row) =>
+      db
+        .prepare(
+          `UPDATE contracts SET payment_terms = COALESCE(payment_terms, ?), governing_law = COALESCE(governing_law, ?) WHERE id = ?`,
+        )
+        .bind(row[1], row[2], row[0]),
+    ),
     db
       .prepare(`INSERT OR IGNORE INTO documents
-      (id, supplier_id, file_name, file_type, lifecycle_stage, storage_key, mime_type, page_count, ai_status, uploaded_at)
-      VALUES (?, ?, ?, 'w9', 'supplier_record', ?, 'application/pdf', 1, 'verified', ?)`)
+      (id, supplier_id, file_name, file_type, lifecycle_stage, storage_key, mime_type, page_count, issuer, document_number, review_status, ai_status, uploaded_at)
+      VALUES (?, ?, ?, 'w9', 'supplier_record', ?, 'application/pdf', 1, 'Internal Revenue Service', 'W-9 (03/2024)', 'approved', 'verified', ?)`)
       .bind(
         'doc-demo-w9-harbor',
         'sup-harbor',
@@ -461,8 +640,8 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
       ),
     db
       .prepare(`INSERT OR IGNORE INTO documents
-      (id, supplier_id, file_name, file_type, lifecycle_stage, storage_key, mime_type, page_count, ai_status, uploaded_at)
-      VALUES (?, ?, ?, 'insurance_certificate', 'supplier_record', ?, 'application/pdf', 1, 'verified', ?)`)
+      (id, supplier_id, file_name, file_type, lifecycle_stage, storage_key, mime_type, page_count, issuer, document_number, expiration_date, review_status, ai_status, uploaded_at)
+      VALUES (?, ?, ?, 'insurance_certificate', 'supplier_record', ?, 'application/pdf', 1, 'Bayview Risk Services (fictional)', 'COI-DEMO-2026-1005', '2027-01-31', 'approved', 'verified', ?)`)
       .bind(
         'doc-demo-coi-harbor',
         'sup-harbor',
@@ -470,26 +649,114 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
         'public:/demo-documents/05_Harbor_Technology_Demo_Insurance_Certificate.pdf',
         now,
       ),
+    ...[
+      [
+        'doc-demo-license-harbor',
+        'sup-harbor',
+        '06_Harbor_Technology_Demo_Business_License.pdf',
+        'business_license',
+        'public:/demo-documents/06_Harbor_Technology_Demo_Business_License.pdf',
+        'City and County Business Tax Office (fictional)',
+        'BL-DEMO-2026-0148',
+        '2026-12-31',
+      ],
+      [
+        'doc-demo-standing-harbor',
+        'sup-harbor',
+        '07_Harbor_Technology_Demo_Good_Standing_Record.pdf',
+        'good_standing',
+        'public:/demo-documents/07_Harbor_Technology_Demo_Good_Standing_Record.pdf',
+        'California Secretary of State verification (fictional)',
+        'C-DEMO-482019',
+        null,
+      ],
+      [
+        'doc-demo-cyber-harbor',
+        'sup-harbor',
+        '08_Harbor_Technology_Demo_Cybersecurity_Assessment.pdf',
+        'cybersecurity_assessment',
+        'public:/demo-documents/08_Harbor_Technology_Demo_Cybersecurity_Assessment.pdf',
+        'Northstar Information Security (fictional)',
+        'SEC-DEMO-2026-1005',
+        '2027-01-19',
+      ],
+      [
+        'doc-demo-sam-harbor',
+        'sup-harbor',
+        '09_Harbor_Technology_Demo_SAM_Exclusion_Screening.pdf',
+        'sanctions_debarment_check',
+        'public:/demo-documents/09_Harbor_Technology_Demo_SAM_Exclusion_Screening.pdf',
+        'Northstar Procurement (fictional)',
+        'SAM-DEMO-2026-1005',
+        null,
+      ],
+      [
+        'doc-demo-license-westline',
+        'sup-westline',
+        '10_Westline_Engineering_Demo_Professional_License.pdf',
+        'professional_license',
+        'public:/demo-documents/10_Westline_Engineering_Demo_Professional_License.pdf',
+        'California licensing authority (fictional)',
+        'PEF-DEMO-28417',
+        '2027-10-10',
+      ],
+    ].map((row) =>
+      db
+        .prepare(`INSERT OR IGNORE INTO documents
+      (id, supplier_id, file_name, file_type, lifecycle_stage, storage_key, mime_type, page_count, issuer, document_number, expiration_date, review_status, ai_status, uploaded_at)
+      VALUES (?, ?, ?, ?, 'supplier_record', ?, 'application/pdf', 1, ?, ?, ?, 'approved', 'verified', ?)`)
+        .bind(...row, now),
+    ),
   ]);
 }
 
-async function ensureKeyDateColumns(db: D1Database) {
+async function ensureTableColumns(
+  db: D1Database,
+  table: string,
+  additions: ReadonlyArray<readonly [string, string]>,
+) {
   const info = await db
-    .prepare('PRAGMA table_info(key_dates)')
+    .prepare(`PRAGMA table_info(${table})`)
     .all<{ name: string }>();
   const columns = new Set(info.results.map((column) => column.name));
-  const additions = [
+  for (const [name, type] of additions) {
+    if (!columns.has(name))
+      await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`).run();
+  }
+}
+
+async function ensureWorkspaceColumns(db: D1Database) {
+  await ensureTableColumns(db, 'key_dates', [
     ['owner', 'TEXT'],
     ['completed_at', 'TEXT'],
     ['decision', 'TEXT'],
     ['notes', 'TEXT'],
-  ] as const;
-  for (const [name, type] of additions) {
-    if (!columns.has(name))
-      await db
-        .prepare(`ALTER TABLE key_dates ADD COLUMN ${name} ${type}`)
-        .run();
-  }
+  ]);
+  await ensureTableColumns(db, 'contracts', [
+    ['payment_terms', 'TEXT'],
+    ['governing_law', 'TEXT'],
+  ]);
+  await ensureTableColumns(db, 'suppliers', [
+    ['vendor_number', 'TEXT'],
+    ['phone', 'TEXT'],
+    ['website', 'TEXT'],
+    ['address_line1', 'TEXT'],
+    ['address_line2', 'TEXT'],
+    ['city', 'TEXT'],
+    ['state', 'TEXT'],
+    ['postal_code', 'TEXT'],
+    ['country', 'TEXT'],
+    ['tax_classification', 'TEXT'],
+    ['risk_tier', 'TEXT'],
+    ['qualification_status', 'TEXT'],
+    ['qualification_review_date', 'TEXT'],
+  ]);
+  await ensureTableColumns(db, 'documents', [
+    ['issuer', 'TEXT'],
+    ['document_number', 'TEXT'],
+    ['expiration_date', 'TEXT'],
+    ['review_status', 'TEXT'],
+  ]);
 }
 
 async function seedWorkspaceDatabase(db: D1Database, now: string) {
@@ -609,7 +876,7 @@ export async function ensureWorkspaceDatabase() {
   if (!db) throw new Error('D1 database binding is unavailable.');
 
   await db.batch(schemaStatements.map((statement) => db.prepare(statement)));
-  await ensureKeyDateColumns(db);
+  await ensureWorkspaceColumns(db);
 
   const supplierCount = await db
     .prepare('SELECT COUNT(*) AS count FROM suppliers')
@@ -626,7 +893,7 @@ export async function resetWorkspaceDatabase() {
   const db = env.DB;
   if (!db) throw new Error('D1 database binding is unavailable.');
   await db.batch(schemaStatements.map((statement) => db.prepare(statement)));
-  await ensureKeyDateColumns(db);
+  await ensureWorkspaceColumns(db);
   for (const prefix of [
     'uploads/draft/',
     'uploads/executed/',
