@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 
 import { ensureWorkspaceDatabase } from '@/db/bootstrap';
+import { normalizeSupplierName } from '@/lib/supplier-qualification';
 
 const fieldSchema = z.object({
   value: z.union([z.string(), z.number(), z.null()]),
@@ -51,17 +52,6 @@ const saveSchema = z.object({
     warnings: z.array(z.string()),
   }),
 });
-
-function normalizeSupplierName(name: string) {
-  return name
-    .toLowerCase()
-    .replace(
-      /\b(incorporated|corporation|company|limited|inc|corp|co|llc|l\.l\.c)\b/g,
-      '',
-    )
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
 
 function stringValue(field: z.infer<typeof fieldSchema>, fallback = '') {
   return typeof field.value === 'string' ? field.value.trim() : fallback;
@@ -113,6 +103,12 @@ export async function getWorkspace() {
       COALESCE(SUM(CASE WHEN c.status IN ('executed','active') THEN 1 ELSE 0 END), 0) AS active_contract_count,
       COALESCE(SUM(CASE WHEN c.status IN ('executed','active') THEN c.current_value_cents ELSE 0 END), 0) AS total_contract_value_cents,
       (SELECT GROUP_CONCAT(c2.contract_number || ' — ' || c2.title, '||') FROM contracts c2 WHERE c2.supplier_id = s.id) AS linked_contracts,
+      (SELECT GROUP_CONCAT(i.intake_number || ' — ' || i.title || ' [' || i.status || ']', '||') FROM contract_intakes i WHERE i.supplier_id = s.id) AS linked_intakes,
+      CASE
+        WHEN EXISTS (SELECT 1 FROM contracts c3 WHERE c3.supplier_id = s.id) THEN 'contracted'
+        WHEN EXISTS (SELECT 1 FROM contract_intakes i2 WHERE i2.supplier_id = s.id) THEN 'pre_contract'
+        ELSE 'onboarding'
+      END AS relationship_stage,
       (SELECT COUNT(*) FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record') AS qualification_document_count,
       (SELECT MIN(d.expiration_date) FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND d.expiration_date IS NOT NULL) AS next_document_expiration
       FROM suppliers s LEFT JOIN contracts c ON c.supplier_id = s.id

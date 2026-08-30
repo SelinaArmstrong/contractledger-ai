@@ -75,6 +75,7 @@ export async function exportCurrentRegisters(workspace: Workspace) {
     { header: 'Address', key: 'address', width: 42 },
     { header: 'Tax Classification', key: 'taxClassification', width: 22 },
     { header: 'Risk Tier', key: 'riskTier', width: 14 },
+    { header: 'Relationship Stage', key: 'relationshipStage', width: 20 },
     { header: 'Qualification Status', key: 'qualificationStatus', width: 22 },
     {
       header: 'Qualification Review Date',
@@ -84,6 +85,7 @@ export async function exportCurrentRegisters(workspace: Workspace) {
     { header: 'Active Contracts', key: 'contractCount', width: 18 },
     { header: 'Total Current Contract Value', key: 'totalValue', width: 28 },
     { header: 'Linked Contracts', key: 'linkedContracts', width: 54 },
+    { header: 'Linked Contract Intakes', key: 'linkedIntakes', width: 54 },
     { header: 'W-9 Status', key: 'w9', width: 16 },
     { header: 'Insurance Status', key: 'insurance', width: 18 },
     { header: 'Insurance Expiration', key: 'insuranceExpiration', width: 22 },
@@ -119,6 +121,7 @@ export async function exportCurrentRegisters(workspace: Workspace) {
         .join(', '),
       taxClassification: supplier.tax_classification,
       riskTier: supplier.risk_tier,
+      relationshipStage: supplier.relationship_stage,
       qualificationStatus: supplier.qualification_status,
       qualificationReviewDate: supplier.qualification_review_date,
       contractCount: supplier.active_contract_count,
@@ -126,6 +129,10 @@ export async function exportCurrentRegisters(workspace: Workspace) {
       linkedContracts:
         typeof supplier.linked_contracts === 'string'
           ? supplier.linked_contracts.replaceAll('||', '\n')
+          : '',
+      linkedIntakes:
+        typeof supplier.linked_intakes === 'string'
+          ? supplier.linked_intakes.replaceAll('||', '\n')
           : '',
       w9: supplier.w9_status,
       insurance: supplier.insurance_status,

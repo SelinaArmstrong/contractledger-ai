@@ -30,10 +30,12 @@ import {
   FolderKanban,
   LayoutDashboard,
   LoaderCircle,
+  Plus,
   RotateCcw,
   Search,
   ShieldCheck,
   Sparkles,
+  Trash2,
   Upload,
   Users,
 } from 'lucide-react';
@@ -41,6 +43,14 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import {
   Table,
@@ -57,6 +67,11 @@ import type {
   Workspace,
 } from '@/lib/contract-ledger-types';
 import { exportCurrentRegisters } from '@/lib/export-registers';
+import {
+  SUPPLIER_DOCUMENT_LABELS,
+  SUPPLIER_DOCUMENT_TYPES,
+  type SupplierDocumentType,
+} from '@/lib/supplier-qualification';
 
 type ViewName =
   | 'Dashboard'
@@ -68,6 +83,14 @@ type ViewName =
 
 type IntakeStage = 'draft' | 'executed';
 type DetailSelection = { type: 'contract' | 'supplier'; id: string };
+type SupplierOnboardingDocument = {
+  id: string;
+  documentType: SupplierDocumentType;
+  issuer: string;
+  documentNumber: string;
+  expirationDate: string;
+  file: File | null;
+};
 
 const navItems: Array<{ label: ViewName; icon: ElementType }> = [
   { label: 'Dashboard', icon: LayoutDashboard },
@@ -244,6 +267,7 @@ export function ContractLedgerApp() {
   const [exporting, setExporting] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [detail, setDetail] = useState<DetailSelection | null>(null);
+  const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const loadWorkspace = useCallback(async () => {
@@ -460,7 +484,9 @@ export function ContractLedgerApp() {
         item.tax_classification,
         item.risk_tier,
         item.qualification_status,
+        item.relationship_stage,
         item.linked_contracts,
+        item.linked_intakes,
         typeof item.total_contract_value_cents === 'number'
           ? String(item.total_contract_value_cents / 100)
           : '',
@@ -651,6 +677,7 @@ export function ContractLedgerApp() {
               search={search}
               onSearch={setSearch}
               onSelect={(id) => setDetail({ type: 'supplier', id })}
+              onAdd={() => setSupplierDialogOpen(true)}
             />
           ) : null}
           {activeView === 'Alerts & Exports' ? (
@@ -843,6 +870,14 @@ export function ContractLedgerApp() {
           </dialog>
         </div>
       ) : null}
+      <SupplierOnboardingDialog
+        open={supplierDialogOpen}
+        onOpenChange={setSupplierDialogOpen}
+        onCreated={(nextWorkspace, supplierName) => {
+          setWorkspace(nextWorkspace);
+          setSearch(supplierName);
+        }}
+      />
       {detail && workspace ? (
         <RecordDetailDialog
           workspace={workspace}
@@ -1647,23 +1682,497 @@ function ContractRegisterView({
   );
 }
 
+function newSupplierDocument(): SupplierOnboardingDocument {
+  return {
+    id: crypto.randomUUID(),
+    documentType: 'w9',
+    issuer: '',
+    documentNumber: '',
+    expirationDate: '',
+    file: null,
+  };
+}
+
+function SupplierOnboardingDialog({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: (workspace: Workspace, supplierName: string) => void;
+}) {
+  const initialSupplier = {
+    legalName: '',
+    dbaName: '',
+    category: '',
+    primaryContact: '',
+    email: '',
+    phone: '',
+    website: '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    state: '',
+    postalCode: '',
+    country: 'United States',
+    taxClassification: 'Pending verification',
+    riskTier: 'medium',
+  };
+  const [supplier, setSupplier] = useState(initialSupplier);
+  const [documents, setDocuments] = useState<SupplierOnboardingDocument[]>(
+    () => [newSupplierDocument()],
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const updateSupplier = (field: keyof typeof initialSupplier, value: string) =>
+    setSupplier((current) => ({ ...current, [field]: value }));
+  const updateDocument = (
+    id: string,
+    changes: Partial<SupplierOnboardingDocument>,
+  ) =>
+    setDocuments((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...changes } : item)),
+    );
+  const reset = () => {
+    setSupplier(initialSupplier);
+    setDocuments([newSupplierDocument()]);
+    setError('');
+  };
+
+  const submit = async () => {
+    const requiredFields = [
+      supplier.legalName,
+      supplier.category,
+      supplier.addressLine1,
+      supplier.city,
+      supplier.state,
+      supplier.postalCode,
+      supplier.country,
+    ];
+    if (requiredFields.some((value) => !value.trim())) {
+      setError(
+        'Complete the legal name, category, business address, city, state, postal code, and country.',
+      );
+      return;
+    }
+    if (documents.some((item) => !item.file)) {
+      setError('Choose a file for every qualification record.');
+      return;
+    }
+    if (
+      documents.some(
+        (item) =>
+          item.documentType === 'insurance_certificate' && !item.expirationDate,
+      )
+    ) {
+      setError('Enter an expiration date for every insurance certificate.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const form = new FormData();
+      form.append('supplier', JSON.stringify(supplier));
+      form.append(
+        'documents',
+        JSON.stringify(
+          documents.map((item, index) => ({
+            fileField: `document-${index}`,
+            documentType: item.documentType,
+            issuer: item.issuer,
+            documentNumber: item.documentNumber,
+            expirationDate: item.expirationDate,
+          })),
+        ),
+      );
+      documents.forEach((item, index) => {
+        if (item.file) form.append(`document-${index}`, item.file);
+      });
+      const response = await fetch('/api/suppliers', {
+        method: 'POST',
+        body: form,
+      });
+      const body = (await response.json()) as {
+        workspace?: Workspace;
+        error?: string;
+      };
+      if (!response.ok || !body.workspace)
+        throw new Error(body.error || 'Unable to create the supplier record.');
+      onCreated(body.workspace, supplier.legalName);
+      onOpenChange(false);
+      reset();
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : 'Unable to create the supplier record.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!saving) {
+          onOpenChange(nextOpen);
+          if (!nextOpen) reset();
+        }
+      }}
+    >
+      <DialogContent className="max-h-[92vh] max-w-[1080px] overflow-y-auto p-0">
+        <DialogHeader className="border-b border-[#e1e7ea] px-6 py-5">
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
+            <Building2 className="size-3.5" />
+            Independent supplier onboarding
+          </div>
+          <DialogTitle className="text-xl text-[#183040]">
+            Create supplier record
+          </DialogTitle>
+          <DialogDescription className="max-w-3xl text-xs leading-5">
+            Create the supplier at first contact, before any contract is signed.
+            Uploaded qualification files are stored with the supplier and the
+            register refreshes immediately with Pending / In Review status.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-6 px-6 py-5">
+          <section>
+            <h3 className="text-sm font-semibold text-[#203845]">
+              Supplier master data
+            </h3>
+            <p className="mt-1 text-[11px] text-slate-500">
+              A vendor number is generated automatically when this record is
+              saved.
+            </p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <Input
+                value={supplier.legalName}
+                onChange={(event) =>
+                  updateSupplier('legalName', event.target.value)
+                }
+                placeholder="Legal name *"
+                aria-label="Supplier legal name"
+              />
+              <Input
+                value={supplier.dbaName}
+                onChange={(event) =>
+                  updateSupplier('dbaName', event.target.value)
+                }
+                placeholder="DBA name"
+                aria-label="Supplier DBA name"
+              />
+              <Input
+                value={supplier.category}
+                onChange={(event) =>
+                  updateSupplier('category', event.target.value)
+                }
+                placeholder="Category *"
+                aria-label="Supplier category"
+              />
+              <select
+                value={supplier.riskTier}
+                onChange={(event) =>
+                  updateSupplier('riskTier', event.target.value)
+                }
+                aria-label="Supplier risk tier"
+                className="h-9 rounded-md border border-input bg-white px-3 text-xs"
+              >
+                <option value="low">Low risk</option>
+                <option value="medium">Medium risk</option>
+                <option value="high">High risk</option>
+              </select>
+              <Input
+                value={supplier.primaryContact}
+                onChange={(event) =>
+                  updateSupplier('primaryContact', event.target.value)
+                }
+                placeholder="Primary contact"
+                aria-label="Primary contact"
+              />
+              <Input
+                type="email"
+                value={supplier.email}
+                onChange={(event) =>
+                  updateSupplier('email', event.target.value)
+                }
+                placeholder="Email"
+                aria-label="Supplier email"
+              />
+              <Input
+                value={supplier.phone}
+                onChange={(event) =>
+                  updateSupplier('phone', event.target.value)
+                }
+                placeholder="Phone"
+                aria-label="Supplier phone"
+              />
+              <Input
+                type="url"
+                value={supplier.website}
+                onChange={(event) =>
+                  updateSupplier('website', event.target.value)
+                }
+                placeholder="Website (https://…)"
+                aria-label="Supplier website"
+              />
+              <Input
+                value={supplier.addressLine1}
+                onChange={(event) =>
+                  updateSupplier('addressLine1', event.target.value)
+                }
+                placeholder="Business address *"
+                aria-label="Supplier business address"
+                className="md:col-span-2"
+              />
+              <Input
+                value={supplier.addressLine2}
+                onChange={(event) =>
+                  updateSupplier('addressLine2', event.target.value)
+                }
+                placeholder="Suite / unit"
+                aria-label="Supplier address line 2"
+              />
+              <Input
+                value={supplier.city}
+                onChange={(event) => updateSupplier('city', event.target.value)}
+                placeholder="City *"
+                aria-label="Supplier city"
+              />
+              <Input
+                value={supplier.state}
+                onChange={(event) =>
+                  updateSupplier('state', event.target.value)
+                }
+                placeholder="State / province *"
+                aria-label="Supplier state or province"
+              />
+              <Input
+                value={supplier.postalCode}
+                onChange={(event) =>
+                  updateSupplier('postalCode', event.target.value)
+                }
+                placeholder="Postal code *"
+                aria-label="Supplier postal code"
+              />
+              <Input
+                value={supplier.country}
+                onChange={(event) =>
+                  updateSupplier('country', event.target.value)
+                }
+                placeholder="Country *"
+                aria-label="Supplier country"
+              />
+              <select
+                value={supplier.taxClassification}
+                onChange={(event) =>
+                  updateSupplier('taxClassification', event.target.value)
+                }
+                aria-label="Supplier tax classification"
+                className="h-9 rounded-md border border-input bg-white px-3 text-xs"
+              >
+                <option>Pending verification</option>
+                <option>Individual / sole proprietor</option>
+                <option>C Corporation</option>
+                <option>S Corporation</option>
+                <option>Partnership</option>
+                <option>Trust / estate</option>
+                <option>LLC - C Corporation</option>
+                <option>LLC - S Corporation</option>
+                <option>LLC - Partnership</option>
+                <option>Other</option>
+              </select>
+            </div>
+          </section>
+
+          <section className="border-t border-[#e1e7ea] pt-5">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+              <div>
+                <h3 className="text-sm font-semibold text-[#203845]">
+                  Initial qualification package
+                </h3>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Add one or more PDF, PNG, or JPEG files. Each file is limited
+                  to 8 MB and enters the human-review queue.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setDocuments((current) => [...current, newSupplierDocument()])
+                }
+                disabled={documents.length >= 10}
+              >
+                <Plus />
+                Add another file
+              </Button>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {documents.map((document, index) => (
+                <div
+                  key={document.id}
+                  className="rounded-xl border border-[#d8e2e7] bg-[#f8fafb] p-4"
+                >
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-xs font-semibold text-[#294354]">
+                      Qualification file {index + 1}
+                    </p>
+                    {documents.length > 1 ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Remove qualification file ${index + 1}`}
+                        onClick={() =>
+                          setDocuments((current) =>
+                            current.filter((item) => item.id !== document.id),
+                          )
+                        }
+                      >
+                        <Trash2 />
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    <select
+                      value={document.documentType}
+                      onChange={(event) =>
+                        updateDocument(document.id, {
+                          documentType: event.target
+                            .value as SupplierDocumentType,
+                        })
+                      }
+                      aria-label={`Qualification file ${index + 1} type`}
+                      className="h-9 rounded-md border border-input bg-white px-3 text-xs"
+                    >
+                      {SUPPLIER_DOCUMENT_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {SUPPLIER_DOCUMENT_LABELS[type]}
+                        </option>
+                      ))}
+                    </select>
+                    <Input
+                      value={document.issuer}
+                      onChange={(event) =>
+                        updateDocument(document.id, {
+                          issuer: event.target.value,
+                        })
+                      }
+                      placeholder="Issuer / source"
+                      aria-label={`Qualification file ${index + 1} issuer`}
+                      className="bg-white text-xs"
+                    />
+                    <Input
+                      value={document.documentNumber}
+                      onChange={(event) =>
+                        updateDocument(document.id, {
+                          documentNumber: event.target.value,
+                        })
+                      }
+                      placeholder="Document number"
+                      aria-label={`Qualification file ${index + 1} number`}
+                      className="bg-white text-xs"
+                    />
+                    <Input
+                      type="date"
+                      value={document.expirationDate}
+                      onChange={(event) =>
+                        updateDocument(document.id, {
+                          expirationDate: event.target.value,
+                        })
+                      }
+                      aria-label={`Qualification file ${index + 1} expiration date`}
+                      className="bg-white text-xs"
+                    />
+                    <Input
+                      key={document.id}
+                      type="file"
+                      accept="application/pdf,image/png,image/jpeg"
+                      onChange={(event) =>
+                        updateDocument(document.id, {
+                          file: event.target.files?.[0] ?? null,
+                        })
+                      }
+                      aria-label={`Qualification file ${index + 1}`}
+                      className="bg-white text-xs file:mr-2 file:border-0 file:bg-transparent"
+                    />
+                  </div>
+                  {document.documentType === 'insurance_certificate' ? (
+                    <p className="mt-2 text-[10px] text-amber-700">
+                      Insurance expiration date is required.
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {error ? (
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertTitle>Supplier record needs attention</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+        </div>
+
+        <DialogFooter className="mx-0 mb-0 px-6 py-4">
+          <Button
+            variant="outline"
+            onClick={() => {
+              onOpenChange(false);
+              reset();
+            }}
+            disabled={saving}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={submit}
+            disabled={saving}
+            className="bg-[#1d718f] hover:bg-[#185f78]"
+          >
+            {saving ? <LoaderCircle className="animate-spin" /> : <Database />}
+            Create supplier and save files
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SupplierRegisterView({
   suppliers,
   search,
   onSearch,
   onSelect,
+  onAdd,
 }: {
   suppliers: Workspace['suppliers'];
   search: string;
   onSearch: (value: string) => void;
   onSelect: (id: string) => void;
+  onAdd: () => void;
 }) {
   return (
     <>
       <PageHeading
-        eyebrow="Linked supplier master"
+        eyebrow="Lifecycle supplier master"
         title="Supplier register"
-        description="Suppliers may enter as Pending during draft intake and become Active only when onboarding is complete or an executed contract is registered."
+        description="Every supplier relationship is retained from onboarding through pre-contract review and executed work. A supplier does not need an active contract to appear here."
+        action={
+          <Button onClick={onAdd} className="bg-[#1d718f] hover:bg-[#185f78]">
+            <Plus />
+            Add supplier
+          </Button>
+        }
       />
       <Panel className="overflow-hidden">
         <PanelHeader
@@ -1693,7 +2202,7 @@ function SupplierRegisterView({
                 <TableHead>Business address</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Primary contact</TableHead>
-                <TableHead>Linked contracts</TableHead>
+                <TableHead>Contract relationships</TableHead>
                 <TableHead>Total contract value</TableHead>
                 <TableHead>W-9</TableHead>
                 <TableHead>Insurance status</TableHead>
@@ -1743,7 +2252,7 @@ function SupplierRegisterView({
                       </StatusBadge>
                     </div>
                     <div className="mt-1 text-[10px] text-slate-500">
-                      Reviewed {valueText(item.qualification_review_date)}
+                      Review date {valueText(item.qualification_review_date)}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs">
@@ -1757,9 +2266,14 @@ function SupplierRegisterView({
                     </div>
                   </TableCell>
                   <TableCell className="text-xs">
-                    <StatusBadge tone={toneForStatus(item.status)}>
-                      {titleCase(item.status)}
-                    </StatusBadge>
+                    <div>
+                      <StatusBadge tone={toneForStatus(item.status)}>
+                        {titleCase(item.status)}
+                      </StatusBadge>
+                    </div>
+                    <div className="mt-1 text-[10px] font-medium text-slate-500">
+                      {titleCase(item.relationship_stage)} relationship
+                    </div>
                   </TableCell>
                   <TableCell className="text-xs">
                     <div className="font-medium">
@@ -1780,20 +2294,35 @@ function SupplierRegisterView({
                     ) : null}
                   </TableCell>
                   <TableCell className="max-w-[290px] text-xs">
-                    {typeof item.linked_contracts === 'string' ? (
+                    {typeof item.linked_contracts === 'string' ||
+                    typeof item.linked_intakes === 'string' ? (
                       <div className="space-y-1">
-                        {item.linked_contracts.split('||').map((contract) => (
-                          <div
-                            key={contract}
-                            className="rounded bg-slate-50 px-2 py-1 text-[10px] text-slate-600"
-                          >
-                            {contract}
-                          </div>
-                        ))}
+                        {typeof item.linked_intakes === 'string'
+                          ? item.linked_intakes.split('||').map((intake) => (
+                              <div
+                                key={intake}
+                                className="rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-800"
+                              >
+                                Intake · {intake}
+                              </div>
+                            ))
+                          : null}
+                        {typeof item.linked_contracts === 'string'
+                          ? item.linked_contracts
+                              .split('||')
+                              .map((contract) => (
+                                <div
+                                  key={contract}
+                                  className="rounded bg-slate-50 px-2 py-1 text-[10px] text-slate-600"
+                                >
+                                  Contract · {contract}
+                                </div>
+                              ))
+                          : null}
                       </div>
                     ) : (
                       <span className="text-slate-400">
-                        No executed contracts
+                        Onboarding only · no contract activity yet
                       </span>
                     )}
                     <div className="mt-1 text-[10px] text-slate-500">
@@ -2416,30 +2945,11 @@ function SupplierDocumentUpload({
           onChange={(event) => setDocumentType(event.target.value)}
           className="h-9 rounded-md border border-input bg-white px-3 text-xs"
         >
-          <option value="w9">W-9</option>
-          <option value="insurance_certificate">Insurance certificate</option>
-          <option value="business_license">Business license</option>
-          <option value="business_registration">Business registration</option>
-          <option value="good_standing">
-            Certificate / record of good standing
-          </option>
-          <option value="professional_license">
-            Professional or occupational license
-          </option>
-          <option value="diversity_certification">
-            Diversity / small-business certification
-          </option>
-          <option value="safety_qualification">Safety qualification</option>
-          <option value="cybersecurity_assessment">
-            Cybersecurity assessment
-          </option>
-          <option value="sanctions_debarment_check">
-            Sanctions / debarment check
-          </option>
-          <option value="quality_certification">Quality certification</option>
-          <option value="other_qualification">
-            Other qualification document
-          </option>
+          {SUPPLIER_DOCUMENT_TYPES.map((type) => (
+            <option key={type} value={type}>
+              {SUPPLIER_DOCUMENT_LABELS[type]}
+            </option>
+          ))}
         </select>
         <Input
           value={issuer}

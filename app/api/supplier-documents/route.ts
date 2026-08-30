@@ -3,23 +3,16 @@ import { z } from 'zod';
 
 import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import { getWorkspace } from '@/app/api/workspace/route';
+import {
+  ALLOWED_SUPPLIER_DOCUMENT_MIME_TYPES,
+  MAX_SUPPLIER_DOCUMENT_BYTES,
+  safeSupplierFileName,
+  SUPPLIER_DOCUMENT_TYPES,
+} from '@/lib/supplier-qualification';
 
 const fieldsSchema = z.object({
   supplierId: z.string().min(1),
-  documentType: z.enum([
-    'w9',
-    'insurance_certificate',
-    'business_license',
-    'business_registration',
-    'good_standing',
-    'professional_license',
-    'diversity_certification',
-    'safety_qualification',
-    'cybersecurity_assessment',
-    'sanctions_debarment_check',
-    'quality_certification',
-    'other_qualification',
-  ]),
+  documentType: z.enum(SUPPLIER_DOCUMENT_TYPES),
   expirationDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -28,12 +21,6 @@ const fieldsSchema = z.object({
   issuer: z.string().trim().max(160).optional().or(z.literal('')),
   documentNumber: z.string().trim().max(100).optional().or(z.literal('')),
 });
-
-function safeFileName(name: string) {
-  return (
-    name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(-120) || 'supplier-document'
-  );
-}
 
 export async function POST(request: Request) {
   try {
@@ -52,12 +39,16 @@ export async function POST(request: Request) {
         { error: 'Choose a supplier document.' },
         { status: 400 },
       );
-    if (file.size > 8 * 1024 * 1024)
+    if (file.size > MAX_SUPPLIER_DOCUMENT_BYTES)
       return Response.json(
         { error: 'The document must be 8 MB or smaller.' },
         { status: 400 },
       );
-    if (!['application/pdf', 'image/png', 'image/jpeg'].includes(file.type)) {
+    if (
+      !ALLOWED_SUPPLIER_DOCUMENT_MIME_TYPES.includes(
+        file.type as (typeof ALLOWED_SUPPLIER_DOCUMENT_MIME_TYPES)[number],
+      )
+    ) {
       return Response.json(
         { error: 'Use a PDF, PNG, or JPEG file.' },
         { status: 400 },
@@ -83,7 +74,7 @@ export async function POST(request: Request) {
 
     const now = new Date().toISOString();
     const documentId = `doc-${crypto.randomUUID()}`;
-    const storageKey = `supplier-documents/${fields.supplierId}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
+    const storageKey = `supplier-documents/${fields.supplierId}/${crypto.randomUUID()}-${safeSupplierFileName(file.name)}`;
     await env.FILES.put(storageKey, await file.arrayBuffer(), {
       httpMetadata: { contentType: file.type },
       customMetadata: {
