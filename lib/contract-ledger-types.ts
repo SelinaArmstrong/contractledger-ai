@@ -21,6 +21,7 @@ export type ContractAnalysis = {
     rule: string;
     observed: string;
     standard: string;
+    suggestedRevision: string;
     severity: 'info' | 'low' | 'medium' | 'high';
     sourcePage: number | null;
   }>;
@@ -130,4 +131,15 @@ export type Workspace = {
 export type RecordDetails = {
   documents: Array<Record<string, string | number | null>>;
   aiReviews: Array<Record<string, string | number | null>>;
+};
+
+export type IntakeDetails = {
+  intake: Record<string, string | number | null>;
+  supplier: Record<string, string | number | null> | null;
+  documents: Array<Record<string, string | number | null>>;
+  findings: Array<Record<string, string | number | null>>;
+  analysis: ContractAnalysis | null;
+  analysisMeta: Record<string, string | number | null> | null;
+  fieldReviews: Array<Record<string, string | number | null>>;
+  auditLogs: Array<Record<string, string | number | null>>;
 };

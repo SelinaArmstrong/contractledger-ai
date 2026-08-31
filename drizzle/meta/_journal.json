@@ -64,6 +64,13 @@
       "when": 1788195790054,
       "tag": "0008_sweet_nekra",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1788200552128,
+      "tag": "0009_natural_starfox",
+      "breakpoints": true
     }
   ]
 }

@@ -75,6 +75,7 @@ import type {
   AnalysisResponse,
   ContractAnalysis,
   ExtractedField,
+  IntakeDetails,
   RecordDetails,
   SupplierDocumentAnalysisResponse,
   Workspace,
@@ -437,8 +438,27 @@ export function ContractLedgerApp() {
   const [exporting, setExporting] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [detail, setDetail] = useState<DetailSelection | null>(null);
+  const [intakeDetailId, setIntakeDetailId] = useState<string | null>(null);
   const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const [selectedFilePreviewUrl, setSelectedFilePreviewUrl] = useState('');
+  const selectedFilePreviewUrlRef = useRef('');
+
+  const selectContractFile = useCallback((file: File | null) => {
+    if (selectedFilePreviewUrlRef.current)
+      URL.revokeObjectURL(selectedFilePreviewUrlRef.current);
+    const previewUrl =
+      file?.type === 'application/pdf' ? URL.createObjectURL(file) : '';
+    selectedFilePreviewUrlRef.current = previewUrl;
+    setSelectedFilePreviewUrl(previewUrl);
+    setSelectedFile(file);
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (selectedFilePreviewUrlRef.current)
+        URL.revokeObjectURL(selectedFilePreviewUrlRef.current);
+    };
+  }, []);
 
   const loadWorkspace = useCallback(async () => {
     try {
@@ -464,7 +484,7 @@ export function ContractLedgerApp() {
 
   const openIntake = (nextStage: IntakeStage) => {
     setStage(nextStage);
-    setSelectedFile(null);
+    selectContractFile(null);
     setAnalysisResult(null);
     setOriginalAnalysis(null);
     setFieldReviews({});
@@ -480,7 +500,7 @@ export function ContractLedgerApp() {
         : '02_Executed_Professional_Services_Agreement.pdf';
     const response = await fetch(`/demo-documents/${fileName}`);
     const blob = await response.blob();
-    setSelectedFile(new File([blob], fileName, { type: 'application/pdf' }));
+    selectContractFile(new File([blob], fileName, { type: 'application/pdf' }));
     setAnalysisResult(null);
     setOriginalAnalysis(null);
     setFieldReviews({});
@@ -915,6 +935,7 @@ export function ContractLedgerApp() {
             <NewContractReviewView
               workspace={workspace}
               onOpen={() => openIntake('draft')}
+              onSelectIntake={setIntakeDetailId}
             />
           ) : null}
           {activeView === 'Contract Register' ? (
@@ -973,7 +994,7 @@ export function ContractLedgerApp() {
             open
             aria-modal="true"
             aria-labelledby="intake-dialog-title"
-            className="relative m-0 max-h-[92vh] w-full max-w-[820px] overflow-y-auto rounded-xl bg-white p-0 text-sm shadow-2xl ring-1 ring-slate-900/10"
+            className="relative m-0 grid h-[84vh] min-h-[620px] w-[96vw] max-w-[1440px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl bg-white p-0 text-sm shadow-2xl ring-1 ring-slate-900/10"
           >
             <button
               type="button"
@@ -983,7 +1004,7 @@ export function ContractLedgerApp() {
             >
               ×
             </button>
-            <div className="border-b border-[#e1e7ea] px-6 py-5">
+            <div className="border-b border-[#e1e7ea] px-6 py-4">
               <div className="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
                 <Sparkles className="size-3.5" />
                 DeepSeek document extraction
@@ -1001,11 +1022,37 @@ export function ContractLedgerApp() {
                   ? 'Extract proposed fields and playbook differences. Nothing will enter the official contract register.'
                   : 'Extract official signed data, verify it, and add the record to the contract and supplier registers.'}
               </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                {[
+                  ['01', 'Source document', 'Upload the complete agreement'],
+                  ['02', 'AI extraction', 'Trace values and terms to pages'],
+                  [
+                    '03',
+                    'Human verification',
+                    'Confirm before database update',
+                  ],
+                ].map(([number, title, description]) => (
+                  <div
+                    key={number}
+                    className="rounded-lg border border-[#d9e6eb] bg-[#f8fbfc] px-3 py-2"
+                  >
+                    <span className="text-[9px] font-semibold text-[#43849a]">
+                      STEP {number}
+                    </span>
+                    <span className="ml-2 text-[10px] font-semibold text-[#203845]">
+                      {title}
+                    </span>
+                    <span className="ml-2 text-[9px] text-slate-500">
+                      {description}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="space-y-5 px-6 py-5">
+            <div className="min-h-0 overflow-hidden">
               {analysisStatus === 'saved' ? (
-                <div className="flex min-h-64 flex-col items-center justify-center text-center">
+                <div className="flex h-full min-h-64 flex-col items-center justify-center px-6 text-center">
                   <span className="mb-4 flex size-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
                     <Check className="size-6" />
                   </span>
@@ -1022,88 +1069,153 @@ export function ContractLedgerApp() {
                   </Button>
                 </div>
               ) : (
-                <>
-                  <div className="rounded-xl border-2 border-dashed border-[#c9d8de] bg-[#f8fafb] p-5">
-                    <input
-                      ref={fileInput}
-                      type="file"
-                      accept=".pdf,.txt,application/pdf,text/plain"
-                      className="sr-only"
-                      onChange={(event) => {
-                        setSelectedFile(event.target.files?.[0] ?? null);
-                        setAnalysisResult(null);
-                        setOriginalAnalysis(null);
-                        setFieldReviews({});
-                        setAnalysisStatus('idle');
-                        setAnalysisError('');
-                      }}
-                    />
-                    <div className="flex flex-col items-center text-center sm:flex-row sm:text-left">
-                      <span className="mb-3 flex size-10 items-center justify-center rounded-lg bg-[#e4f2f6] text-[#287693] sm:mb-0 sm:mr-4">
-                        <Upload className="size-5" />
-                      </span>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-[#203845]">
-                          {selectedFile
-                            ? selectedFile.name
-                            : 'Choose a contract document'}
-                        </p>
-                        <p className="mt-1 text-[11px] text-slate-500">
-                          Text-based PDF or TXT · maximum 8 MB · demo files only
-                        </p>
-                      </div>
-                      <div className="mt-4 flex gap-2 sm:mt-0">
-                        <Button
-                          variant="outline"
-                          className="bg-white"
-                          onClick={loadDemoDocument}
-                        >
-                          Use demo PDF
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="bg-white"
-                          onClick={() => fileInput.current?.click()}
-                        >
-                          {selectedFile ? 'Replace file' : 'Browse files'}
-                        </Button>
+                <div className="grid h-full min-h-0 overflow-hidden xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+                  <section className="min-h-0 overflow-y-auto border-b border-[#e1e7ea] bg-[#f8fafb] px-5 py-4 xl:border-b-0 xl:border-r">
+                    <div className="rounded-xl border-2 border-dashed border-[#c9d8de] bg-white p-4">
+                      <input
+                        ref={fileInput}
+                        type="file"
+                        accept=".pdf,.txt,application/pdf,text/plain"
+                        className="sr-only"
+                        onChange={(event) => {
+                          selectContractFile(event.target.files?.[0] ?? null);
+                          setAnalysisResult(null);
+                          setOriginalAnalysis(null);
+                          setFieldReviews({});
+                          setAnalysisStatus('idle');
+                          setAnalysisError('');
+                        }}
+                      />
+                      <div className="flex flex-col items-center text-center sm:flex-row sm:text-left">
+                        <span className="mb-3 flex size-10 items-center justify-center rounded-lg bg-[#e4f2f6] text-[#287693] sm:mb-0 sm:mr-4">
+                          <Upload className="size-5" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-[#203845]">
+                            {selectedFile
+                              ? selectedFile.name
+                              : stage === 'executed'
+                                ? 'Choose the fully executed agreement'
+                                : 'Choose a draft contract'}
+                          </p>
+                          <p className="mt-1 text-[11px] text-slate-500">
+                            Text-based PDF or TXT · maximum 8 MB · demo files
+                            only
+                          </p>
+                        </div>
+                        <div className="mt-4 flex gap-2 sm:mt-0">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="bg-white"
+                            onClick={loadDemoDocument}
+                          >
+                            Use demo PDF
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="bg-white"
+                            onClick={() => fileInput.current?.click()}
+                          >
+                            {selectedFile ? 'Replace file' : 'Browse files'}
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-
-                  {analysisStatus === 'analyzing' ? (
-                    <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-[#dce3e8] bg-white text-center">
-                      <LoaderCircle className="size-7 animate-spin text-[#287d9b]" />
-                      <p className="mt-3 text-sm font-medium">
-                        Extracting traceable contract fields…
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        DeepSeek is treating the uploaded document as untrusted
-                        source data.
-                      </p>
+                    <div className="mt-4 overflow-hidden rounded-xl border border-[#d7e1e6] bg-[#eef2f4]">
+                      <div className="border-b border-[#d7e1e6] bg-white px-4 py-3">
+                        <h3 className="text-xs font-semibold text-[#203845]">
+                          {stage === 'executed'
+                            ? 'Executed source copy'
+                            : 'Draft source copy'}
+                        </h3>
+                        <p className="mt-0.5 text-[10px] text-slate-500">
+                          Verify the source while reviewing extracted values on
+                          the right.
+                        </p>
+                      </div>
+                      {selectedFilePreviewUrl ? (
+                        <iframe
+                          title={
+                            selectedFile?.name ?? 'Contract source preview'
+                          }
+                          src={selectedFilePreviewUrl}
+                          className="h-[52vh] min-h-[430px] w-full bg-white"
+                        />
+                      ) : (
+                        <div className="flex min-h-[360px] flex-col items-center justify-center px-6 text-center">
+                          <FileText className="size-7 text-slate-300" />
+                          <p className="mt-3 text-xs font-medium text-slate-600">
+                            {selectedFile
+                              ? 'Text file selected; AI results will appear on the right.'
+                              : 'Select a contract document to preview it here.'}
+                          </p>
+                        </div>
+                      )}
                     </div>
-                  ) : null}
+                  </section>
 
-                  {analysisError ? (
-                    <Alert variant="destructive">
-                      <AlertCircle />
-                      <AlertTitle>Analysis needs attention</AlertTitle>
-                      <AlertDescription>{analysisError}</AlertDescription>
-                    </Alert>
-                  ) : null}
-
-                  {analysisResult && analysisStatus !== 'analyzing' ? (
-                    <AnalysisReview
-                      result={analysisResult}
-                      originalAnalysis={originalAnalysis}
-                      stage={stage}
-                      fieldReviews={fieldReviews}
-                      onFieldChange={updateReviewedField}
-                      onConfirmField={confirmReviewedField}
-                      onConfirmAll={confirmAllUnchangedFields}
-                    />
-                  ) : null}
-                </>
+                  <section className="min-h-0 overflow-y-auto px-5 py-4">
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-[#203845]">
+                          AI extraction and human verification
+                        </h3>
+                        <p className="mt-1 text-[10px] text-slate-500">
+                          Database values remain unchanged until every field is
+                          confirmed.
+                        </p>
+                      </div>
+                      <StatusBadge tone={analysisResult ? 'green' : 'amber'}>
+                        {analysisResult
+                          ? 'Ready to verify'
+                          : 'Waiting for analysis'}
+                      </StatusBadge>
+                    </div>
+                    {analysisStatus === 'analyzing' ? (
+                      <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-[#dce3e8] bg-white text-center">
+                        <LoaderCircle className="size-7 animate-spin text-[#287d9b]" />
+                        <p className="mt-3 text-sm font-medium">
+                          Extracting traceable contract fields…
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          DeepSeek is treating the uploaded document as
+                          untrusted source data.
+                        </p>
+                      </div>
+                    ) : null}
+                    {analysisError ? (
+                      <Alert variant="destructive" className="mb-4">
+                        <AlertCircle />
+                        <AlertTitle>Analysis needs attention</AlertTitle>
+                        <AlertDescription>{analysisError}</AlertDescription>
+                      </Alert>
+                    ) : null}
+                    {analysisResult && analysisStatus !== 'analyzing' ? (
+                      <AnalysisReview
+                        result={analysisResult}
+                        originalAnalysis={originalAnalysis}
+                        stage={stage}
+                        fieldReviews={fieldReviews}
+                        onFieldChange={updateReviewedField}
+                        onConfirmField={confirmReviewedField}
+                        onConfirmAll={confirmAllUnchangedFields}
+                      />
+                    ) : analysisStatus !== 'analyzing' ? (
+                      <div className="flex min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed border-[#cbd7dd] bg-[#f8fafb] px-6 text-center">
+                        <Sparkles className="size-7 text-[#72a9ba]" />
+                        <p className="mt-3 text-xs font-semibold text-[#294354]">
+                          Upload the source document first
+                        </p>
+                        <p className="mt-1 max-w-sm text-[10px] leading-4 text-slate-500">
+                          Analyze the file to extract register fields, source
+                          pages, key dates, and playbook differences.
+                        </p>
+                      </div>
+                    ) : null}
+                  </section>
+                </div>
               )}
             </div>
 
@@ -1166,6 +1278,17 @@ export function ContractLedgerApp() {
           setSearch(supplierName);
         }}
       />
+      {intakeDetailId ? (
+        <IntakeReviewDialog
+          intakeId={intakeDetailId}
+          onClose={() => setIntakeDetailId(null)}
+          onUpdated={(nextWorkspace) => setWorkspace(nextWorkspace)}
+          onOpenSupplier={(supplierId) => {
+            setIntakeDetailId(null);
+            setDetail({ type: 'supplier', id: supplierId });
+          }}
+        />
+      ) : null}
       {detail && workspace ? (
         <RecordDetailDialog
           workspace={workspace}
@@ -1574,10 +1697,92 @@ function DemoTransactionComparison({
 function NewContractReviewView({
   workspace,
   onOpen,
+  onSelectIntake,
 }: {
   workspace: Workspace | null;
   onOpen: () => void;
+  onSelectIntake: (id: string) => void;
 }) {
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [riskFilter, setRiskFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [ownerFilter, setOwnerFilter] = useState('all');
+  const reviewTableScroll = useFloatingTableScrollbar();
+  const intakes = (workspace?.intakes ?? []).filter(
+    (item) => item.status !== 'executed',
+  );
+  const options = (key: string) =>
+    Array.from(
+      new Set(
+        intakes
+          .map((item) => valueText(item[key]))
+          .filter((value) => value !== 'Not found'),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+  const visibleIntakes = intakes.filter((item) => {
+    const text = [
+      item.intake_number,
+      item.title,
+      item.proposed_supplier_name,
+      item.contract_type,
+      item.owner,
+    ]
+      .map(valueText)
+      .join(' ')
+      .toLowerCase();
+    if (query && !text.includes(query.toLowerCase())) return false;
+    if (statusFilter !== 'all' && item.status !== statusFilter) return false;
+    if (riskFilter !== 'all' && item.risk_level !== riskFilter) return false;
+    if (typeFilter !== 'all' && item.contract_type !== typeFilter) return false;
+    if (ownerFilter !== 'all' && item.owner !== ownerFilter) return false;
+    return true;
+  });
+  const openReviews = intakes.filter(
+    (item) =>
+      !['approved_for_signature', 'not_awarded'].includes(String(item.status)),
+  ).length;
+  const highRisk = intakes.filter((item) => item.risk_level === 'high').length;
+  const approvalRequired = intakes.filter(
+    (item) =>
+      item.required_approval === 'CFO approval' &&
+      item.approval_status !== 'approved',
+  ).length;
+  const approvedForSignature = intakes.filter(
+    (item) => item.status === 'approved_for_signature',
+  ).length;
+  const reviewMetrics: Array<{
+    label: string;
+    value: number;
+    note: string;
+    icon: ElementType;
+  }> = [
+    {
+      label: 'Open reviews',
+      value: openReviews,
+      note: 'Human action in progress',
+      icon: FileSearch,
+    },
+    {
+      label: 'High-risk reviews',
+      value: highRisk,
+      note: 'Open high-severity issues',
+      icon: AlertTriangle,
+    },
+    {
+      label: 'Approval required',
+      value: approvalRequired,
+      note: 'CFO approval not complete',
+      icon: ShieldCheck,
+    },
+    {
+      label: 'Approved for signature',
+      value: approvedForSignature,
+      note: 'Still outside official register',
+      icon: Check,
+    },
+  ];
+
   return (
     <>
       <PageHeading
@@ -1591,24 +1796,218 @@ function NewContractReviewView({
           </Button>
         }
       />
+      <section className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {reviewMetrics.map((metric) => {
+          const MetricIcon = metric.icon;
+          return (
+            <article
+              key={metric.label}
+              className="rounded-xl border border-[#dce3e8] bg-white p-4 shadow-[0_1px_2px_rgb(15_23_42/3%)]"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-medium text-slate-500">
+                    {metric.label}
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-[#193141]">
+                    {metric.value}
+                  </p>
+                </div>
+                <span className="flex size-8 items-center justify-center rounded-lg bg-[#edf7fa] text-[#26718b]">
+                  <MetricIcon className="size-4" />
+                </span>
+              </div>
+              <p className="mt-2 text-[10px] text-slate-500">{metric.note}</p>
+            </article>
+          );
+        })}
+      </section>
       <Alert className="mb-5 border-sky-200 bg-sky-50 text-sky-900">
         <ShieldCheck />
-        <AlertTitle>Clear data boundary</AlertTitle>
+        <AlertTitle>Pre-execution boundary and supplier linkage</AlertTitle>
         <AlertDescription>
-          A pending supplier may be created during draft intake, but the
-          contract amount is not counted until an executed copy is verified.
+          Draft review creates or links a pre-contract supplier, but proposed
+          value never enters the official contract register. Supplier tax and
+          qualification fields still require their own source documents.
         </AlertDescription>
       </Alert>
       <Panel className="overflow-hidden">
         <PanelHeader
-          title="Draft review queue"
-          description="Open findings and proposed records awaiting human action"
+          title="Contract review work queue"
+          description={`${visibleIntakes.length} of ${intakes.length} pre-execution review${intakes.length === 1 ? '' : 's'} shown`}
         />
-        <IntakeTable
-          intakes={(workspace?.intakes ?? []).filter(
-            (item) => item.status !== 'executed',
-          )}
-        />
+        <div className="border-b border-[#e3e9ed] bg-[#f8fafb] p-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <label
+              htmlFor="contract-review-search"
+              className="text-[11px] font-medium text-slate-600"
+            >
+              Search reviews
+              <div className="relative mt-1">
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  id="contract-review-search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Intake, contract, supplier…"
+                  className="bg-white pl-9"
+                />
+              </div>
+            </label>
+            <FilterSelect
+              label="Workflow status"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={options('status')}
+              titleCaseOptions
+            />
+            <FilterSelect
+              label="Risk level"
+              value={riskFilter}
+              onChange={setRiskFilter}
+              options={options('risk_level')}
+              titleCaseOptions
+            />
+            <FilterSelect
+              label="Contract type"
+              value={typeFilter}
+              onChange={setTypeFilter}
+              options={options('contract_type')}
+            />
+            <FilterSelect
+              label="Review owner"
+              value={ownerFilter}
+              onChange={setOwnerFilter}
+              options={options('owner')}
+            />
+          </div>
+        </div>
+        {visibleIntakes.length ? (
+          <div>
+            <Table
+              className="min-w-[1500px]"
+              containerRef={reviewTableScroll.tableScrollerRef}
+              onContainerScroll={reviewTableScroll.syncTableToFloating}
+            >
+              <TableHeader>
+                <TableRow className="bg-[#f7f9fa]">
+                  <TableHead className="w-14 px-4 text-center">No.</TableHead>
+                  <TableHead>Review intake</TableHead>
+                  <TableHead>Supplier impact</TableHead>
+                  <TableHead>Contract type</TableHead>
+                  <TableHead>Proposed value</TableHead>
+                  <TableHead>Risk / findings</TableHead>
+                  <TableHead>Approval gate</TableHead>
+                  <TableHead>Owner / target</TableHead>
+                  <TableHead>Status / received</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visibleIntakes.map((item, index) => {
+                  const timing = alertTiming(item.target_review_date);
+                  return (
+                    <TableRow key={String(item.id)}>
+                      <TableCell className="px-4 text-center text-xs font-medium text-slate-500">
+                        {index + 1}
+                      </TableCell>
+                      <TableCell className="py-3.5">
+                        <button
+                          type="button"
+                          onClick={() => onSelectIntake(String(item.id))}
+                          className="text-left"
+                        >
+                          <span className="font-medium text-[#1d718f] hover:underline">
+                            {valueText(item.title)}
+                          </span>
+                          <span className="mt-1 block text-[10px] text-slate-500">
+                            {valueText(item.intake_number)} · Open review
+                            workspace
+                          </span>
+                        </button>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <div className="font-medium">
+                          {valueText(item.proposed_supplier_name)}
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          <StatusBadge
+                            tone={toneForStatus(item.supplier_status)}
+                          >
+                            {titleCase(item.supplier_status)} supplier
+                          </StatusBadge>
+                          <span className="text-[10px] text-slate-500">
+                            W-9 {titleCase(item.w9_status)} · Insurance{' '}
+                            {titleCase(item.insurance_status)}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {valueText(item.contract_type)}
+                      </TableCell>
+                      <TableCell className="text-xs font-medium">
+                        {moneyFromCents(item.proposed_value_cents)}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge
+                          tone={
+                            item.risk_level === 'high'
+                              ? 'rose'
+                              : item.risk_level === 'medium'
+                                ? 'amber'
+                                : 'green'
+                          }
+                        >
+                          {titleCase(item.risk_level)} risk
+                        </StatusBadge>
+                        <div className="mt-1 text-[10px] text-slate-500">
+                          {valueText(item.finding_count)} open finding(s)
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <div className="font-medium">
+                          {valueText(item.required_approval)}
+                        </div>
+                        <div className="mt-1 text-[10px] text-slate-500">
+                          {titleCase(item.approval_status)}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <div className="font-medium">
+                          {valueText(item.owner)}
+                        </div>
+                        <div
+                          className={`mt-1 text-[10px] ${timing?.tone === 'rose' ? 'text-rose-600' : 'text-slate-500'}`}
+                        >
+                          Target {valueText(item.target_review_date)}
+                          {timing ? ` · ${timing.label}` : ''}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge tone={toneForStatus(item.status)}>
+                          {titleCase(item.status)}
+                        </StatusBadge>
+                        <div className="mt-1 text-[10px] text-slate-500">
+                          Received {valueText(item.received_at)}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+            <FloatingTableScrollbar
+              label="Contract review queue horizontal scrollbar"
+              floating={reviewTableScroll.floating}
+              floatingScrollerRef={reviewTableScroll.floatingScrollerRef}
+              onScroll={reviewTableScroll.syncFloatingToTable}
+            />
+          </div>
+        ) : (
+          <EmptyState
+            title="No reviews match the current filters"
+            description="Clear one or more filters, or upload a new draft contract."
+          />
+        )}
       </Panel>
     </>
   );
@@ -4747,6 +5146,605 @@ function IntakeTable({ intakes }: { intakes: Workspace['intakes'] }) {
   );
 }
 
+function IntakeReviewDialog({
+  intakeId,
+  onClose,
+  onUpdated,
+  onOpenSupplier,
+}: {
+  intakeId: string;
+  onClose: () => void;
+  onUpdated: (workspace: Workspace) => void;
+  onOpenSupplier: (supplierId: string) => void;
+}) {
+  const [details, setDetails] = useState<IntakeDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [status, setStatus] = useState('under_review');
+  const [owner, setOwner] = useState('');
+  const [targetReviewDate, setTargetReviewDate] = useState('');
+  const [internalNotes, setInternalNotes] = useState('');
+  const [approvalStatus, setApprovalStatus] = useState('not_required');
+  const [findingStatuses, setFindingStatuses] = useState<
+    Record<string, string>
+  >({});
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(
+    null,
+  );
+
+  const applyDetails = useCallback((nextDetails: IntakeDetails) => {
+    setDetails(nextDetails);
+    setStatus(String(nextDetails.intake.status ?? 'under_review'));
+    setOwner(String(nextDetails.intake.owner ?? 'Selina Armstrong'));
+    setTargetReviewDate(String(nextDetails.intake.target_review_date ?? ''));
+    setInternalNotes(String(nextDetails.intake.internal_notes ?? ''));
+    setApprovalStatus(
+      String(nextDetails.intake.approval_status ?? 'not_required'),
+    );
+    setFindingStatuses(
+      Object.fromEntries(
+        nextDetails.findings.map((finding) => [
+          String(finding.id),
+          String(finding.status ?? 'open'),
+        ]),
+      ),
+    );
+    setSelectedDocumentId((current) =>
+      nextDetails.documents.some((item) => String(item.id) === current)
+        ? current
+        : nextDetails.documents[0]
+          ? String(nextDetails.documents[0].id)
+          : null,
+    );
+  }, []);
+
+  const loadDetails = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch(
+        `/api/intakes?id=${encodeURIComponent(intakeId)}`,
+      );
+      const body = (await response.json()) as IntakeDetails & {
+        error?: string;
+      };
+      if (!response.ok)
+        throw new Error(body.error || 'Unable to load this review intake.');
+      applyDetails(body);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : 'Unable to load this review intake.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [applyDetails, intakeId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadDetails(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadDetails]);
+
+  const saveWorkflow = async () => {
+    if (!details) return;
+    setSaving(true);
+    setError('');
+    try {
+      const response = await fetch('/api/intakes', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: intakeId,
+          status,
+          owner,
+          targetReviewDate,
+          internalNotes,
+          approvalStatus,
+          findings: details.findings.map((finding) => ({
+            id: String(finding.id),
+            status: findingStatuses[String(finding.id)] ?? 'open',
+          })),
+        }),
+      });
+      const body = (await response.json()) as {
+        saved?: boolean;
+        details?: IntakeDetails;
+        workspace?: Workspace;
+        error?: string;
+      };
+      if (!response.ok || !body.details || !body.workspace)
+        throw new Error(body.error || 'Unable to save the review workflow.');
+      applyDetails(body.details);
+      onUpdated(body.workspace);
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : 'Unable to save the review workflow.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const selectedDocument =
+    details?.documents.find((item) => String(item.id) === selectedDocumentId) ??
+    details?.documents[0];
+  const analysis = details?.analysis;
+  const supplier = details?.supplier;
+  const cfoApprovalRequired =
+    details?.intake.required_approval === 'CFO approval';
+  const analysisSummary = analysis
+    ? extractionFields.map(([fieldName, label]) => ({
+        fieldName,
+        label,
+        field: analysis[fieldName] as ExtractedField,
+      }))
+    : [];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 p-4 backdrop-blur-[2px]"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !saving) onClose();
+      }}
+    >
+      <dialog
+        open
+        aria-modal="true"
+        aria-labelledby="intake-review-dialog-title"
+        className="m-0 grid h-[88vh] min-h-[660px] w-[96vw] max-w-[1440px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl bg-white p-0 text-sm shadow-2xl ring-1 ring-slate-900/10"
+      >
+        <header className="relative border-b border-[#e1e7ea] px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            aria-label="Close contract review workspace"
+            className="absolute right-4 top-4 flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+          >
+            ×
+          </button>
+          <div className="flex flex-wrap items-center gap-2 pr-10 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
+            <FileSearch className="size-3.5" /> AI contract review workspace
+            {details ? (
+              <StatusBadge tone={toneForStatus(details.intake.status)}>
+                {titleCase(details.intake.status)}
+              </StatusBadge>
+            ) : null}
+          </div>
+          <h2
+            id="intake-review-dialog-title"
+            className="mt-1 pr-10 text-xl font-semibold text-[#183040]"
+          >
+            {details ? valueText(details.intake.title) : 'Loading review…'}
+          </h2>
+          {details ? (
+            <p className="mt-1 text-xs text-slate-500">
+              {valueText(details.intake.intake_number)} ·{' '}
+              {valueText(details.intake.proposed_supplier_name)} ·{' '}
+              {moneyFromCents(details.intake.proposed_value_cents)} proposed
+            </p>
+          ) : null}
+        </header>
+
+        {loading ? (
+          <div className="flex min-h-0 items-center justify-center">
+            <LoaderCircle className="mr-2 size-5 animate-spin text-[#287d9b]" />
+            <span className="text-xs text-slate-500">
+              Loading source document and review history…
+            </span>
+          </div>
+        ) : details ? (
+          <div className="grid min-h-0 overflow-hidden xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
+            <section className="min-h-0 border-b border-[#dce3e8] bg-[#eef2f4] xl:border-b-0 xl:border-r">
+              <div className="flex items-center justify-between gap-3 border-b border-[#d7e1e6] bg-white px-4 py-3">
+                <div>
+                  <h3 className="text-xs font-semibold text-[#203845]">
+                    Draft source document
+                  </h3>
+                  <p className="mt-0.5 text-[10px] text-slate-500">
+                    Read the original language beside the AI findings.
+                  </p>
+                </div>
+                {selectedDocument ? (
+                  <a
+                    href={`/api/document?id=${encodeURIComponent(String(selectedDocument.id))}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d4dfe4] bg-white px-3 text-[10px] font-medium text-[#27657c]"
+                  >
+                    <ExternalLink className="size-3.5" /> Open separately
+                  </a>
+                ) : null}
+              </div>
+              {details.documents.length > 1 ? (
+                <div className="flex gap-2 overflow-x-auto border-b border-[#d7e1e6] bg-white px-4 py-2">
+                  {details.documents.map((document) => (
+                    <button
+                      key={String(document.id)}
+                      type="button"
+                      onClick={() => setSelectedDocumentId(String(document.id))}
+                      className={`shrink-0 rounded-md px-3 py-1.5 text-[10px] ${String(document.id) === String(selectedDocument?.id) ? 'bg-[#dff0f5] font-semibold text-[#1d647d]' : 'bg-slate-50 text-slate-500'}`}
+                    >
+                      {valueText(document.file_name)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {selectedDocument ? (
+                <iframe
+                  title={valueText(selectedDocument.file_name)}
+                  src={`/api/document?id=${encodeURIComponent(String(selectedDocument.id))}`}
+                  className="h-[calc(88vh-164px)] min-h-[520px] w-full bg-white"
+                />
+              ) : (
+                <div className="flex h-full min-h-[420px] flex-col items-center justify-center px-6 text-center text-xs text-slate-500">
+                  <FileText className="mb-3 size-7 text-slate-300" />
+                  No draft source document is linked to this seeded intake.
+                </div>
+              )}
+            </section>
+
+            <section className="min-h-0 overflow-y-auto px-5 py-4">
+              <div className="space-y-4">
+                <article className="rounded-xl border border-[#c9dbe2] bg-[#f6fbfc] p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-[#203845]">
+                        AI review summary
+                      </h3>
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        {valueText(details.analysisMeta?.model)} · reviewed by{' '}
+                        {valueText(details.analysisMeta?.reviewed_by)} ·{' '}
+                        {valueText(details.analysisMeta?.correction_count)}{' '}
+                        human correction(s)
+                      </p>
+                    </div>
+                    <StatusBadge
+                      tone={
+                        details.intake.risk_level === 'high'
+                          ? 'rose'
+                          : details.intake.risk_level === 'medium'
+                            ? 'amber'
+                            : 'green'
+                      }
+                    >
+                      {titleCase(details.intake.risk_level)} risk
+                    </StatusBadge>
+                  </div>
+                  {analysisSummary.length ? (
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {analysisSummary.map(({ fieldName, label, field }) => (
+                        <div
+                          key={fieldName}
+                          className="rounded-lg border border-[#dce7eb] bg-white px-3 py-2"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[9px] font-semibold uppercase tracking-[0.06em] text-slate-500">
+                              {label}
+                            </span>
+                            <FieldConfidence field={field} />
+                          </div>
+                          <p className="mt-1 truncate text-[11px] font-medium text-[#294354]">
+                            {fieldName === 'contractValue'
+                              ? moneyFromCents(Number(field.value ?? 0) * 100)
+                              : valueText(field.value)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-[10px] text-slate-500">
+                      This seeded intake predates the stored AI summary.
+                    </p>
+                  )}
+                </article>
+
+                <article className="rounded-xl border border-[#dce3e8] bg-white p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-[#203845]">
+                        Supplier impact
+                      </h3>
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        Draft review links a pre-contract supplier;
+                        qualification evidence remains separate.
+                      </p>
+                    </div>
+                    {supplier ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onOpenSupplier(String(supplier.id))}
+                      >
+                        <Building2 /> Open supplier record
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {[
+                      ['Supplier', supplier?.legal_name],
+                      ['Register status', supplier?.status],
+                      ['W-9', supplier?.w9_status],
+                      ['Insurance', supplier?.insurance_status],
+                      ['Qualification', supplier?.qualification_status],
+                      ['Vendor number', supplier?.vendor_number],
+                    ].map(([label, value]) => (
+                      <div
+                        key={String(label)}
+                        className="rounded-lg bg-slate-50 px-3 py-2"
+                      >
+                        <div className="text-[9px] font-semibold uppercase tracking-[0.06em] text-slate-500">
+                          {label}
+                        </div>
+                        <div className="mt-1 text-[11px] font-medium text-[#294354]">
+                          {label === 'Supplier'
+                            ? valueText(value)
+                            : titleCase(value)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+
+                <article>
+                  <div className="flex items-end justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-[#203845]">
+                        Playbook differences and negotiation support
+                      </h3>
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        Suggested language is an AI drafting aid—not legal
+                        advice or an automatic redline.
+                      </p>
+                    </div>
+                    <Badge variant="outline">
+                      {details.findings.length} finding(s)
+                    </Badge>
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    {details.findings.length ? (
+                      details.findings.map((finding) => {
+                        const suggested = valueText(
+                          finding.suggested_revision ?? finding.standard_text,
+                        );
+                        return (
+                          <div
+                            key={String(finding.id)}
+                            className="rounded-xl border border-[#dce3e8] bg-white p-4"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <h4 className="text-xs font-semibold text-[#203845]">
+                                  {valueText(finding.rule_name)}
+                                </h4>
+                                <p className="mt-1 text-[10px] text-slate-500">
+                                  Page {valueText(finding.source_page)}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <StatusBadge
+                                  tone={
+                                    finding.severity === 'high'
+                                      ? 'rose'
+                                      : 'amber'
+                                  }
+                                >
+                                  {titleCase(finding.severity)}
+                                </StatusBadge>
+                                <select
+                                  aria-label={`${valueText(finding.rule_name)} finding status`}
+                                  value={
+                                    findingStatuses[String(finding.id)] ??
+                                    'open'
+                                  }
+                                  onChange={(event) =>
+                                    setFindingStatuses((current) => ({
+                                      ...current,
+                                      [String(finding.id)]: event.target.value,
+                                    }))
+                                  }
+                                  className="h-8 rounded-md border border-input bg-white px-2 text-[10px]"
+                                >
+                                  <option value="open">Open</option>
+                                  <option value="accepted">
+                                    Risk accepted
+                                  </option>
+                                  <option value="resolved">Resolved</option>
+                                  <option value="dismissed">Dismissed</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div className="mt-3 grid gap-2">
+                              <div className="rounded-lg bg-rose-50 px-3 py-2">
+                                <span className="text-[9px] font-semibold uppercase text-rose-700">
+                                  Contract language
+                                </span>
+                                <p className="mt-1 text-[10px] leading-4 text-rose-900">
+                                  {valueText(finding.observed_text)}
+                                </p>
+                              </div>
+                              <div className="rounded-lg bg-slate-50 px-3 py-2">
+                                <span className="text-[9px] font-semibold uppercase text-slate-600">
+                                  Playbook position
+                                </span>
+                                <p className="mt-1 text-[10px] leading-4 text-slate-700">
+                                  {valueText(finding.standard_text)}
+                                </p>
+                              </div>
+                              <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[9px] font-semibold uppercase text-sky-700">
+                                    Suggested revision
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() =>
+                                      void navigator.clipboard.writeText(
+                                        suggested,
+                                      )
+                                    }
+                                    className="h-6 px-2 text-[9px] text-sky-700"
+                                  >
+                                    Copy language
+                                  </Button>
+                                </div>
+                                <p className="mt-1 text-[10px] leading-4 text-sky-900">
+                                  {suggested}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
+                        No open playbook differences are stored for this intake.
+                      </div>
+                    )}
+                  </div>
+                </article>
+
+                <article className="rounded-xl border border-[#cbd9df] bg-[#f8fafb] p-4">
+                  <h3 className="text-sm font-semibold text-[#203845]">
+                    Review workflow
+                  </h3>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label
+                      htmlFor="review-workflow-owner"
+                      className="text-[10px] font-medium text-slate-600"
+                    >
+                      Review owner
+                      <Input
+                        id="review-workflow-owner"
+                        value={owner}
+                        onChange={(event) => setOwner(event.target.value)}
+                        className="mt-1 bg-white text-xs"
+                      />
+                    </label>
+                    <label
+                      htmlFor="review-workflow-target-date"
+                      className="text-[10px] font-medium text-slate-600"
+                    >
+                      Target review date
+                      <Input
+                        id="review-workflow-target-date"
+                        type="date"
+                        value={targetReviewDate}
+                        onChange={(event) =>
+                          setTargetReviewDate(event.target.value)
+                        }
+                        className="mt-1 bg-white text-xs"
+                      />
+                    </label>
+                    <label className="text-[10px] font-medium text-slate-600">
+                      Workflow status
+                      <select
+                        value={status}
+                        onChange={(event) => setStatus(event.target.value)}
+                        className="mt-1 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
+                      >
+                        <option value="draft">New</option>
+                        <option value="under_review">Under review</option>
+                        <option value="waiting_on_business">
+                          Waiting on business
+                        </option>
+                        <option value="waiting_on_legal">
+                          Waiting on legal
+                        </option>
+                        <option value="revision_requested">
+                          Revision requested
+                        </option>
+                        <option value="approved_for_signature">
+                          Approved for signature
+                        </option>
+                        <option value="not_awarded">
+                          Rejected / not awarded
+                        </option>
+                      </select>
+                    </label>
+                    <label className="text-[10px] font-medium text-slate-600">
+                      {cfoApprovalRequired
+                        ? 'CFO approval status'
+                        : 'Additional approval'}
+                      <select
+                        value={
+                          cfoApprovalRequired ? approvalStatus : 'not_required'
+                        }
+                        onChange={(event) =>
+                          setApprovalStatus(event.target.value)
+                        }
+                        disabled={!cfoApprovalRequired}
+                        className="mt-1 h-9 w-full rounded-md border border-input bg-white px-3 text-xs disabled:bg-slate-100"
+                      >
+                        <option value="not_required">Not required</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="declined">Declined</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label className="mt-3 block text-[10px] font-medium text-slate-600">
+                    Internal review notes
+                    <textarea
+                      value={internalNotes}
+                      onChange={(event) => setInternalNotes(event.target.value)}
+                      rows={3}
+                      className="mt-1 w-full rounded-md border border-input bg-white px-3 py-2 text-xs"
+                      placeholder="Record negotiation position, business input, approval rationale, or next step…"
+                    />
+                  </label>
+                  {cfoApprovalRequired ? (
+                    <p className="mt-2 text-[10px] text-amber-700">
+                      This proposed value exceeds $500,000. CFO approval must be
+                      recorded before Approved for signature can be selected.
+                    </p>
+                  ) : null}
+                </article>
+              </div>
+            </section>
+          </div>
+        ) : (
+          <div className="flex min-h-0 items-center justify-center px-6 text-center">
+            <Alert variant="destructive" className="max-w-lg">
+              <AlertCircle />
+              <AlertTitle>Review intake unavailable</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          </div>
+        )}
+
+        <footer className="flex items-center justify-between gap-3 border-t border-[#e1e7ea] bg-white px-6 py-4">
+          <span className="text-[10px] text-rose-600">
+            {details ? error : ''}
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose} disabled={saving}>
+              Close
+            </Button>
+            <Button
+              onClick={() => void saveWorkflow()}
+              disabled={!details || saving || !owner.trim()}
+              className="bg-[#1d718f] hover:bg-[#185f78]"
+            >
+              {saving ? <LoaderCircle className="animate-spin" /> : <Check />}
+              Save review workflow
+            </Button>
+          </div>
+        </footer>
+      </dialog>
+    </div>
+  );
+}
+
 function KeyDateList({ items }: { items: Workspace['keyDates'] }) {
   if (!items.length)
     return (
@@ -5725,6 +6723,14 @@ function AnalysisReview({
                     Demo standard: {finding.standard}
                     {finding.sourcePage ? ` · Page ${finding.sourcePage}` : ''}
                   </p>
+                  <div className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
+                    <p className="text-[9px] font-semibold uppercase tracking-[0.06em] text-sky-700">
+                      Suggested revision
+                    </p>
+                    <p className="mt-1 text-[10px] leading-4 text-sky-900">
+                      {finding.suggestedRevision}
+                    </p>
+                  </div>
                 </div>
               </div>
             ))}

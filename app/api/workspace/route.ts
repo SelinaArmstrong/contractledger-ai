@@ -53,6 +53,7 @@ const saveSchema = z.object({
         rule: z.string().min(1).max(200),
         observed: z.string().max(2_000),
         standard: z.string().max(2_000),
+        suggestedRevision: z.string().min(1).max(4_000),
         severity: z.enum(['info', 'low', 'medium', 'high']),
         sourcePage: z.number().nullable(),
       }),
@@ -99,6 +100,12 @@ function subtractDays(dateValue: string, days: number | null) {
   const date = new Date(`${dateValue}T12:00:00Z`);
   if (Number.isNaN(date.getTime())) return null;
   date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
+}
+
+function addDays(dateValue: string, days: number) {
+  const date = new Date(`${dateValue}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 }
 
@@ -243,8 +250,20 @@ export async function getWorkspace() {
       .all(),
     db
       .prepare(`SELECT i.*,
-      (SELECT COUNT(*) FROM review_findings f WHERE f.intake_id = i.id AND f.status = 'open') AS finding_count
-      FROM contract_intakes i ORDER BY i.received_at DESC`)
+      s.vendor_number, s.status AS supplier_status,
+      s.w9_status, s.insurance_status, s.qualification_status,
+      (SELECT COUNT(*) FROM review_findings f WHERE f.intake_id = i.id AND f.status = 'open') AS finding_count,
+      (SELECT COUNT(*) FROM review_findings f WHERE f.intake_id = i.id AND f.status = 'open' AND f.severity = 'high') AS high_finding_count,
+      CASE
+        WHEN EXISTS (SELECT 1 FROM review_findings f WHERE f.intake_id = i.id AND f.status = 'open' AND f.severity = 'high') THEN 'high'
+        WHEN EXISTS (SELECT 1 FROM review_findings f WHERE f.intake_id = i.id AND f.status = 'open' AND f.severity = 'medium') THEN 'medium'
+        ELSE 'low'
+      END AS risk_level,
+      CASE WHEN COALESCE(i.proposed_value_cents, 0) > 50000000
+        THEN 'CFO approval' ELSE 'No additional approval' END AS required_approval
+      FROM contract_intakes i
+      LEFT JOIN suppliers s ON s.id = i.supplier_id
+      ORDER BY i.received_at DESC`)
       .all(),
     db
       .prepare(`SELECT k.*, c.contract_number, c.title AS contract_title,
@@ -555,8 +574,10 @@ export async function POST(request: Request) {
       await db.batch([
         db
           .prepare(`INSERT INTO contract_intakes
-          (id, intake_number, supplier_id, proposed_supplier_name, title, contract_type, proposed_value_cents, status, review_status, received_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'under_review', 'in_progress', ?, ?)`)
+          (id, intake_number, supplier_id, proposed_supplier_name, title,
+           contract_type, proposed_value_cents, status, review_status, owner,
+           target_review_date, approval_status, received_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'under_review', 'in_progress', ?, ?, ?, ?, ?)`)
           .bind(
             id,
             intakeNumber,
@@ -565,6 +586,9 @@ export async function POST(request: Request) {
             title,
             contractType,
             valueCents || null,
+            access.actor.name,
+            addDays(now.slice(0, 10), 5),
+            valueCents > 50_000_000 ? 'pending' : 'not_required',
             now.slice(0, 10),
             now,
           ),
@@ -602,8 +626,9 @@ export async function POST(request: Request) {
         ...input.analysis.findings.map((finding) =>
           db
             .prepare(`INSERT INTO review_findings
-              (id, intake_id, field, rule_name, standard_text, observed_text, severity, source_page, status)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open')`)
+              (id, intake_id, field, rule_name, standard_text, observed_text,
+               suggested_revision, severity, source_page, status)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`)
             .bind(
               `finding-${crypto.randomUUID()}`,
               id,
@@ -611,6 +636,7 @@ export async function POST(request: Request) {
               finding.rule,
               finding.standard,
               finding.observed,
+              finding.suggestedRevision,
               finding.severity,
               finding.sourcePage,
             ),

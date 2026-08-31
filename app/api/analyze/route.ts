@@ -38,6 +38,7 @@ const analysisSchema = z.object({
       rule: z.string(),
       observed: z.string(),
       standard: z.string(),
+      suggestedRevision: z.string(),
       severity: z.enum(['info', 'low', 'medium', 'high']),
       sourcePage: z.number().int().positive().nullable(),
     }),
@@ -54,10 +55,17 @@ const analysisSchema = z.object({
   warnings: z.array(z.string()),
 });
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+) {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timeout = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
+    timeout = setTimeout(
+      () => reject(new Error(`${label} timed out`)),
+      timeoutMs,
+    );
   });
 
   try {
@@ -73,10 +81,16 @@ async function extractDocumentText(file: File) {
   }
 
   if (file.type === 'text/plain' || file.name.toLowerCase().endsWith('.txt')) {
-    return { totalPages: 1, text: `=== PAGE 1 ===\n${(await file.text()).slice(0, MAX_TEXT_CHARS)}` };
+    return {
+      totalPages: 1,
+      text: `=== PAGE 1 ===\n${(await file.text()).slice(0, MAX_TEXT_CHARS)}`,
+    };
   }
 
-  if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+  if (
+    file.type !== 'application/pdf' &&
+    !file.name.toLowerCase().endsWith('.pdf')
+  ) {
     throw new Error('Upload a text-based PDF or TXT file for this demo.');
   }
 
@@ -98,14 +112,18 @@ async function extractDocumentText(file: File) {
     18_000,
     'PDF text extraction',
   );
-  const pages = Array.isArray(extracted.text) ? extracted.text : [extracted.text];
+  const pages = Array.isArray(extracted.text)
+    ? extracted.text
+    : [extracted.text];
   const text = pages
     .map((page, index) => `=== PAGE ${index + 1} ===\n${page}`)
     .join('\n\n')
     .slice(0, MAX_TEXT_CHARS);
 
   if (text.replace(/=== PAGE \d+ ===/g, '').trim().length < 80) {
-    throw new Error('No usable text layer was found. Please use a text-based PDF for this demo.');
+    throw new Error(
+      'No usable text layer was found. Please use a text-based PDF for this demo.',
+    );
   }
 
   return { totalPages: extracted.totalPages, text };
@@ -144,6 +162,7 @@ Every field from documentTitle through paymentTerms must be an object:
 {"value": string|number|null, "confidence": number from 0 to 1, "sourcePage": number|null, "sourceQuote": string|null}
 
 contractValue must be a numeric USD amount without commas or symbols when determinable. Dates should use YYYY-MM-DD when determinable. renewalType should be automatic, optional, none, or null. findings must contain only playbook differences or operational exceptions supported by the document. keyDates must contain only material renewal, notice, insurance, deliverable, or closeout dates. Never invent missing information; use null and add a warning.
+Each finding must include rule, observed, standard, suggestedRevision, severity, and sourcePage. suggestedRevision must be concise contract language proposed only as a negotiation aid to align the observed term with the fictional playbook. It is not legal advice and must not introduce facts absent from the playbook.
 Use the formal agreement heading for documentTitle, not the project name or subtitle. Do not put compliant terms or confirmation-only observations in findings, even with info severity. If renewalType is automatic, include the required human renewal review as a finding.
 
 DOCUMENT
@@ -159,7 +178,9 @@ function parseModelJson(content: string) {
   const firstBrace = withoutFence.indexOf('{');
   const lastBrace = withoutFence.lastIndexOf('}');
   if (firstBrace < 0 || lastBrace <= firstBrace) {
-    throw new Error('DeepSeek returned an incomplete extraction. Please try the analysis again.');
+    throw new Error(
+      'DeepSeek returned an incomplete extraction. Please try the analysis again.',
+    );
   }
   return JSON.parse(withoutFence.slice(firstBrace, lastBrace + 1)) as unknown;
 }
@@ -201,7 +222,9 @@ export async function analyzeContractFile(
   }
 
   if (!upstream.ok) {
-    throw new Error('DeepSeek could not analyze this document. Please try again.');
+    throw new Error(
+      'DeepSeek could not analyze this document. Please try again.',
+    );
   }
 
   const result = (await upstream.json()) as {
@@ -230,10 +253,13 @@ export async function analyzeContractFile(
     analysis.findings.push({
       rule: 'Automatic renewal requires human review',
       observed: String(
-        analysis.renewalType.sourceQuote ?? 'The agreement renews automatically.',
+        analysis.renewalType.sourceQuote ??
+          'The agreement renews automatically.',
       ),
       standard:
         'Automatic renewal requires a documented business-owner review before the notice deadline.',
+      suggestedRevision:
+        'Renewal will occur only upon mutual written agreement of the parties before the current term expires.',
       severity: 'medium',
       sourcePage: analysis.renewalType.sourcePage,
     });
@@ -262,7 +288,10 @@ export async function POST(request: Request) {
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
       return Response.json(
-        { error: 'DeepSeek is not configured. Add DEEPSEEK_API_KEY to .env.local.' },
+        {
+          error:
+            'DeepSeek is not configured. Add DEEPSEEK_API_KEY to .env.local.',
+        },
         { status: 503 },
       );
     }
@@ -273,7 +302,10 @@ export async function POST(request: Request) {
     const stage = rawStage === 'executed' ? 'executed' : 'draft';
 
     if (!(file instanceof File)) {
-      return Response.json({ error: 'Choose a contract PDF or TXT file.' }, { status: 400 });
+      return Response.json(
+        { error: 'Choose a contract PDF or TXT file.' },
+        { status: 400 },
+      );
     }
 
     const result = await analyzeContractFile(file, stage, apiKey);
@@ -290,16 +322,18 @@ export async function POST(request: Request) {
       await env.DB.prepare(`INSERT INTO ai_analysis_runs
         (id, stage, file_name, storage_key, model, prompt_version,
          original_result_json, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_review', ?)`).bind(
-        analysisRunId,
-        stage,
-        file.name,
-        storageKey,
-        model,
-        PROMPT_VERSION,
-        JSON.stringify(validated),
-        new Date().toISOString(),
-      ).run();
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_review', ?)`)
+        .bind(
+          analysisRunId,
+          stage,
+          file.name,
+          storageKey,
+          model,
+          PROMPT_VERSION,
+          JSON.stringify(validated),
+          new Date().toISOString(),
+        )
+        .run();
     } catch (error) {
       await env.FILES.delete(storageKey);
       throw error;
@@ -317,11 +351,12 @@ export async function POST(request: Request) {
       model,
     });
   } catch (error) {
-    const message = error instanceof z.ZodError
-      ? 'DeepSeek returned an incomplete extraction. Please try the analysis again.'
-      : error instanceof Error
-        ? error.message
-        : 'Document analysis failed.';
+    const message =
+      error instanceof z.ZodError
+        ? 'DeepSeek returned an incomplete extraction. Please try the analysis again.'
+        : error instanceof Error
+          ? error.message
+          : 'Document analysis failed.';
     return Response.json({ error: message }, { status: 400 });
   }
 }

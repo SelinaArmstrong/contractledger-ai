@@ -73,6 +73,8 @@ export const contractIntakes = sqliteTable(
       enum: [
         'draft',
         'under_review',
+        'waiting_on_business',
+        'waiting_on_legal',
         'revision_requested',
         'approved_for_signature',
         'not_awarded',
@@ -86,12 +88,21 @@ export const contractIntakes = sqliteTable(
     })
       .notNull()
       .default('pending'),
+    owner: text('owner'),
+    targetReviewDate: text('target_review_date'),
+    internalNotes: text('internal_notes'),
+    approvalStatus: text('approval_status', {
+      enum: ['not_required', 'pending', 'approved', 'declined'],
+    })
+      .notNull()
+      .default('not_required'),
     receivedAt: text('received_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },
   (table) => [
     uniqueIndex('idx_contract_intakes_number').on(table.intakeNumber),
     index('idx_contract_intakes_status').on(table.status),
+    index('idx_contract_intakes_status_owner').on(table.status, table.owner),
     index('idx_contract_intakes_supplier_id').on(table.supplierId),
   ],
 );
@@ -246,6 +257,7 @@ export const reviewFindings = sqliteTable(
       enum: ['info', 'low', 'medium', 'high'],
     }).notNull(),
     sourcePage: integer('source_page'),
+    suggestedRevision: text('suggested_revision'),
     status: text('status', {
       enum: ['open', 'accepted', 'resolved', 'dismissed'],
     })

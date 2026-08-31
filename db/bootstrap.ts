@@ -39,6 +39,10 @@ const schemaStatements = [
     proposed_value_cents INTEGER,
     status TEXT DEFAULT 'draft' NOT NULL,
     review_status TEXT DEFAULT 'pending' NOT NULL,
+    owner TEXT,
+    target_review_date TEXT,
+    internal_notes TEXT,
+    approval_status TEXT DEFAULT 'not_required' NOT NULL,
     received_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
@@ -129,6 +133,7 @@ const schemaStatements = [
     observed_text TEXT NOT NULL,
     severity TEXT NOT NULL,
     source_page INTEGER,
+    suggested_revision TEXT,
     status TEXT DEFAULT 'open' NOT NULL,
     FOREIGN KEY (intake_id) REFERENCES contract_intakes(id)
   )`,
@@ -216,6 +221,7 @@ const schemaStatements = [
   'CREATE INDEX IF NOT EXISTS idx_suppliers_insurance_expiration ON suppliers(insurance_expiration)',
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_contract_intakes_number ON contract_intakes(intake_number)',
   'CREATE INDEX IF NOT EXISTS idx_contract_intakes_status ON contract_intakes(status)',
+  'CREATE INDEX IF NOT EXISTS idx_contract_intakes_status_owner ON contract_intakes(status, owner)',
   'CREATE INDEX IF NOT EXISTS idx_contract_intakes_supplier_id ON contract_intakes(supplier_id)',
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_contracts_number ON contracts(contract_number)',
   'CREATE INDEX IF NOT EXISTS idx_contracts_supplier_id ON contracts(supplier_id)',
@@ -241,7 +247,7 @@ const schemaStatements = [
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_contracts_intake_id_unique ON contracts(intake_id) WHERE intake_id IS NOT NULL',
 ];
 
-const CURRENT_SCHEMA_VERSION = 8;
+const CURRENT_SCHEMA_VERSION = 9;
 
 const runtimeMigrationStatements = [
   `CREATE TABLE IF NOT EXISTS api_rate_limits (
@@ -256,6 +262,7 @@ const runtimeMigrationStatements = [
   'CREATE INDEX IF NOT EXISTS idx_documents_supplier_lifecycle_expiration ON documents(supplier_id, lifecycle_stage, expiration_date)',
   'CREATE INDEX IF NOT EXISTS idx_ai_analysis_runs_status_stage_reviewed ON ai_analysis_runs(status, stage, reviewed_at)',
   'CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)',
+  'CREATE INDEX IF NOT EXISTS idx_contract_intakes_status_owner ON contract_intakes(status, owner)',
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_contracts_intake_id_unique ON contracts(intake_id) WHERE intake_id IS NOT NULL',
 ] as const;
 
@@ -526,6 +533,105 @@ const intakeSeed = [
   ],
 ] as const;
 
+const demoDraftAnalysis = {
+  documentTitle: {
+    value: 'Plant Modernization Engineering Support',
+    confidence: 0.98,
+    sourcePage: 1,
+    sourceQuote: 'Professional Services Agreement',
+  },
+  supplierLegalName: {
+    value: 'Westline Engineering Group LLC',
+    confidence: 0.99,
+    sourcePage: 1,
+    sourceQuote: 'Westline Engineering Group LLC',
+  },
+  contractType: {
+    value: 'Professional Services Agreement',
+    confidence: 0.97,
+    sourcePage: 1,
+    sourceQuote: 'Professional Services Agreement',
+  },
+  contractNumber: {
+    value: null,
+    confidence: 0.35,
+    sourcePage: null,
+    sourceQuote: null,
+  },
+  contractValue: {
+    value: 585000,
+    confidence: 0.96,
+    sourcePage: 3,
+    sourceQuote: 'not-to-exceed amount of $585,000',
+  },
+  effectiveDate: {
+    value: '2026-09-15',
+    confidence: 0.96,
+    sourcePage: 1,
+    sourceQuote: 'effective as of September 15, 2026',
+  },
+  expirationDate: {
+    value: '2027-09-14',
+    confidence: 0.94,
+    sourcePage: 7,
+    sourceQuote: 'continue for an initial term of one year',
+  },
+  renewalType: {
+    value: 'automatic',
+    confidence: 0.95,
+    sourcePage: 7,
+    sourceQuote: 'automatically renew for successive one-year terms',
+  },
+  noticeDays: {
+    value: 60,
+    confidence: 0.96,
+    sourcePage: 7,
+    sourceQuote: 'at least sixty (60) days written notice',
+  },
+  governingLaw: {
+    value: 'New York',
+    confidence: 0.96,
+    sourcePage: 9,
+    sourceQuote: 'laws of the State of New York',
+  },
+  paymentTerms: {
+    value: 'Net 60',
+    confidence: 0.97,
+    sourcePage: 4,
+    sourceQuote: 'within sixty (60) days after receipt',
+  },
+  findings: [
+    {
+      rule: 'Payment terms',
+      observed: 'Net 60',
+      standard: 'Net 30 preferred',
+      suggestedRevision:
+        'Customer will pay each undisputed invoice within thirty (30) days after receipt of a correct invoice.',
+      severity: 'medium',
+      sourcePage: 4,
+    },
+    {
+      rule: 'Governing law',
+      observed: 'New York',
+      standard: 'California preferred',
+      suggestedRevision:
+        'This Agreement is governed by and construed under the laws of the State of California, without regard to conflict-of-laws principles.',
+      severity: 'medium',
+      sourcePage: 9,
+    },
+  ],
+  keyDates: [
+    {
+      type: 'non_renewal_notice',
+      title: 'Non-renewal notice deadline',
+      dueDate: '2027-07-16',
+      sourcePage: 7,
+      sourceQuote: 'at least sixty (60) days written notice',
+    },
+  ],
+  warnings: ['No contract number was found in the draft.'],
+};
+
 const supplierProfileSeed = [
   [
     'sup-apex',
@@ -680,7 +786,12 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
       .bind('Westline Engineering Group LLC', now, 'sup-westline'),
     db
       .prepare(
-        `UPDATE contract_intakes SET proposed_supplier_name = ?, title = ?, proposed_value_cents = ?, updated_at = ? WHERE id = ?`,
+        `UPDATE contract_intakes SET proposed_supplier_name = ?, title = ?, proposed_value_cents = ?,
+          owner = COALESCE(owner, 'Selina Armstrong'),
+          target_review_date = COALESCE(target_review_date, '2026-09-05'),
+          internal_notes = COALESCE(internal_notes, 'Confirm business acceptance of payment timing and governing-law position before releasing the next draft.'),
+          approval_status = CASE WHEN approval_status = 'not_required' THEN 'pending' ELSE approval_status END,
+          updated_at = ? WHERE id = ?`,
       )
       .bind(
         'Westline Engineering Group LLC',
@@ -695,6 +806,62 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
     db
       .prepare(`UPDATE review_findings SET source_page = ? WHERE id = ?`)
       .bind(9, 'finding-002'),
+    db
+      .prepare(
+        `UPDATE review_findings SET suggested_revision = COALESCE(suggested_revision, ?) WHERE id = ?`,
+      )
+      .bind(
+        'Customer will pay each undisputed invoice within thirty (30) days after receipt of a correct invoice.',
+        'finding-001',
+      ),
+    db
+      .prepare(
+        `UPDATE review_findings SET suggested_revision = COALESCE(suggested_revision, ?) WHERE id = ?`,
+      )
+      .bind(
+        'This Agreement is governed by and construed under the laws of the State of California, without regard to conflict-of-laws principles.',
+        'finding-002',
+      ),
+    db.prepare(`UPDATE contract_intakes SET owner = COALESCE(owner, 'Selina Armstrong'),
+        target_review_date = COALESCE(target_review_date, '2026-08-30'),
+        approval_status = COALESCE(approval_status, 'not_required') WHERE id = 'int-002'`),
+    db.prepare(`UPDATE contract_intakes SET owner = COALESCE(owner, 'Selina Armstrong'),
+        target_review_date = COALESCE(target_review_date, '2026-08-29'),
+        approval_status = COALESCE(approval_status, 'not_required') WHERE id = 'int-003'`),
+    db
+      .prepare(`INSERT OR IGNORE INTO documents
+      (id, supplier_id, intake_id, file_name, file_type, lifecycle_stage, storage_key, mime_type, page_count, review_status, ai_status, uploaded_at)
+      VALUES (?, ?, ?, ?, ?, 'draft', ?, 'application/pdf', 10, 'approved', 'verified', ?)`)
+      .bind(
+        'doc-demo-draft-westline',
+        'sup-westline',
+        'int-001',
+        '01_Draft_Professional_Services_Agreement.pdf',
+        'Professional Services Agreement',
+        'public:/demo-documents/01_Draft_Professional_Services_Agreement.pdf',
+        now,
+      ),
+    db
+      .prepare(`INSERT OR IGNORE INTO ai_analysis_runs
+      (id, stage, intake_id, supplier_id, document_id, file_name, storage_key, model,
+       prompt_version, original_result_json, verified_result_json, correction_count,
+       status, reviewed_by, reviewed_at, created_at)
+      VALUES (?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'verified', ?, ?, ?)`)
+      .bind(
+        'airun-demo-draft-westline',
+        'int-001',
+        'sup-westline',
+        'doc-demo-draft-westline',
+        '01_Draft_Professional_Services_Agreement.pdf',
+        'public:/demo-documents/01_Draft_Professional_Services_Agreement.pdf',
+        'deepseek-chat',
+        'contract-analysis-v3',
+        JSON.stringify(demoDraftAnalysis),
+        JSON.stringify(demoDraftAnalysis),
+        'Selina Armstrong',
+        now,
+        now,
+      ),
     db
       .prepare(`INSERT OR IGNORE INTO documents
       (id, supplier_id, contract_id, file_name, file_type, lifecycle_stage, storage_key, mime_type, page_count, review_status, ai_status, uploaded_at)
@@ -835,6 +1002,15 @@ async function ensureTableColumns(
 }
 
 async function ensureWorkspaceColumns(db: D1Database) {
+  await ensureTableColumns(db, 'contract_intakes', [
+    ['owner', 'TEXT'],
+    ['target_review_date', 'TEXT'],
+    ['internal_notes', 'TEXT'],
+    ['approval_status', "TEXT DEFAULT 'not_required' NOT NULL"],
+  ]);
+  await ensureTableColumns(db, 'review_findings', [
+    ['suggested_revision', 'TEXT'],
+  ]);
   await ensureTableColumns(db, 'key_dates', [
     ['owner', 'TEXT'],
     ['completed_at', 'TEXT'],
