@@ -213,6 +213,28 @@ export async function POST(request: Request) {
         expirationDate: document.expirationDate || null,
         coverageSummary: document.coverageSummary || null,
       };
+      const profileValues: Record<string, string | null> = {
+        dbaName: supplier.dbaName || null,
+        supplierCategory: supplier.category || null,
+        primaryContact: supplier.primaryContact || null,
+        email: supplier.email || null,
+        phone: supplier.phone || null,
+        website: supplier.website || null,
+        addressLine1: supplier.addressLine1 || null,
+        addressLine2: supplier.addressLine2 || null,
+        city: supplier.city || null,
+        state: supplier.state || null,
+        postalCode: supplier.postalCode || null,
+        country: supplier.country || null,
+        taxClassification: supplier.taxClassification || null,
+      };
+      for (const [fieldName, verifiedValue] of Object.entries(profileValues)) {
+        if (
+          original[fieldName]?.value !== null &&
+          original[fieldName]?.value !== undefined
+        )
+          verifiedValues[fieldName] = verifiedValue;
+      }
       const verifiedResult = { ...original };
       let correctionCount = 0;
       for (const [fieldName, verifiedValue] of Object.entries(verifiedValues)) {
@@ -321,7 +343,7 @@ export async function POST(request: Request) {
         supplierId,
         JSON.stringify({
           vendorNumber,
-          source: 'independent_supplier_onboarding',
+          source: 'ai_qualification_package_onboarding',
           documentCount: storedDocuments.length,
           documentTypes: storedDocuments.map((item) => item.documentType),
         }),

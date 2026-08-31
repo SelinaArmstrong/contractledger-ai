@@ -49,6 +49,19 @@ export type AnalysisResponse = {
 
 export type SupplierDocumentAnalysis = {
   supplierLegalName: ExtractedField;
+  dbaName: ExtractedField;
+  supplierCategory: ExtractedField;
+  primaryContact: ExtractedField;
+  email: ExtractedField;
+  phone: ExtractedField;
+  website: ExtractedField;
+  addressLine1: ExtractedField;
+  addressLine2: ExtractedField;
+  city: ExtractedField;
+  state: ExtractedField;
+  postalCode: ExtractedField;
+  country: ExtractedField;
+  taxClassification: ExtractedField;
   documentType: ExtractedField;
   issuer: ExtractedField;
   documentNumber: ExtractedField;

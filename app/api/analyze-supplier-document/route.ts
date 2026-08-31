@@ -12,7 +12,7 @@ import {
 
 const MAX_PAGES = 20;
 const MAX_TEXT_CHARS = 40_000;
-const PROMPT_VERSION = 'us-supplier-qualification-2026.1';
+const PROMPT_VERSION = 'us-supplier-qualification-profile-2026.2';
 
 const extractedFieldSchema = z.object({
   value: z.union([z.string(), z.number(), z.null()]),
@@ -23,6 +23,19 @@ const extractedFieldSchema = z.object({
 
 const analysisSchema = z.object({
   supplierLegalName: extractedFieldSchema,
+  dbaName: extractedFieldSchema,
+  supplierCategory: extractedFieldSchema,
+  primaryContact: extractedFieldSchema,
+  email: extractedFieldSchema,
+  phone: extractedFieldSchema,
+  website: extractedFieldSchema,
+  addressLine1: extractedFieldSchema,
+  addressLine2: extractedFieldSchema,
+  city: extractedFieldSchema,
+  state: extractedFieldSchema,
+  postalCode: extractedFieldSchema,
+  country: extractedFieldSchema,
+  taxClassification: extractedFieldSchema,
   documentType: extractedFieldSchema.extend({
     value: z.enum(SUPPLIER_DOCUMENT_TYPES).nullable(),
   }),
@@ -75,7 +88,9 @@ async function extractPdfText(file: File) {
     18_000,
     'PDF text extraction',
   );
-  const pages = Array.isArray(extracted.text) ? extracted.text : [extracted.text];
+  const pages = Array.isArray(extracted.text)
+    ? extracted.text
+    : [extracted.text];
   const text = pages
     .map((page, index) => `=== PAGE ${index + 1} ===\n${page}`)
     .join('\n\n')
@@ -106,9 +121,13 @@ ALLOWED DOCUMENT TYPES
 ${SUPPLIER_DOCUMENT_TYPES.join(', ')}
 
 EXTRACTION RULES
-- Extract the supplier or named insured legal name, document type, issuer, document or policy/license number, effective date, expiration date, and a concise coverage or qualification summary.
+- Extract the supplier profile fields when they are explicitly supported by the file: legal name, DBA/trade name, supplier category or line of business, supplier contact, email, phone, website, complete business address, and federal tax classification.
+- Also extract document type, issuer, document or policy/license number, effective date, expiration date, and a concise coverage or qualification summary.
+- Split the business address into addressLine1, addressLine2, city, state, postalCode, and country. Use "United States" only when the document clearly provides a U.S. address.
+- supplierCategory may summarize an explicitly stated line of business, license activity, professional discipline, or service category. Do not infer a category from the company name alone.
+- Do not mistake an insurance broker, producer, government official, licensing authority, certificate holder, or form preparer for the supplier's primary contact. Return supplier contact fields only when the file identifies them as belonging to the supplier.
 - Dates must use YYYY-MM-DD when determinable.
-- For a W-9, extract the legal name and federal tax classification when useful in coverageSummary. Never return, reproduce, or retain an SSN, EIN, TIN, bank account, signature, or other sensitive identifier. documentNumber must be null for W-9 forms.
+- For a W-9, extract legal name, DBA/business name, federal tax classification, and business address. Never return, reproduce, or retain an SSN, EIN, TIN, bank account, signature, or other sensitive identifier. documentNumber must be null for W-9 forms.
 - For an insurance certificate, identify the named insured, broker/insurer, policy or certificate reference, coverage dates, and material limits. Flag missing or apparently insufficient evidence against this fictional demo standard: CGL USD 2M per occurrence; professional liability USD 2M when professional services apply; cyber liability USD 1M when company data is accessed.
 - For licenses, registrations, certifications, good-standing records, safety, cyber, quality, diversity, and exclusion screenings, extract the authority, credential/reference number, and expiration or verification date.
 - If the selected expected type conflicts with the document, use the type shown by the document and add a warning.
@@ -116,7 +135,7 @@ EXTRACTION RULES
 - Every extracted field must include confidence, sourcePage, and a short sourceQuote.
 
 OUTPUT
-Return exactly one JSON object with supplierLegalName, documentType, issuer, documentNumber, effectiveDate, expirationDate, coverageSummary, findings, and warnings.`;
+Return exactly one JSON object with supplierLegalName, dbaName, supplierCategory, primaryContact, email, phone, website, addressLine1, addressLine2, city, state, postalCode, country, taxClassification, documentType, issuer, documentNumber, effectiveDate, expirationDate, coverageSummary, findings, and warnings.`;
 }
 
 function parseModelJson(content: string) {
@@ -262,15 +281,17 @@ export async function POST(request: Request) {
       await env.DB.prepare(`INSERT INTO ai_analysis_runs
         (id, stage, file_name, storage_key, model, prompt_version,
          original_result_json, status, created_at)
-        VALUES (?, 'supplier_document', ?, ?, ?, ?, ?, 'pending_review', ?)`).bind(
-        analysisRunId,
-        file.name,
-        storageKey,
-        resolvedModel,
-        PROMPT_VERSION,
-        JSON.stringify(analysis),
-        new Date().toISOString(),
-      ).run();
+        VALUES (?, 'supplier_document', ?, ?, ?, ?, ?, 'pending_review', ?)`)
+        .bind(
+          analysisRunId,
+          file.name,
+          storageKey,
+          resolvedModel,
+          PROMPT_VERSION,
+          JSON.stringify(analysis),
+          new Date().toISOString(),
+        )
+        .run();
     } catch (error) {
       await env.FILES.delete(storageKey);
       throw error;
