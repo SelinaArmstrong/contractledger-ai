@@ -1,6 +1,8 @@
 'use client';
 
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -40,17 +42,10 @@ import {
   Upload,
   Users,
 } from 'lucide-react';
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from '@/components/ui/chart';
 import {
   Dialog,
   DialogContent,
@@ -79,13 +74,13 @@ import type {
   AnalysisResponse,
   ContractAnalysis,
   ExtractedField,
+  RecordDetails,
   SupplierDocumentAnalysisResponse,
   Workspace,
 } from '@/lib/contract-ledger-types';
 import { AI_EVALUATION_CASES } from '@/lib/ai-evaluation';
 import { exportCurrentRegisters } from '@/lib/export-registers';
 import type {
-  ManagementChart,
   ManagementInsightResponse,
   ManagementInsightScope,
   ManagementMetric,
@@ -97,6 +92,12 @@ import {
   normalizeSupplierName,
   type SupplierDocumentType,
 } from '@/lib/supplier-qualification';
+
+const ManagementChartCard = lazy(() =>
+  import('@/components/management-chart-card').then((module) => ({
+    default: module.ManagementChartCard,
+  })),
+);
 
 type ViewName =
   | 'Dashboard'
@@ -3390,13 +3391,6 @@ function SupplierRegisterView({
   );
 }
 
-const managementChartConfig = {
-  value: {
-    label: 'Value',
-    color: '#2c7f9b',
-  },
-} satisfies ChartConfig;
-
 function managementMetricValue(metric: ManagementMetric) {
   if (metric.format === 'currency') return moneyFromCents(metric.value, true);
   if (metric.format === 'percent') return `${metric.value}%`;
@@ -3408,74 +3402,6 @@ function priorityClasses(priority: ManagementPriority) {
   if (priority === 'medium')
     return 'border-amber-200 bg-amber-50 text-amber-800';
   return 'border-sky-200 bg-sky-50 text-sky-800';
-}
-
-function ManagementChartCard({ chart }: { chart: ManagementChart }) {
-  const data = chart.data.map((item) => ({
-    ...item,
-    value: chart.valueFormat === 'currency' ? item.value / 100 : item.value,
-  }));
-  return (
-    <article className="rounded-xl border border-[#dce3e8] bg-white p-4">
-      <h3 className="text-xs font-semibold text-[#203845]">{chart.title}</h3>
-      <p className="mt-1 text-[10px] leading-4 text-slate-500">
-        {chart.description}
-      </p>
-      {data.length ? (
-        <ChartContainer
-          config={managementChartConfig}
-          className="mt-3 h-[220px] w-full aspect-auto"
-          initialDimension={{ width: 480, height: 220 }}
-        >
-          <BarChart
-            accessibilityLayer
-            data={data}
-            layout="vertical"
-            margin={{ left: 0, right: 18, top: 4, bottom: 4 }}
-          >
-            <CartesianGrid horizontal={false} strokeDasharray="3 3" />
-            <XAxis
-              type="number"
-              tickLine={false}
-              axisLine={false}
-              tickFormatter={(value) =>
-                chart.valueFormat === 'currency'
-                  ? new Intl.NumberFormat('en-US', {
-                      style: 'currency',
-                      currency: 'USD',
-                      notation: 'compact',
-                      maximumFractionDigits: 1,
-                    }).format(Number(value))
-                  : String(value)
-              }
-            />
-            <YAxis
-              type="category"
-              dataKey="label"
-              tickLine={false}
-              axisLine={false}
-              width={126}
-              tick={{ fontSize: 10 }}
-            />
-            <ChartTooltip
-              cursor={{ fill: '#edf4f6' }}
-              content={<ChartTooltipContent hideLabel />}
-            />
-            <Bar
-              dataKey="value"
-              fill="var(--color-value)"
-              radius={[0, 4, 4, 0]}
-              maxBarSize={28}
-            />
-          </BarChart>
-        </ChartContainer>
-      ) : (
-        <div className="mt-3 flex h-[220px] items-center justify-center rounded-lg bg-[#f8fafb] text-xs text-slate-500">
-          No dated records are available for this chart.
-        </div>
-      )}
-    </article>
-  );
 }
 
 function ManagementInsightsSheet({
@@ -3684,9 +3610,18 @@ function ManagementInsightsSheet({
                 </section>
 
                 <section className="grid gap-4 xl:grid-cols-2">
-                  {result.report.charts.map((chart) => (
-                    <ManagementChartCard key={chart.key} chart={chart} />
-                  ))}
+                  <Suspense
+                    fallback={result.report.charts.map((chart) => (
+                      <div
+                        key={chart.key}
+                        className="h-[286px] animate-pulse rounded-xl border border-[#dce3e8] bg-white"
+                      />
+                    ))}
+                  >
+                    {result.report.charts.map((chart) => (
+                      <ManagementChartCard key={chart.key} chart={chart} />
+                    ))}
+                  </Suspense>
                 </section>
 
                 <section className="rounded-xl border border-[#dce3e8] bg-white">
@@ -3883,63 +3818,11 @@ function AIEvaluationView({
     setRunning(true);
     setError('');
     try {
-      const results: Array<{
-        caseId: string;
-        model: string;
-        analysis: Record<string, unknown>;
-      }> = [];
-      for (const [index, evaluationCase] of AI_EVALUATION_CASES.entries()) {
-        setProgress(
-          `Analyzing ${index + 1} of ${AI_EVALUATION_CASES.length}: ${evaluationCase.title}`,
-        );
-        const fileResponse = await fetch(
-          `/demo-documents/${evaluationCase.fileName}`,
-        );
-        if (!fileResponse.ok)
-          throw new Error(`Unable to load ${evaluationCase.fileName}.`);
-        const file = new File(
-          [await fileResponse.blob()],
-          evaluationCase.fileName,
-          {
-            type: 'application/pdf',
-          },
-        );
-        const form = new FormData();
-        form.append('file', file);
-        form.append('purpose', 'evaluation');
-        const supplierCase = evaluationCase.id === 'supplier-coi';
-        if (supplierCase) {
-          form.append('expectedDocumentType', 'insurance_certificate');
-        } else {
-          form.append(
-            'stage',
-            evaluationCase.id === 'contract-executed' ? 'executed' : 'draft',
-          );
-        }
-        const response = await fetch(
-          supplierCase ? '/api/analyze-supplier-document' : '/api/analyze',
-          { method: 'POST', body: form },
-        );
-        const body = (await response.json()) as {
-          analysis?: Record<string, unknown>;
-          model?: string;
-          error?: string;
-        };
-        if (!response.ok || !body.analysis || !body.model)
-          throw new Error(
-            body.error || `Unable to evaluate ${evaluationCase.title}.`,
-          );
-        results.push({
-          caseId: evaluationCase.id,
-          model: body.model,
-          analysis: body.analysis,
-        });
-      }
-      setProgress('Comparing AI output with verified ground truth…');
+      setProgress(
+        'Running three locked documents through a server-controlled evaluation…',
+      );
       const response = await fetch('/api/evaluations', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cases: results }),
       });
       const body = (await response.json()) as {
         workspace?: Workspace;
@@ -4735,21 +4618,64 @@ function RecordDetailDialog({
       ? workspace.suppliers.find((item) => item.id === selection.id)
       : workspace.suppliers.find((item) => item.id === contract?.supplier_id);
   const record = selection.type === 'contract' ? contract : supplier;
-  const documents = workspace.documents.filter((item) =>
-    selection.type === 'contract'
-      ? item.contract_id === selection.id
-      : item.supplier_id === selection.id &&
-        item.lifecycle_stage === 'supplier_record',
-  );
+  const [details, setDetails] = useState<RecordDetails>({
+    documents: [],
+    aiReviews: [],
+  });
+  const [detailsLoading, setDetailsLoading] = useState(true);
+  const [detailsError, setDetailsError] = useState('');
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(
-    documents[0] ? String(documents[0].id) : null,
+    null,
   );
+  const loadDetails = useCallback(async () => {
+    setDetailsLoading(true);
+    setDetailsError('');
+    try {
+      const response = await fetch(
+        `/api/record-details?type=${encodeURIComponent(selection.type)}&id=${encodeURIComponent(selection.id)}`,
+      );
+      const body = (await response.json()) as RecordDetails & {
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(body.error || 'Unable to load record details.');
+      }
+      setDetails(body);
+      setSelectedDocumentId((current) => {
+        const currentStillExists = body.documents.some(
+          (item) => String(item.id) === current,
+        );
+        return currentStillExists
+          ? current
+          : body.documents[0]
+            ? String(body.documents[0].id)
+            : null;
+      });
+    } catch (error) {
+      setDetails({ documents: [], aiReviews: [] });
+      setSelectedDocumentId(null);
+      setDetailsError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to load record details.',
+      );
+    } finally {
+      setDetailsLoading(false);
+    }
+  }, [selection.id, selection.type, setSelectedDocumentId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadDetails(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadDetails]);
+
+  const documents = details.documents;
   if (!record) return null;
   const selectedDocument =
     documents.find((item) => String(item.id) === selectedDocumentId) ??
     documents[0];
   const aiReviews = selectedDocument
-    ? workspace.aiReviews.filter(
+    ? details.aiReviews.filter(
         (item) => item.document_id === selectedDocument.id,
       )
     : [];
@@ -4804,9 +4730,21 @@ function RecordDetailDialog({
           <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
         </div>
         <div className="space-y-6 p-6">
+          {detailsError ? (
+            <Alert variant="destructive">
+              <AlertCircle className="size-4" />
+              <AlertTitle>Record details unavailable</AlertTitle>
+              <AlertDescription>{detailsError}</AlertDescription>
+            </Alert>
+          ) : null}
           {aiReviews.length ? <AIReviewTrail items={aiReviews} /> : null}
           <section>
-            {documents.length && selectedDocument ? (
+            {detailsLoading ? (
+              <div className="flex min-h-[360px] items-center justify-center rounded-xl border border-[#d7e1e6] bg-[#f8fafb] text-xs text-slate-500">
+                <LoaderCircle className="mr-2 size-4 animate-spin" />
+                Loading source files and AI review history…
+              </div>
+            ) : documents.length && selectedDocument ? (
               <div className="grid overflow-hidden rounded-xl border border-[#d7e1e6] bg-[#f6f8f9] lg:grid-cols-[250px_minmax(0,1fr)]">
                 <aside className="border-b border-[#d7e1e6] bg-white p-3 lg:border-b-0 lg:border-r">
                   <p className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500">
@@ -4914,7 +4852,10 @@ function RecordDetailDialog({
             <SupplierDocumentUpload
               supplierId={String(supplier.id)}
               supplierName={String(supplier.legal_name)}
-              onUploaded={onRefresh}
+              onUploaded={async () => {
+                await onRefresh();
+                await loadDetails();
+              }}
             />
           ) : null}
         </div>
@@ -4932,7 +4873,7 @@ function storedReviewValue(value: unknown) {
   }
 }
 
-function AIReviewTrail({ items }: { items: Workspace['aiReviews'] }) {
+function AIReviewTrail({ items }: { items: RecordDetails['aiReviews'] }) {
   const run = items[0];
   const labelByField: Record<string, string> = {
     ...Object.fromEntries(extractionFields),

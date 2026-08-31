@@ -6,6 +6,7 @@ import {
   text,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
 
 export const suppliers = sqliteTable(
   'suppliers',
@@ -131,6 +132,9 @@ export const contracts = sqliteTable(
   },
   (table) => [
     uniqueIndex('idx_contracts_number').on(table.contractNumber),
+    uniqueIndex('idx_contracts_intake_id_unique')
+      .on(table.intakeId)
+      .where(sql`${table.intakeId} IS NOT NULL`),
     index('idx_contracts_supplier_id').on(table.supplierId),
     index('idx_contracts_status_expiration').on(
       table.status,
@@ -175,6 +179,11 @@ export const documents = sqliteTable(
     index('idx_documents_contract_id').on(table.contractId),
     index('idx_documents_intake_id').on(table.intakeId),
     index('idx_documents_supplier_id').on(table.supplierId),
+    index('idx_documents_supplier_lifecycle_expiration').on(
+      table.supplierId,
+      table.lifecycleStage,
+      table.expirationDate,
+    ),
   ],
 );
 
@@ -277,6 +286,11 @@ export const aiAnalysisRuns = sqliteTable(
     index('idx_ai_analysis_runs_contract_id').on(table.contractId),
     index('idx_ai_analysis_runs_intake_id').on(table.intakeId),
     index('idx_ai_analysis_runs_supplier_id').on(table.supplierId),
+    index('idx_ai_analysis_runs_status_stage_reviewed').on(
+      table.status,
+      table.stage,
+      table.reviewedAt,
+    ),
   ],
 );
 
@@ -356,8 +370,20 @@ export const auditLogs = sqliteTable(
   },
   (table) => [
     index('idx_audit_logs_entity').on(table.entityType, table.entityId),
+    index('idx_audit_logs_created_at').on(table.createdAt),
   ],
 );
+
+export const apiRateLimits = sqliteTable('api_rate_limits', {
+  key: text('key').primaryKey(),
+  windowStart: integer('window_start').notNull(),
+  requestCount: integer('request_count').notNull().default(1),
+});
+
+export const schemaMigrations = sqliteTable('schema_migrations', {
+  version: integer('version').primaryKey(),
+  appliedAt: text('applied_at').notNull(),
+});
 
 export type Supplier = typeof suppliers.$inferSelect;
 export type ContractIntake = typeof contractIntakes.$inferSelect;

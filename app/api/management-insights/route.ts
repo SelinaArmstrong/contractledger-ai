@@ -7,6 +7,10 @@ import {
   type ManagementReport,
 } from '@/lib/management-insights';
 import { getWorkspace } from '@/app/api/workspace/route';
+import {
+  authorizeApiRequest,
+  enforceRateLimit,
+} from '@/lib/server/request-security';
 
 const MODEL = 'deepseek-v4-flash';
 const PROMPT_VERSION = 'management-insights-2026.1';
@@ -122,6 +126,9 @@ function aiSafeReport(report: ManagementReport) {
 }
 
 export async function POST(request: Request) {
+  const access = authorizeApiRequest(request, { write: true });
+  if (!access.ok) return access.response;
+
   try {
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey)
@@ -135,6 +142,13 @@ export async function POST(request: Request) {
 
     const input = requestSchema.parse(await request.json());
     await ensureWorkspaceDatabase();
+    const rateLimited = await enforceRateLimit(
+      access.actor,
+      'management-insights',
+      12,
+      600,
+    );
+    if (rateLimited) return rateLimited;
     const workspace = await getWorkspace();
     const selectedIds = new Set(input.recordIds);
     const contracts =
@@ -262,7 +276,7 @@ export async function POST(request: Request) {
         'management_insights',
         runId,
         'generated',
-        'Selina Armstrong',
+        access.actor.name,
         JSON.stringify({
           scope: input.scope,
           recordCount: actualIds.size,

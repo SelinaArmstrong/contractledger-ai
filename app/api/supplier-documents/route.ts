@@ -9,27 +9,26 @@ import {
   safeSupplierFileName,
   SUPPLIER_DOCUMENT_TYPES,
 } from '@/lib/supplier-qualification';
+import { authorizeApiRequest } from '@/lib/server/request-security';
+import { assertSupplierFileSignature } from '@/lib/server/file-validation';
+import { isoDateSchema } from '@/lib/validation';
 
 const fieldsSchema = z.object({
   supplierId: z.string().min(1),
   analysisRunId: z.string().optional().or(z.literal('')),
   documentType: z.enum(SUPPLIER_DOCUMENT_TYPES),
-  effectiveDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional()
-    .or(z.literal('')),
-  expirationDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional()
-    .or(z.literal('')),
+  effectiveDate: isoDateSchema.optional().or(z.literal('')),
+  expirationDate: isoDateSchema.optional().or(z.literal('')),
   issuer: z.string().trim().max(160).optional().or(z.literal('')),
   documentNumber: z.string().trim().max(100).optional().or(z.literal('')),
   coverageSummary: z.string().trim().max(1000).optional().or(z.literal('')),
 });
 
 export async function POST(request: Request) {
+  const access = authorizeApiRequest(request, { write: true });
+  if (!access.ok) return access.response;
+
+  let newlyStoredKey: string | null = null;
   try {
     await ensureWorkspaceDatabase();
     const form = await request.formData();
@@ -64,6 +63,7 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+    await assertSupplierFileSignature(file);
     if (
       fields.documentType === 'insurance_certificate' &&
       !fields.expirationDate
@@ -130,6 +130,7 @@ export async function POST(request: Request) {
           documentType: fields.documentType,
         },
       });
+      newlyStoredKey = storageKey;
     }
 
     const documentStatusUpdate =
@@ -195,7 +196,7 @@ export async function POST(request: Request) {
             (id, analysis_run_id, field_name, original_value_json,
              verified_value_json, confidence, source_page, source_quote,
              review_status, reviewed_by, reviewed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Selina Armstrong', ?)`).bind(
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
             `aifield-${crypto.randomUUID()}`,
             analysisRun.id,
             fieldName,
@@ -205,6 +206,7 @@ export async function POST(request: Request) {
             originalField.sourcePage,
             originalField.sourceQuote,
             corrected ? 'corrected' : 'accepted',
+            access.actor.name,
             now,
           ),
         );
@@ -212,12 +214,13 @@ export async function POST(request: Request) {
       aiReviewStatements.unshift(
         env.DB.prepare(`UPDATE ai_analysis_runs SET supplier_id = ?,
           document_id = ?, verified_result_json = ?, correction_count = ?,
-          status = 'verified', reviewed_by = 'Selina Armstrong', reviewed_at = ?
+          status = 'verified', reviewed_by = ?, reviewed_at = ?
           WHERE id = ?`).bind(
           fields.supplierId,
           documentId,
           JSON.stringify(verifiedResult),
           correctionCount,
+          access.actor.name,
           now,
           analysisRun.id,
         ),
@@ -247,9 +250,10 @@ export async function POST(request: Request) {
       qualificationUpdate,
       ...aiReviewStatements,
       env.DB.prepare(`INSERT INTO audit_logs (id, entity_type, entity_id, action, actor, details, created_at)
-        VALUES (?, 'supplier', ?, 'supplier_document_uploaded', 'Selina Armstrong', ?, ?)`).bind(
+        VALUES (?, 'supplier', ?, 'supplier_document_uploaded', ?, ?, ?)`).bind(
         `audit-${crypto.randomUUID()}`,
         fields.supplierId,
+        access.actor.name,
         JSON.stringify({
           documentId,
           documentType: fields.documentType,
@@ -268,6 +272,13 @@ export async function POST(request: Request) {
       workspace: await getWorkspace(),
     });
   } catch (error) {
+    if (newlyStoredKey) {
+      try {
+        await env.FILES.delete(newlyStoredKey);
+      } catch {
+        // The D1 record was not committed; a maintenance sweep can retry cleanup.
+      }
+    }
     return Response.json(
       {
         error:

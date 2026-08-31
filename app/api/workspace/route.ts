@@ -3,12 +3,14 @@ import { z } from 'zod';
 
 import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import { normalizeSupplierName } from '@/lib/supplier-qualification';
+import { authorizeApiRequest } from '@/lib/server/request-security';
+import { isIsoDate } from '@/lib/validation';
 
 const fieldSchema = z.object({
   value: z.union([z.string(), z.number(), z.null()]),
-  confidence: z.number(),
-  sourcePage: z.number().nullable(),
-  sourceQuote: z.string().nullable(),
+  confidence: z.number().min(0).max(1),
+  sourcePage: z.number().int().positive().nullable(),
+  sourceQuote: z.string().max(500).nullable(),
 });
 
 const reviewFieldNames = [
@@ -29,10 +31,10 @@ const saveSchema = z.object({
   analysisRunId: z.string().min(1),
   stage: z.enum(['draft', 'executed']),
   document: z.object({
-    fileName: z.string(),
-    totalPages: z.number(),
-    storageKey: z.string(),
-    mimeType: z.string(),
+    fileName: z.string().min(1).max(255),
+    totalPages: z.number().int().positive().max(40),
+    storageKey: z.string().min(1).max(500),
+    mimeType: z.string().min(1).max(120),
   }),
   analysis: z.object({
     documentTitle: fieldSchema,
@@ -48,23 +50,26 @@ const saveSchema = z.object({
     paymentTerms: fieldSchema,
     findings: z.array(
       z.object({
-        rule: z.string(),
-        observed: z.string(),
-        standard: z.string(),
+        rule: z.string().min(1).max(200),
+        observed: z.string().max(2_000),
+        standard: z.string().max(2_000),
         severity: z.enum(['info', 'low', 'medium', 'high']),
         sourcePage: z.number().nullable(),
       }),
     ),
     keyDates: z.array(
       z.object({
-        type: z.string(),
-        title: z.string(),
-        dueDate: z.string().nullable(),
+        type: z.string().min(1).max(100),
+        title: z.string().min(1).max(200),
+        dueDate: z
+          .string()
+          .refine(isIsoDate, 'Key dates must use a valid YYYY-MM-DD date.')
+          .nullable(),
         sourcePage: z.number().nullable(),
         sourceQuote: z.string().nullable(),
       }),
     ),
-    warnings: z.array(z.string()),
+    warnings: z.array(z.string().max(500)).max(50),
   }),
   review: z.object({
     fields: z.array(
@@ -104,6 +109,7 @@ type VerifiedAnalysisRun = {
   supplier_name: string;
   intake_id: string | null;
   contract_id: string | null;
+  source_intake_id: string | null;
   file_name: string;
   verified_result_json: string;
   reviewed_at: string;
@@ -121,14 +127,11 @@ function buildTransactionComparisons(rows: VerifiedAnalysisRun[]) {
     ['contractType', 'Contract type'],
   ] as const;
   const drafts = rows.filter((row) => row.stage === 'draft');
-  const usedDrafts = new Set<string>();
   return rows
     .filter((row) => row.stage === 'executed')
     .flatMap((executed) => {
       const draft = drafts.find(
-        (candidate) =>
-          candidate.supplier_id === executed.supplier_id &&
-          !usedDrafts.has(candidate.id),
+        (candidate) => candidate.intake_id === executed.source_intake_id,
       );
       if (!draft || !draft.intake_id || !executed.contract_id) return [];
       try {
@@ -139,7 +142,6 @@ function buildTransactionComparisons(rows: VerifiedAnalysisRun[]) {
         const executedAnalysis = JSON.parse(
           executed.verified_result_json,
         ) as Record<string, { value?: string | number | null } | unknown[]>;
-        usedDrafts.add(draft.id);
         const valueFor = (
           analysis: Record<
             string,
@@ -198,11 +200,8 @@ export async function getWorkspace() {
     intakeRows,
     keyDateRows,
     supplierAlertRows,
-    aiReviewRows,
     aiComparisonRows,
     evaluationRows,
-    documentRows,
-    auditRows,
   ] = await Promise.all([
     db
       .prepare(`SELECT
@@ -309,20 +308,13 @@ export async function getWorkspace() {
         due_date, supplier_name`)
       .all(),
     db
-      .prepare(`SELECT f.*, r.stage, r.intake_id, r.contract_id,
-        r.supplier_id, r.document_id, r.file_name, r.model,
-        r.prompt_version, r.correction_count, r.status AS analysis_status,
-        r.reviewed_by, r.reviewed_at
-      FROM ai_field_reviews f
-      JOIN ai_analysis_runs r ON r.id = f.analysis_run_id
-      ORDER BY r.reviewed_at DESC, f.field_name`)
-      .all(),
-    db
       .prepare(`SELECT r.id, r.stage, r.supplier_id, s.legal_name AS supplier_name,
         r.intake_id, r.contract_id, r.file_name, r.verified_result_json,
+        COALESCE(r.intake_id, c.intake_id) AS source_intake_id,
         r.reviewed_at
       FROM ai_analysis_runs r
       JOIN suppliers s ON s.id = r.supplier_id
+      LEFT JOIN contracts c ON c.id = r.contract_id
       WHERE r.status = 'verified'
         AND r.stage IN ('draft', 'executed')
         AND r.verified_result_json IS NOT NULL
@@ -331,10 +323,6 @@ export async function getWorkspace() {
     db
       .prepare(`SELECT * FROM ai_evaluation_runs
         ORDER BY created_at DESC LIMIT 20`)
-      .all(),
-    db.prepare(`SELECT * FROM documents ORDER BY uploaded_at DESC`).all(),
-    db
-      .prepare(`SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100`)
       .all(),
   ]);
 
@@ -345,17 +333,17 @@ export async function getWorkspace() {
     intakes: intakeRows.results,
     keyDates: keyDateRows.results,
     supplierAlerts: supplierAlertRows.results,
-    aiReviews: aiReviewRows.results,
     transactionComparisons: buildTransactionComparisons(
       aiComparisonRows.results,
     ),
     evaluationRuns: evaluationRows.results,
-    documents: documentRows.results,
-    auditLogs: auditRows.results,
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const access = authorizeApiRequest(request);
+  if (!access.ok) return access.response;
+
   try {
     await ensureWorkspaceDatabase();
     return Response.json(await getWorkspace());
@@ -373,9 +361,26 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const access = authorizeApiRequest(request, { write: true });
+  if (!access.ok) return access.response;
+
   try {
     await ensureWorkspaceDatabase();
     const input = saveSchema.parse(await request.json());
+    for (const fieldName of ['effectiveDate', 'expirationDate'] as const) {
+      const value = stringValue(input.analysis[fieldName]);
+      if (value && !isIsoDate(value)) {
+        throw new Error(`${fieldName} must be a valid YYYY-MM-DD date.`);
+      }
+    }
+    const contractValue = numberValue(input.analysis.contractValue);
+    if (contractValue < 0 || contractValue > 100_000_000_000) {
+      throw new Error('Contract value is outside the supported range.');
+    }
+    const noticeDaysValue = numberValue(input.analysis.noticeDays);
+    if (noticeDaysValue < 0 || noticeDaysValue > 3_650) {
+      throw new Error('Notice period must be between 0 and 3,650 days.');
+    }
     const db = env.DB;
     const now = new Date().toISOString();
     const submittedReviewFields = new Set(
@@ -465,6 +470,23 @@ export async function POST(request: Request) {
         .run();
     }
 
+    let linkedIntakeId: string | null = null;
+    if (input.stage === 'executed') {
+      const candidates = await db
+        .prepare(`SELECT i.id
+          FROM contract_intakes i
+          LEFT JOIN contracts c ON c.intake_id = i.id
+          WHERE i.supplier_id = ? AND c.id IS NULL
+            AND i.status IN ('draft', 'under_review', 'revision_requested', 'approved_for_signature')
+          ORDER BY i.updated_at DESC
+          LIMIT 2`)
+        .bind(supplier.id)
+        .all<{ id: string }>();
+      if (candidates.results.length === 1) {
+        linkedIntakeId = candidates.results[0].id;
+      }
+    }
+
     const title = stringValue(
       input.analysis.documentTitle,
       input.document.fileName.replace(/\.[^.]+$/, ''),
@@ -493,7 +515,7 @@ export async function POST(request: Request) {
           documentId,
           JSON.stringify(input.analysis),
           correctionCount,
-          'Selina Armstrong',
+          access.actor.name,
           now,
           input.analysisRunId,
         ),
@@ -521,18 +543,15 @@ export async function POST(request: Request) {
             originalField.sourcePage,
             originalField.sourceQuote,
             reviewStatus,
-            'Selina Armstrong',
+            access.actor.name,
             now,
           );
       }),
     ];
 
     if (input.stage === 'draft') {
-      const count = await db
-        .prepare('SELECT COUNT(*) AS count FROM contract_intakes')
-        .first<{ count: number }>();
       const id = `int-${crypto.randomUUID()}`;
-      const intakeNumber = `INT-${new Date().getUTCFullYear()}-${String((count?.count ?? 0) + 44).padStart(3, '0')}`;
+      const intakeNumber = `INT-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
       await db.batch([
         db
           .prepare(`INSERT INTO contract_intakes
@@ -566,10 +585,11 @@ export async function POST(request: Request) {
           ),
         db
           .prepare(`INSERT INTO audit_logs (id, entity_type, entity_id, action, actor, details, created_at)
-          VALUES (?, 'contract_intake', ?, 'ai_extraction_saved', 'Selina Armstrong', ?, ?)`)
+          VALUES (?, 'contract_intake', ?, 'ai_extraction_saved', ?, ?, ?)`)
           .bind(
             `audit-${crypto.randomUUID()}`,
             id,
+            access.actor.name,
             JSON.stringify({
               source: input.document.fileName,
               model: analysisRun.model,
@@ -597,14 +617,11 @@ export async function POST(request: Request) {
         ),
       ]);
     } else {
-      const count = await db
-        .prepare('SELECT COUNT(*) AS count FROM contracts')
-        .first<{ count: number }>();
       const id = `con-${crypto.randomUUID()}`;
       const extractedNumber = stringValue(input.analysis.contractNumber);
       const contractNumber =
         extractedNumber ||
-        `CT-${new Date().getUTCFullYear()}-${String((count?.count ?? 0) + 20).padStart(3, '0')}`;
+        `CT-${new Date().getUTCFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
       const effectiveDate = stringValue(
         input.analysis.effectiveDate,
         now.slice(0, 10),
@@ -637,14 +654,16 @@ export async function POST(request: Request) {
       await db.batch([
         db
           .prepare(`INSERT INTO contracts
-          (id, contract_number, supplier_id, title, contract_type, department, owner, original_value_cents, amendment_value_cents, current_value_cents, effective_date, expiration_date, renewal_type, notice_days, notice_deadline, payment_terms, governing_law, status, last_updated)
-          VALUES (?, ?, ?, ?, ?, 'Procurement', 'Selina Armstrong', ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`)
+          (id, contract_number, intake_id, supplier_id, title, contract_type, department, owner, original_value_cents, amendment_value_cents, current_value_cents, effective_date, expiration_date, renewal_type, notice_days, notice_deadline, payment_terms, governing_law, status, last_updated)
+          VALUES (?, ?, ?, ?, ?, ?, 'Procurement', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`)
           .bind(
             id,
             contractNumber,
+            linkedIntakeId,
             supplier.id,
             title,
             contractType,
+            access.actor.name,
             valueCents,
             valueCents,
             effectiveDate,
@@ -675,10 +694,11 @@ export async function POST(request: Request) {
           ),
         db
           .prepare(`INSERT INTO audit_logs (id, entity_type, entity_id, action, actor, details, created_at)
-          VALUES (?, 'contract', ?, 'executed_contract_registered', 'Selina Armstrong', ?, ?)`)
+          VALUES (?, 'contract', ?, 'executed_contract_registered', ?, ?, ?)`)
           .bind(
             `audit-${crypto.randomUUID()}`,
             id,
+            access.actor.name,
             JSON.stringify({
               source: input.document.fileName,
               model: analysisRun.model,
@@ -687,12 +707,21 @@ export async function POST(request: Request) {
             }),
             now,
           ),
-        ...aiReviewStatements({ intakeId: null, contractId: id }),
+        ...aiReviewStatements({ intakeId: linkedIntakeId, contractId: id }),
+        ...(linkedIntakeId
+          ? [
+              db
+                .prepare(`UPDATE contract_intakes
+                  SET status = 'executed', review_status = 'complete', updated_at = ?
+                  WHERE id = ?`)
+                .bind(now, linkedIntakeId),
+            ]
+          : []),
         ...extractedDates.map((item) =>
           db
             .prepare(`INSERT INTO key_dates
               (id, contract_id, supplier_id, type, title, due_date, status, owner, decision, source_clause, source_page)
-              VALUES (?, ?, ?, ?, ?, ?, 'upcoming', 'Selina Armstrong', ?, ?, ?)`)
+              VALUES (?, ?, ?, ?, ?, ?, 'upcoming', ?, ?, ?, ?)`)
             .bind(
               `date-${crypto.randomUUID()}`,
               id,
@@ -700,6 +729,7 @@ export async function POST(request: Request) {
               item.type,
               item.title,
               item.dueDate,
+              access.actor.name,
               item.type === 'non_renewal_notice' ? 'under_review' : null,
               item.sourceQuote,
               item.sourcePage,

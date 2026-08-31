@@ -9,6 +9,11 @@ import {
   safeSupplierFileName,
   SUPPLIER_DOCUMENT_TYPES,
 } from '@/lib/supplier-qualification';
+import {
+  authorizeApiRequest,
+  enforceRateLimit,
+} from '@/lib/server/request-security';
+import { assertSupplierFileSignature } from '@/lib/server/file-validation';
 
 const MAX_PAGES = 20;
 const MAX_TEXT_CHARS = 40_000;
@@ -151,8 +156,107 @@ function parseModelJson(content: string) {
   return JSON.parse(normalized.slice(start, end + 1)) as unknown;
 }
 
-export async function POST(request: Request) {
+export async function analyzeSupplierFile(
+  file: File,
+  expectedType: string,
+  apiKey: string,
+) {
+  if (file.size > MAX_SUPPLIER_DOCUMENT_BYTES)
+    throw new Error('The supplier document must be 8 MB or smaller.');
+  if (
+    !ALLOWED_SUPPLIER_DOCUMENT_MIME_TYPES.includes(
+      file.type as (typeof ALLOWED_SUPPLIER_DOCUMENT_MIME_TYPES)[number],
+    )
+  )
+    throw new Error('Use a PDF, PNG, or JPEG file.');
+  await assertSupplierFileSignature(file);
+
+  const prompt = buildPrompt(expectedType);
+  const isImage = file.type === 'image/png' || file.type === 'image/jpeg';
+  let totalPages = 1;
+  let input: unknown;
+  let model = 'deepseek-v4-flash';
+  if (isImage) {
+    model = 'deepseek-v4-flash-vision-exp';
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    input = [
+      {
+        role: 'user',
+        content: [
+          { type: 'input_text', text: prompt },
+          { type: 'input_image', image_url: imageDataUrl(file, bytes) },
+        ],
+      },
+    ];
+  } else {
+    const extracted = await extractPdfText(file);
+    totalPages = extracted.totalPages;
+    input = `${prompt}\n\nDOCUMENT\n${extracted.text}`;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45_000);
+  let upstream: Response;
   try {
+    upstream = await fetch('https://api.deepseek.com/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        input,
+        reasoning: { effort: 'none' },
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'supplier_qualification_extraction',
+            schema: z.toJSONSchema(analysisSchema),
+          },
+        },
+        max_output_tokens: 2_500,
+      }),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!upstream.ok)
+    throw new Error('DeepSeek could not analyze this supplier document.');
+
+  const response = (await upstream.json()) as {
+    output?: Array<{
+      type?: string;
+      content?: Array<{ type?: string; text?: string }>;
+    }>;
+    model?: string;
+  };
+  const content = response.output
+    ?.find((item) => item.type === 'message')
+    ?.content?.find((item) => item.type === 'output_text')?.text;
+  if (!content) throw new Error('DeepSeek returned an empty supplier extraction.');
+
+  return {
+    analysis: analysisSchema.parse(parseModelJson(content)),
+    totalPages,
+    model: response.model ?? model,
+  };
+}
+
+export async function POST(request: Request) {
+  const access = authorizeApiRequest(request, { write: true });
+  if (!access.ok) return access.response;
+
+  try {
+    await ensureWorkspaceDatabase();
+    const rateLimited = await enforceRateLimit(
+      access.actor,
+      'supplier-analysis',
+      20,
+      600,
+    );
+    if (rateLimited) return rateLimited;
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey)
       return Response.json(
@@ -162,7 +266,6 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const file = form.get('file');
     const expectedTypeValue = form.get('expectedDocumentType');
-    const evaluationOnly = form.get('purpose') === 'evaluation';
     const expectedType =
       typeof expectedTypeValue === 'string' ? expectedTypeValue : '';
     if (!(file instanceof File))
@@ -170,106 +273,10 @@ export async function POST(request: Request) {
         { error: 'Choose a supplier qualification document.' },
         { status: 400 },
       );
-    if (file.size > MAX_SUPPLIER_DOCUMENT_BYTES)
-      return Response.json(
-        { error: 'The supplier document must be 8 MB or smaller.' },
-        { status: 400 },
-      );
-    if (
-      !ALLOWED_SUPPLIER_DOCUMENT_MIME_TYPES.includes(
-        file.type as (typeof ALLOWED_SUPPLIER_DOCUMENT_MIME_TYPES)[number],
-      )
-    )
-      return Response.json(
-        { error: 'Use a PDF, PNG, or JPEG file.' },
-        { status: 400 },
-      );
-
-    const prompt = buildPrompt(expectedType);
-    const isImage = file.type === 'image/png' || file.type === 'image/jpeg';
-    let totalPages = 1;
-    let input: unknown;
-    let model = 'deepseek-v4-flash';
-    if (isImage) {
-      model = 'deepseek-v4-flash-vision-exp';
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      input = [
-        {
-          role: 'user',
-          content: [
-            { type: 'input_text', text: prompt },
-            { type: 'input_image', image_url: imageDataUrl(file, bytes) },
-          ],
-        },
-      ];
-    } else {
-      const extracted = await extractPdfText(file);
-      totalPages = extracted.totalPages;
-      input = `${prompt}\n\nDOCUMENT\n${extracted.text}`;
-    }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45_000);
-    let upstream: Response;
-    try {
-      upstream = await fetch('https://api.deepseek.com/responses', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model,
-          input,
-          reasoning: { effort: 'none' },
-          text: {
-            format: {
-              type: 'json_schema',
-              name: 'supplier_qualification_extraction',
-              schema: z.toJSONSchema(analysisSchema),
-            },
-          },
-          max_output_tokens: 2_500,
-        }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-    if (!upstream.ok)
-      return Response.json(
-        { error: 'DeepSeek could not analyze this supplier document.' },
-        { status: 502 },
-      );
-    const result = (await upstream.json()) as {
-      output?: Array<{
-        type?: string;
-        content?: Array<{ type?: string; text?: string }>;
-      }>;
-      model?: string;
-    };
-    const content = result.output
-      ?.find((item) => item.type === 'message')
-      ?.content?.find((item) => item.type === 'output_text')?.text;
-    if (!content)
-      return Response.json(
-        { error: 'DeepSeek returned an empty supplier extraction.' },
-        { status: 502 },
-      );
-    const analysis = analysisSchema.parse(parseModelJson(content));
-    const resolvedModel = result.model ?? model;
-    if (evaluationOnly)
-      return Response.json({
-        analysisRunId: 'evaluation-only',
-        analysis,
-        document: {
-          fileName: file.name,
-          totalPages,
-          storageKey: 'evaluation-only',
-          mimeType: file.type,
-        },
-        model: resolvedModel,
-      });
+    const result = await analyzeSupplierFile(file, expectedType, apiKey);
+    const analysis = result.analysis;
+    const totalPages = result.totalPages;
+    const resolvedModel = result.model;
     const analysisRunId = `airun-${crypto.randomUUID()}`;
     const storageKey = `uploads/supplier-document/${crypto.randomUUID()}-${safeSupplierFileName(file.name)}`;
     await env.FILES.put(storageKey, await file.arrayBuffer(), {
@@ -277,7 +284,6 @@ export async function POST(request: Request) {
       customMetadata: { lifecycleStage: 'supplier_document' },
     });
     try {
-      await ensureWorkspaceDatabase();
       await env.DB.prepare(`INSERT INTO ai_analysis_runs
         (id, stage, file_name, storage_key, model, prompt_version,
          original_result_json, status, created_at)

@@ -3,6 +3,11 @@ import { z } from 'zod';
 import { env } from 'cloudflare:workers';
 
 import { ensureWorkspaceDatabase } from '@/db/bootstrap';
+import { assertContractFileSignature } from '@/lib/server/file-validation';
+import {
+  authorizeApiRequest,
+  enforceRateLimit,
+} from '@/lib/server/request-security';
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_PAGES = 40;
@@ -74,6 +79,8 @@ async function extractDocumentText(file: File) {
   if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
     throw new Error('Upload a text-based PDF or TXT file for this demo.');
   }
+
+  await assertContractFileSignature(file);
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   const pdf = await withTimeout(
@@ -157,8 +164,101 @@ function parseModelJson(content: string) {
   return JSON.parse(withoutFence.slice(firstBrace, lastBrace + 1)) as unknown;
 }
 
-export async function POST(request: Request) {
+export async function analyzeContractFile(
+  file: File,
+  stage: 'draft' | 'executed',
+  apiKey: string,
+) {
+  const extracted = await extractDocumentText(file);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45_000);
+
+  let upstream: Response;
   try {
+    upstream = await fetch('https://api.deepseek.com/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'deepseek-v4-flash',
+        input: buildPrompt(stage, extracted.text),
+        reasoning: { effort: 'none' },
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'contract_register_extraction',
+            schema: z.toJSONSchema(analysisSchema),
+          },
+        },
+        max_output_tokens: 4_500,
+      }),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!upstream.ok) {
+    throw new Error('DeepSeek could not analyze this document. Please try again.');
+  }
+
+  const result = (await upstream.json()) as {
+    output?: Array<{
+      type?: string;
+      content?: Array<{ type?: string; text?: string }>;
+    }>;
+    model?: string;
+  };
+  const content = result.output
+    ?.find((item) => item.type === 'message')
+    ?.content?.find((item) => item.type === 'output_text')?.text;
+  if (!content) throw new Error('DeepSeek returned an empty result.');
+
+  const parsed = analysisSchema.parse(parseModelJson(content));
+  const analysis = {
+    ...parsed,
+    findings: parsed.findings.filter((finding) => finding.severity !== 'info'),
+  };
+  if (
+    String(analysis.renewalType.value).toLowerCase() === 'automatic' &&
+    !analysis.findings.some((finding) =>
+      finding.rule.toLowerCase().includes('renew'),
+    )
+  ) {
+    analysis.findings.push({
+      rule: 'Automatic renewal requires human review',
+      observed: String(
+        analysis.renewalType.sourceQuote ?? 'The agreement renews automatically.',
+      ),
+      standard:
+        'Automatic renewal requires a documented business-owner review before the notice deadline.',
+      severity: 'medium',
+      sourcePage: analysis.renewalType.sourcePage,
+    });
+  }
+
+  return {
+    analysis,
+    totalPages: extracted.totalPages,
+    model: result.model ?? 'deepseek-v4-flash',
+  };
+}
+
+export async function POST(request: Request) {
+  const access = authorizeApiRequest(request, { write: true });
+  if (!access.ok) return access.response;
+
+  try {
+    await ensureWorkspaceDatabase();
+    const rateLimited = await enforceRateLimit(
+      access.actor,
+      'contract-analysis',
+      12,
+      600,
+    );
+    if (rateLimited) return rateLimited;
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
       return Response.json(
@@ -170,93 +270,15 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const file = form.get('file');
     const rawStage = form.get('stage');
-    const evaluationOnly = form.get('purpose') === 'evaluation';
     const stage = rawStage === 'executed' ? 'executed' : 'draft';
 
     if (!(file instanceof File)) {
       return Response.json({ error: 'Choose a contract PDF or TXT file.' }, { status: 400 });
     }
 
-    const extracted = await extractDocumentText(file);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45_000);
-
-    let upstream: Response;
-    try {
-      upstream = await fetch('https://api.deepseek.com/responses', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'deepseek-v4-flash',
-          input: buildPrompt(stage, extracted.text),
-          reasoning: { effort: 'none' },
-          text: {
-            format: {
-              type: 'json_schema',
-              name: 'contract_register_extraction',
-              schema: z.toJSONSchema(analysisSchema),
-            },
-          },
-          max_output_tokens: 4_500,
-        }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    if (!upstream.ok) {
-      return Response.json(
-        { error: 'DeepSeek could not analyze this document. Please try again.' },
-        { status: 502 },
-      );
-    }
-
-    const result = (await upstream.json()) as {
-      output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
-      model?: string;
-    };
-    const content = result.output
-      ?.find((item) => item.type === 'message')
-      ?.content?.find((item) => item.type === 'output_text')?.text;
-    if (!content) {
-      return Response.json({ error: 'DeepSeek returned an empty result.' }, { status: 502 });
-    }
-
-    const parsed = analysisSchema.parse(parseModelJson(content));
-    const validated = {
-      ...parsed,
-      findings: parsed.findings.filter((finding) => finding.severity !== 'info'),
-    };
-    if (
-      String(validated.renewalType.value).toLowerCase() === 'automatic'
-      && !validated.findings.some((finding) => finding.rule.toLowerCase().includes('renew'))
-    ) {
-      validated.findings.push({
-        rule: 'Automatic renewal requires human review',
-        observed: String(validated.renewalType.sourceQuote ?? 'The agreement renews automatically.'),
-        standard: 'Automatic renewal requires a documented business-owner review before the notice deadline.',
-        severity: 'medium',
-        sourcePage: validated.renewalType.sourcePage,
-      });
-    }
-    const model = result.model ?? 'deepseek-v4-flash';
-    if (evaluationOnly)
-      return Response.json({
-        analysisRunId: 'evaluation-only',
-        analysis: validated,
-        document: {
-          fileName: file.name,
-          totalPages: extracted.totalPages,
-          stage,
-          storageKey: 'evaluation-only',
-          mimeType: file.type || 'application/octet-stream',
-        },
-        model,
-      });
+    const result = await analyzeContractFile(file, stage, apiKey);
+    const validated = result.analysis;
+    const model = result.model;
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 160);
     const storageKey = `uploads/${stage}/${crypto.randomUUID()}-${safeName}`;
     const analysisRunId = `airun-${crypto.randomUUID()}`;
@@ -265,7 +287,6 @@ export async function POST(request: Request) {
       customMetadata: { lifecycleStage: stage },
     });
     try {
-      await ensureWorkspaceDatabase();
       await env.DB.prepare(`INSERT INTO ai_analysis_runs
         (id, stage, file_name, storage_key, model, prompt_version,
          original_result_json, status, created_at)
@@ -288,7 +309,7 @@ export async function POST(request: Request) {
       analysis: validated,
       document: {
         fileName: file.name,
-        totalPages: extracted.totalPages,
+        totalPages: result.totalPages,
         stage,
         storageKey,
         mimeType: file.type || 'application/octet-stream',

@@ -1,7 +1,11 @@
 import { resetWorkspaceDatabase } from '@/db/bootstrap';
 import { getWorkspace } from '@/app/api/workspace/route';
+import { authorizeApiRequest } from '@/lib/server/request-security';
 
-export async function POST() {
+export async function POST(request: Request) {
+  const access = authorizeApiRequest(request, { write: true, admin: true });
+  if (!access.ok) return access.response;
+
   try {
     await resetWorkspaceDatabase();
     return Response.json({ reset: true, workspace: await getWorkspace() });

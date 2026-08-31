@@ -1,38 +1,74 @@
 import { env } from 'cloudflare:workers';
-import { z } from 'zod';
 
+import { analyzeSupplierFile } from '@/app/api/analyze-supplier-document/route';
+import { analyzeContractFile } from '@/app/api/analyze/route';
 import { getWorkspace } from '@/app/api/workspace/route';
 import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import {
   AI_EVALUATION_CASES,
   evaluateAIResults,
 } from '@/lib/ai-evaluation';
-
-const evaluationSchema = z.object({
-  cases: z
-    .array(
-      z.object({
-        caseId: z.string(),
-        model: z.string().min(1),
-        analysis: z.record(z.string(), z.unknown()),
-      }),
-    )
-    .length(AI_EVALUATION_CASES.length),
-});
+import {
+  authorizeApiRequest,
+  enforceRateLimit,
+} from '@/lib/server/request-security';
 
 export async function POST(request: Request) {
+  const access = authorizeApiRequest(request, { write: true });
+  if (!access.ok) return access.response;
+
   try {
     await ensureWorkspaceDatabase();
-    const input = evaluationSchema.parse(await request.json());
-    const requiredCaseIds = new Set(AI_EVALUATION_CASES.map((item) => item.id));
-    const submittedCaseIds = new Set(input.cases.map((item) => item.caseId));
-    if (
-      submittedCaseIds.size !== requiredCaseIds.size ||
-      [...requiredCaseIds].some((caseId) => !submittedCaseIds.has(caseId))
-    )
-      throw new Error('Run every required demo evaluation case.');
+    const rateLimited = await enforceRateLimit(
+      access.actor,
+      'ai-evaluation',
+      2,
+      600,
+    );
+    if (rateLimited) return rateLimited;
+    const apiKey = process.env.DEEPSEEK_API_KEY;
+    if (!apiKey) {
+      return Response.json(
+        { error: 'DeepSeek is not configured.' },
+        { status: 503 },
+      );
+    }
 
-    const evaluation = evaluateAIResults(input.cases);
+    const cases = await Promise.all(
+      AI_EVALUATION_CASES.map(async (evaluationCase) => {
+        const fileResponse = await fetch(
+          new URL(`/demo-documents/${evaluationCase.fileName}`, request.url),
+        );
+        if (!fileResponse.ok)
+          throw new Error(`Unable to load ${evaluationCase.fileName}.`);
+        const file = new File(
+          [await fileResponse.blob()],
+          evaluationCase.fileName,
+          { type: 'application/pdf' },
+        );
+        const result =
+          evaluationCase.id === 'supplier-coi'
+            ? await analyzeSupplierFile(
+                file,
+                'insurance_certificate',
+                apiKey,
+              )
+            : await analyzeContractFile(
+                file,
+                evaluationCase.id === 'contract-executed'
+                  ? 'executed'
+                  : 'draft',
+                apiKey,
+              );
+        return {
+          caseId: evaluationCase.id,
+          model: result.model,
+          analysis: result.analysis,
+        };
+      }),
+    );
+
+    const evaluation = evaluateAIResults(cases);
     const id = `aieval-${crypto.randomUUID()}`;
     const now = new Date().toISOString();
     await env.DB.batch([
@@ -56,9 +92,10 @@ export async function POST(request: Request) {
       env.DB.prepare(`INSERT INTO audit_logs
         (id, entity_type, entity_id, action, actor, details, created_at)
         VALUES (?, 'ai_evaluation', ?, 'evaluation_completed',
-          'Selina Armstrong', ?, ?)`).bind(
-        `audit-${crypto.randomUUID()}`,
-        id,
+          ?, ?, ?)`).bind(
+          `audit-${crypto.randomUUID()}`,
+          id,
+          access.actor.name,
         JSON.stringify({
           caseCount: evaluation.caseCount,
           totalFields: evaluation.totalFields,

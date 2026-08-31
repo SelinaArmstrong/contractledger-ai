@@ -10,6 +10,9 @@ import {
   safeSupplierFileName,
   SUPPLIER_DOCUMENT_TYPES,
 } from '@/lib/supplier-qualification';
+import { authorizeApiRequest } from '@/lib/server/request-security';
+import { assertSupplierFileSignature } from '@/lib/server/file-validation';
+import { isoDateSchema } from '@/lib/validation';
 
 const optionalText = (maximum: number) =>
   z.string().trim().max(maximum).optional().or(z.literal(''));
@@ -40,16 +43,8 @@ const documentMetadataSchema = z
       documentType: z.enum(SUPPLIER_DOCUMENT_TYPES),
       issuer: optionalText(160),
       documentNumber: optionalText(100),
-      effectiveDate: z
-        .string()
-        .regex(/^\d{4}-\d{2}-\d{2}$/)
-        .optional()
-        .or(z.literal('')),
-      expirationDate: z
-        .string()
-        .regex(/^\d{4}-\d{2}-\d{2}$/)
-        .optional()
-        .or(z.literal('')),
+      effectiveDate: isoDateSchema.optional().or(z.literal('')),
+      expirationDate: isoDateSchema.optional().or(z.literal('')),
       coverageSummary: optionalText(1000),
     }),
   )
@@ -57,6 +52,9 @@ const documentMetadataSchema = z
   .max(10);
 
 export async function POST(request: Request) {
+  const access = authorizeApiRequest(request, { write: true });
+  if (!access.ok) return access.response;
+
   const storedKeys: string[] = [];
   let committed = false;
 
@@ -115,16 +113,14 @@ export async function POST(request: Request) {
       }
       return { metadata, file };
     });
+    await Promise.all(
+      fileRecords.map(({ file }) => assertSupplierFileSignature(file)),
+    );
 
     const supplierId = `sup-${crypto.randomUUID()}`;
     const now = new Date().toISOString();
     const today = now.slice(0, 10);
-    const vendorSequence = await env.DB.prepare(`SELECT
-      COALESCE(MAX(CAST(SUBSTR(vendor_number, 5) AS INTEGER)), 1000) AS max_number
-      FROM suppliers WHERE vendor_number GLOB 'VND-[0-9]*'`).first<{
-      max_number: number;
-    }>();
-    const vendorNumber = `VND-${String((vendorSequence?.max_number ?? 1000) + 1).padStart(4, '0')}`;
+    const vendorNumber = `VND-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 
     const storedDocuments = [];
     for (const { metadata, file } of fileRecords) {
@@ -253,7 +249,7 @@ export async function POST(request: Request) {
             (id, analysis_run_id, field_name, original_value_json,
              verified_value_json, confidence, source_page, source_quote,
              review_status, reviewed_by, reviewed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Selina Armstrong', ?)`).bind(
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
             `aifield-${crypto.randomUUID()}`,
             document.analysisRun.id,
             fieldName,
@@ -263,6 +259,7 @@ export async function POST(request: Request) {
             originalField.sourcePage,
             originalField.sourceQuote,
             corrected ? 'corrected' : 'accepted',
+            access.actor.name,
             now,
           ),
         );
@@ -270,12 +267,13 @@ export async function POST(request: Request) {
       aiReviewStatements.push(
         env.DB.prepare(`UPDATE ai_analysis_runs SET supplier_id = ?,
           document_id = ?, verified_result_json = ?, correction_count = ?,
-          status = 'verified', reviewed_by = 'Selina Armstrong', reviewed_at = ?
+          status = 'verified', reviewed_by = ?, reviewed_at = ?
           WHERE id = ?`).bind(
           supplierId,
           document.documentId,
           JSON.stringify(verifiedResult),
           correctionCount,
+          access.actor.name,
           now,
           document.analysisRun.id,
         ),
@@ -338,9 +336,10 @@ export async function POST(request: Request) {
       ...aiReviewStatements,
       env.DB.prepare(`INSERT INTO audit_logs
         (id, entity_type, entity_id, action, actor, details, created_at)
-        VALUES (?, 'supplier', ?, 'supplier_onboarding_created', 'Selina Armstrong', ?, ?)`).bind(
+        VALUES (?, 'supplier', ?, 'supplier_onboarding_created', ?, ?, ?)`).bind(
         `audit-${crypto.randomUUID()}`,
         supplierId,
+        access.actor.name,
         JSON.stringify({
           vendorNumber,
           source: 'ai_qualification_package_onboarding',

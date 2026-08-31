@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import { getWorkspace } from '@/app/api/workspace/route';
+import { authorizeApiRequest } from '@/lib/server/request-security';
 
 const obligationSchema = z.object({
   id: z.string().min(1),
@@ -16,6 +17,9 @@ const obligationSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const access = authorizeApiRequest(request, { write: true });
+  if (!access.ok) return access.response;
+
   try {
     await ensureWorkspaceDatabase();
     const input = obligationSchema.parse(await request.json());
@@ -40,9 +44,10 @@ export async function POST(request: Request) {
         input.id,
       ),
       env.DB.prepare(`INSERT INTO audit_logs (id, entity_type, entity_id, action, actor, details, created_at)
-        VALUES (?, 'key_date', ?, 'obligation_updated', 'Selina Armstrong', ?, ?)`).bind(
+        VALUES (?, 'key_date', ?, 'obligation_updated', ?, ?, ?)`).bind(
         `audit-${crypto.randomUUID()}`,
         input.id,
+        access.actor.name,
         JSON.stringify({
           status: input.status,
           owner: input.owner,

@@ -202,6 +202,15 @@ const schemaStatements = [
     details TEXT,
     created_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS api_rate_limits (
+    key TEXT PRIMARY KEY NOT NULL,
+    window_start INTEGER NOT NULL,
+    request_count INTEGER DEFAULT 1 NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY NOT NULL,
+    applied_at TEXT NOT NULL
+  )`,
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_suppliers_normalized_name ON suppliers(normalized_name)',
   'CREATE INDEX IF NOT EXISTS idx_suppliers_status ON suppliers(status)',
   'CREATE INDEX IF NOT EXISTS idx_suppliers_insurance_expiration ON suppliers(insurance_expiration)',
@@ -226,7 +235,29 @@ const schemaStatements = [
   'CREATE INDEX IF NOT EXISTS idx_ai_evaluation_runs_created_at ON ai_evaluation_runs(created_at)',
   'CREATE INDEX IF NOT EXISTS idx_management_insight_runs_scope_created_at ON management_insight_runs(scope, created_at)',
   'CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id)',
+  'CREATE INDEX IF NOT EXISTS idx_documents_supplier_lifecycle_expiration ON documents(supplier_id, lifecycle_stage, expiration_date)',
+  'CREATE INDEX IF NOT EXISTS idx_ai_analysis_runs_status_stage_reviewed ON ai_analysis_runs(status, stage, reviewed_at)',
+  'CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)',
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_contracts_intake_id_unique ON contracts(intake_id) WHERE intake_id IS NOT NULL',
 ];
+
+const CURRENT_SCHEMA_VERSION = 8;
+
+const runtimeMigrationStatements = [
+  `CREATE TABLE IF NOT EXISTS api_rate_limits (
+    key TEXT PRIMARY KEY NOT NULL,
+    window_start INTEGER NOT NULL,
+    request_count INTEGER DEFAULT 1 NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY NOT NULL,
+    applied_at TEXT NOT NULL
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_documents_supplier_lifecycle_expiration ON documents(supplier_id, lifecycle_stage, expiration_date)',
+  'CREATE INDEX IF NOT EXISTS idx_ai_analysis_runs_status_stage_reviewed ON ai_analysis_runs(status, stage, reviewed_at)',
+  'CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)',
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_contracts_intake_id_unique ON contracts(intake_id) WHERE intake_id IS NOT NULL',
+] as const;
 
 const suppliersSeed = [
   [
@@ -789,8 +820,17 @@ async function ensureTableColumns(
     .all<{ name: string }>();
   const columns = new Set(info.results.map((column) => column.name));
   for (const [name, type] of additions) {
-    if (!columns.has(name))
+    if (columns.has(name)) continue;
+    try {
       await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`).run();
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !error.message.toLowerCase().includes('duplicate column name')
+      ) {
+        throw error;
+      }
+    }
   }
 }
 
@@ -942,22 +982,55 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
   await db.prepare('PRAGMA optimize').run();
 }
 
-export async function ensureWorkspaceDatabase() {
+let workspaceInitialization: Promise<void> | undefined;
+
+async function initializeWorkspaceDatabase() {
   const db = env.DB;
   if (!db) throw new Error('D1 database binding is unavailable.');
 
-  await db.batch(schemaStatements.map((statement) => db.prepare(statement)));
-  await ensureWorkspaceColumns(db);
+  const migrationTable = await db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'",
+    )
+    .first<{ name: string }>();
+  const version = migrationTable
+    ? await db
+        .prepare('SELECT MAX(version) AS version FROM schema_migrations')
+        .first<{ version: number | null }>()
+    : null;
+  if ((version?.version ?? 0) >= CURRENT_SCHEMA_VERSION) return;
 
-  const supplierCount = await db
-    .prepare('SELECT COUNT(*) AS count FROM suppliers')
-    .first<{ count: number }>();
-  if ((supplierCount?.count ?? 0) > 0) {
+  const supplierTable = await db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'suppliers'",
+    )
+    .first<{ name: string }>();
+
+  if (!supplierTable) {
+    await db.batch(schemaStatements.map((statement) => db.prepare(statement)));
+    await seedWorkspaceDatabase(db, isoNow());
+  } else {
+    await ensureWorkspaceColumns(db);
+    await db.batch(
+      runtimeMigrationStatements.map((statement) => db.prepare(statement)),
+    );
     await syncEnhancedDemoScenario(db, isoNow());
-    return;
   }
 
-  await seedWorkspaceDatabase(db, isoNow());
+  await db
+    .prepare(
+      'INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?, ?)',
+    )
+    .bind(CURRENT_SCHEMA_VERSION, isoNow())
+    .run();
+}
+
+export async function ensureWorkspaceDatabase() {
+  workspaceInitialization ??= initializeWorkspaceDatabase().catch((error) => {
+    workspaceInitialization = undefined;
+    throw error;
+  });
+  await workspaceInitialization;
 }
 
 export async function resetWorkspaceDatabase() {
@@ -985,6 +1058,7 @@ export async function resetWorkspaceDatabase() {
       'ai_analysis_runs',
       'ai_evaluation_runs',
       'audit_logs',
+      'api_rate_limits',
       'review_findings',
       'key_dates',
       'amendments',

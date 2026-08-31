@@ -1,8 +1,12 @@
 import { env } from 'cloudflare:workers';
 
 import { ensureWorkspaceDatabase } from '@/db/bootstrap';
+import { authorizeApiRequest } from '@/lib/server/request-security';
 
 export async function GET(request: Request) {
+  const access = authorizeApiRequest(request);
+  if (!access.ok) return access.response;
+
   try {
     await ensureWorkspaceDatabase();
     const id = new URL(request.url).searchParams.get('id');

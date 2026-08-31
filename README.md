@@ -48,6 +48,7 @@ On macOS, double-click `Start ContractLedger AI.command` for an interview-ready 
 Useful checks:
 
 ```bash
+npm test
 npm run lint
 npx tsc --noEmit
 npm run build
@@ -55,13 +56,19 @@ npm run build
 
 ## Architecture and data handling
 
-- Vinext/React interface running locally for the interview demo
+- Vinext/React interface for the local interview demo and authenticated Sites hosting
 - Cloudflare D1 database for registers, findings, dates, and audit events
 - Cloudflare R2 storage for uploaded documents
 - DeepSeek Responses API with a strict JSON schema for extraction and review
 - ExcelJS, loaded only when requested, for the one-click register workbook
 
-The API key is server-side only. Uploaded document text is treated as untrusted input, bounded by file size/page/text limits, and never allowed to override system instructions. The app stores a document reference and extracted records; reviewers remain responsible for verifying every material field.
+The API key is server-side only. Uploaded document text is treated as untrusted input, bounded by file size/page/text limits, and never allowed to override system instructions. File signatures are checked before parsing. The app stores a document reference and extracted records; reviewers remain responsible for verifying every material field.
+
+Hosted API requests require the authenticated Sites user headers. Audit events use that real user identity, state-changing requests are same-origin only, and AI endpoints have per-user D1-backed rate limits. Localhost uses a clearly identified local demo actor so the interview workflow remains self-contained. Hosted data reset is restricted to the user IDs listed in `DEMO_ADMIN_USER_IDS`.
+
+D1 bootstrap is versioned with `PRAGMA user_version`: schema upgrades and fictional seed synchronization run only when the stored version is behind, rather than writing during every request. The workspace endpoint returns register summaries; document metadata and AI review history load only when a specific record is opened. Charting and workbook generation are lazy-loaded to keep them off the initial application path.
+
+AI evaluation is server-controlled. The server loads the three fixed fictional benchmark documents, performs fresh analysis, scores against locked ground truth, and persists the evidence; it does not accept client-submitted model results.
 
 ## Source structure
 
@@ -69,7 +76,10 @@ The API key is server-side only. Uploaded document text is treated as untrusted 
 - `app/api/analyze-supplier-document/route.ts` — supplier PDF/image extraction and qualification review
 - `app/api/evaluations/route.ts` and `lib/ai-evaluation.ts` — locked ground truth and persisted AI evaluation evidence
 - `app/api/workspace/route.ts` — stage-aware save workflow
+- `app/api/record-details/route.ts` — on-demand document metadata and AI review history
 - `db/schema.ts` and `db/bootstrap.ts` — D1 schema and fictional seed data
 - `components/contract-ledger-app.tsx` — interview-ready application interface
+- `components/management-chart-card.tsx` — lazy-loaded management chart bundle
+- `lib/server/request-security.ts` — authenticated actor, same-origin write protection, and rate limiting
 - `lib/export-registers.ts` — three-sheet Excel export
 - `public/demo-documents/` — fictional draft and executed agreements

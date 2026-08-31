@@ -50,6 +50,20 @@
       "when": 1788146046229,
       "tag": "0006_fat_wallflower",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788194193912,
+      "tag": "0007_lucky_shen",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788195790054,
+      "tag": "0008_sweet_nekra",
+      "breakpoints": true
     }
   ]
 }
