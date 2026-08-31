@@ -10,6 +10,7 @@ import {
   useState,
   type ElementType,
   type ReactNode,
+  type RefObject,
 } from 'react';
 import {
   AlertCircle,
@@ -1683,6 +1684,119 @@ function DateFilter({
   );
 }
 
+function useFloatingTableScrollbar() {
+  const tableScrollerRef = useRef<HTMLDivElement>(null);
+  const floatingScrollerRef = useRef<HTMLDivElement>(null);
+  const [floating, setFloating] = useState({
+    visible: false,
+    left: 0,
+    width: 0,
+    contentWidth: 0,
+  });
+
+  const updateFloatingPosition = useCallback(() => {
+    const scroller = tableScrollerRef.current;
+    if (!scroller) return;
+    const bounds = scroller.getBoundingClientRect();
+    const left = Math.max(0, bounds.left);
+    const right = Math.min(window.innerWidth, bounds.right);
+    const width = Math.max(0, right - left);
+    const hasHorizontalOverflow =
+      scroller.scrollWidth > scroller.clientWidth + 1;
+    const intersectsViewport =
+      bounds.top < window.innerHeight && bounds.bottom > 0;
+    const nativeScrollbarBelowViewport = bounds.bottom > window.innerHeight - 2;
+    setFloating({
+      visible:
+        hasHorizontalOverflow &&
+        intersectsViewport &&
+        nativeScrollbarBelowViewport &&
+        width > 0,
+      left,
+      width,
+      contentWidth: scroller.scrollWidth,
+    });
+  }, []);
+
+  useEffect(() => {
+    const scroller = tableScrollerRef.current;
+    if (!scroller) return;
+    updateFloatingPosition();
+    const observer = new ResizeObserver(updateFloatingPosition);
+    observer.observe(scroller);
+    if (scroller.firstElementChild)
+      observer.observe(scroller.firstElementChild);
+    window.addEventListener('resize', updateFloatingPosition);
+    window.addEventListener('scroll', updateFloatingPosition, {
+      passive: true,
+    });
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateFloatingPosition);
+      window.removeEventListener('scroll', updateFloatingPosition);
+    };
+  }, [updateFloatingPosition]);
+
+  useEffect(() => {
+    if (floating.visible && floatingScrollerRef.current)
+      floatingScrollerRef.current.scrollLeft =
+        tableScrollerRef.current?.scrollLeft ?? 0;
+  }, [floating.visible, floating.contentWidth]);
+
+  const syncFloatingToTable = () => {
+    if (tableScrollerRef.current && floatingScrollerRef.current)
+      tableScrollerRef.current.scrollLeft =
+        floatingScrollerRef.current.scrollLeft;
+  };
+  const syncTableToFloating = () => {
+    if (tableScrollerRef.current && floatingScrollerRef.current)
+      floatingScrollerRef.current.scrollLeft =
+        tableScrollerRef.current.scrollLeft;
+  };
+
+  return {
+    tableScrollerRef,
+    floatingScrollerRef,
+    floating,
+    syncFloatingToTable,
+    syncTableToFloating,
+  };
+}
+
+function FloatingTableScrollbar({
+  label,
+  floating,
+  floatingScrollerRef,
+  onScroll,
+}: {
+  label: string;
+  floating: {
+    visible: boolean;
+    left: number;
+    width: number;
+    contentWidth: number;
+  };
+  floatingScrollerRef: RefObject<HTMLDivElement | null>;
+  onScroll: () => void;
+}) {
+  if (!floating.visible) return null;
+  return (
+    <div
+      ref={floatingScrollerRef}
+      aria-label={label}
+      onScroll={onScroll}
+      className="fixed bottom-0 z-40 h-5 overflow-x-scroll overflow-y-hidden border-x border-t border-[#a9c7d2] bg-white/95 shadow-[0_-3px_10px_rgb(15_23_42/12%)] backdrop-blur"
+      style={{ left: floating.left, width: floating.width }}
+    >
+      <div
+        aria-hidden="true"
+        className="h-px"
+        style={{ width: floating.contentWidth }}
+      />
+    </div>
+  );
+}
+
 function ContractRegisterView({
   contracts,
   allContracts,
@@ -1706,6 +1820,7 @@ function ContractRegisterView({
   onSelect: (id: string) => void;
   onOpenAlerts: () => void;
 }) {
+  const contractTableScroll = useFloatingTableScrollbar();
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [typeFilter, setTypeFilter] = useState('all');
   const [supplierFilter, setSupplierFilter] = useState('all');
@@ -1925,11 +2040,16 @@ function ContractRegisterView({
             30.
           </p>
         </div>
-        <div className="overflow-x-auto">
-          <Table className="min-w-[1940px]">
+        <div>
+          <Table
+            className="min-w-[2000px]"
+            containerRef={contractTableScroll.tableScrollerRef}
+            onContainerScroll={contractTableScroll.syncTableToFloating}
+          >
             <TableHeader>
               <TableRow className="bg-[#f7f9fa]">
-                <TableHead className="px-5">Contract</TableHead>
+                <TableHead className="w-14 px-4 text-center">No.</TableHead>
+                <TableHead>Contract</TableHead>
                 <TableHead>Supplier</TableHead>
                 <TableHead>Contract amount</TableHead>
                 <TableHead>Contract type</TableHead>
@@ -1948,9 +2068,12 @@ function ContractRegisterView({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visibleContracts.map((item) => (
+              {visibleContracts.map((item, index) => (
                 <TableRow key={String(item.id)}>
-                  <TableCell className="px-5 py-3.5">
+                  <TableCell className="px-4 py-3.5 text-center text-xs font-medium text-slate-500">
+                    {index + 1}
+                  </TableCell>
+                  <TableCell className="py-3.5">
                     <button
                       type="button"
                       onClick={() => onSelect(String(item.id))}
@@ -2016,6 +2139,12 @@ function ContractRegisterView({
               ))}
             </TableBody>
           </Table>
+          <FloatingTableScrollbar
+            label="Contract register horizontal scrollbar"
+            floating={contractTableScroll.floating}
+            floatingScrollerRef={contractTableScroll.floatingScrollerRef}
+            onScroll={contractTableScroll.syncFloatingToTable}
+          />
         </div>
       </Panel>
       <details className="group mt-5 overflow-hidden rounded-xl border border-[#dce3e8] bg-white shadow-[0_1px_2px_rgb(15_23_42/3%)]">
@@ -3044,6 +3173,7 @@ function SupplierRegisterView({
   onAdd: () => void;
   onOpenAlerts: () => void;
 }) {
+  const supplierTableScroll = useFloatingTableScrollbar();
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [relationshipFilter, setRelationshipFilter] = useState('all');
   const [supplierStatusFilter, setSupplierStatusFilter] = useState('all');
@@ -3233,11 +3363,16 @@ function SupplierRegisterView({
             supplier.
           </p>
         </div>
-        <div className="overflow-x-auto">
-          <Table className="min-w-[2200px]">
+        <div>
+          <Table
+            className="min-w-[2260px]"
+            containerRef={supplierTableScroll.tableScrollerRef}
+            onContainerScroll={supplierTableScroll.syncTableToFloating}
+          >
             <TableHeader>
               <TableRow className="bg-[#f7f9fa]">
-                <TableHead className="px-5">Supplier</TableHead>
+                <TableHead className="w-14 px-4 text-center">No.</TableHead>
+                <TableHead>Supplier</TableHead>
                 <TableHead>Vendor number</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Tax classification</TableHead>
@@ -3255,9 +3390,12 @@ function SupplierRegisterView({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visibleSuppliers.map((item) => (
+              {visibleSuppliers.map((item, index) => (
                 <TableRow key={String(item.id)}>
-                  <TableCell className="px-5 py-3.5">
+                  <TableCell className="px-4 py-3.5 text-center text-xs font-medium text-slate-500">
+                    {index + 1}
+                  </TableCell>
+                  <TableCell className="py-3.5">
                     <button
                       type="button"
                       onClick={() => onSelect(String(item.id))}
@@ -3411,7 +3549,7 @@ function SupplierRegisterView({
               {!visibleSuppliers.length ? (
                 <TableRow>
                   <TableCell
-                    colSpan={15}
+                    colSpan={16}
                     className="h-36 text-center text-xs text-slate-500"
                   >
                     No suppliers match the current search and filters.
@@ -3420,6 +3558,12 @@ function SupplierRegisterView({
               ) : null}
             </TableBody>
           </Table>
+          <FloatingTableScrollbar
+            label="Supplier register horizontal scrollbar"
+            floating={supplierTableScroll.floating}
+            floatingScrollerRef={supplierTableScroll.floatingScrollerRef}
+            onScroll={supplierTableScroll.syncFloatingToTable}
+          />
         </div>
       </Panel>
       <ManagementInsightsSheet
