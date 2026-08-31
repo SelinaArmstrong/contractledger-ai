@@ -35,6 +35,7 @@ export type ContractAnalysis = {
 };
 
 export type AnalysisResponse = {
+  analysisRunId: string;
   analysis: ContractAnalysis;
   document: {
     fileName: string;
@@ -44,6 +45,56 @@ export type AnalysisResponse = {
     mimeType: string;
   };
   model: string;
+};
+
+export type SupplierDocumentAnalysis = {
+  supplierLegalName: ExtractedField;
+  documentType: ExtractedField;
+  issuer: ExtractedField;
+  documentNumber: ExtractedField;
+  effectiveDate: ExtractedField;
+  expirationDate: ExtractedField;
+  coverageSummary: ExtractedField;
+  findings: Array<{
+    title: string;
+    severity: 'low' | 'medium' | 'high';
+    detail: string;
+    sourcePage: number | null;
+  }>;
+  warnings: string[];
+};
+
+export type SupplierDocumentAnalysisResponse = {
+  analysisRunId: string;
+  analysis: SupplierDocumentAnalysis;
+  document: {
+    fileName: string;
+    totalPages: number;
+    storageKey: string;
+    mimeType: string;
+  };
+  model: string;
+};
+
+export type AITransactionComparison = {
+  id: string;
+  supplierId: string;
+  supplierName: string;
+  intakeId: string;
+  contractId: string;
+  draftFileName: string;
+  executedFileName: string;
+  draftReviewedAt: string;
+  executedReviewedAt: string;
+  draftFindingCount: number;
+  executedFindingCount: number;
+  changes: Array<{
+    fieldName: string;
+    label: string;
+    draftValue: string | number | null;
+    executedValue: string | number | null;
+    changed: boolean;
+  }>;
 };
 
 export type Workspace = {
@@ -58,6 +109,10 @@ export type Workspace = {
   suppliers: Array<Record<string, string | number | null>>;
   intakes: Array<Record<string, string | number | null>>;
   keyDates: Array<Record<string, string | number | null>>;
+  supplierAlerts: Array<Record<string, string | number | null>>;
+  aiReviews: Array<Record<string, string | number | null>>;
+  transactionComparisons: AITransactionComparison[];
+  evaluationRuns: Array<Record<string, string | number | null>>;
   documents: Array<Record<string, string | number | null>>;
   auditLogs: Array<Record<string, string | number | null>>;
 };

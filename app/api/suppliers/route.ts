@@ -36,14 +36,21 @@ const documentMetadataSchema = z
   .array(
     z.object({
       fileField: z.string().regex(/^document-\d+$/),
+      analysisRunId: z.string().optional().or(z.literal('')),
       documentType: z.enum(SUPPLIER_DOCUMENT_TYPES),
       issuer: optionalText(160),
       documentNumber: optionalText(100),
+      effectiveDate: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional()
+        .or(z.literal('')),
       expirationDate: z
         .string()
         .regex(/^\d{4}-\d{2}-\d{2}$/)
         .optional()
         .or(z.literal('')),
+      coverageSummary: optionalText(1000),
     }),
   )
   .min(1)
@@ -122,19 +129,48 @@ export async function POST(request: Request) {
     const storedDocuments = [];
     for (const { metadata, file } of fileRecords) {
       const documentId = `doc-${crypto.randomUUID()}`;
-      const storageKey = `supplier-documents/${supplierId}/${crypto.randomUUID()}-${safeSupplierFileName(file.name)}`;
-      await env.FILES.put(storageKey, await file.arrayBuffer(), {
-        httpMetadata: { contentType: file.type },
-        customMetadata: {
-          supplierId,
-          documentType: metadata.documentType,
-        },
-      });
-      storedKeys.push(storageKey);
+      const analysisRun = metadata.analysisRunId
+        ? await env.DB.prepare(`SELECT id, stage, file_name, storage_key,
+            original_result_json, status, model
+          FROM ai_analysis_runs WHERE id = ? LIMIT 1`)
+            .bind(metadata.analysisRunId)
+            .first<{
+              id: string;
+              stage: string;
+              file_name: string;
+              storage_key: string;
+              original_result_json: string;
+              status: string;
+              model: string;
+            }>()
+        : null;
+      if (metadata.analysisRunId && !analysisRun)
+        throw new Error(`AI analysis for ${file.name} was not found.`);
+      if (
+        analysisRun &&
+        (analysisRun.stage !== 'supplier_document' ||
+          analysisRun.file_name !== file.name ||
+          analysisRun.status !== 'pending_review')
+      )
+        throw new Error(`AI analysis does not match ${file.name}.`);
+      const storageKey =
+        analysisRun?.storage_key ??
+        `supplier-documents/${supplierId}/${crypto.randomUUID()}-${safeSupplierFileName(file.name)}`;
+      if (!analysisRun) {
+        await env.FILES.put(storageKey, await file.arrayBuffer(), {
+          httpMetadata: { contentType: file.type },
+          customMetadata: {
+            supplierId,
+            documentType: metadata.documentType,
+          },
+        });
+        storedKeys.push(storageKey);
+      }
       storedDocuments.push({
         documentId,
         storageKey,
         file,
+        analysisRun,
         ...metadata,
       });
     }
@@ -153,6 +189,76 @@ export async function POST(request: Request) {
     const w9Status = storedDocuments.some((item) => item.documentType === 'w9')
       ? 'received'
       : 'missing';
+
+    const aiReviewStatements = [];
+    for (const document of storedDocuments) {
+      if (!document.analysisRun) continue;
+      const original = JSON.parse(
+        document.analysisRun.original_result_json,
+      ) as Record<
+        string,
+        {
+          value: string | number | null;
+          confidence: number;
+          sourcePage: number | null;
+          sourceQuote: string | null;
+        }
+      >;
+      const verifiedValues: Record<string, string | null> = {
+        supplierLegalName: supplier.legalName,
+        documentType: document.documentType,
+        issuer: document.issuer || null,
+        documentNumber: document.documentNumber || null,
+        effectiveDate: document.effectiveDate || null,
+        expirationDate: document.expirationDate || null,
+        coverageSummary: document.coverageSummary || null,
+      };
+      const verifiedResult = { ...original };
+      let correctionCount = 0;
+      for (const [fieldName, verifiedValue] of Object.entries(verifiedValues)) {
+        const originalField = original[fieldName] ?? {
+          value: null,
+          confidence: 0,
+          sourcePage: null,
+          sourceQuote: null,
+        };
+        const corrected =
+          JSON.stringify(originalField.value) !== JSON.stringify(verifiedValue);
+        if (corrected) correctionCount += 1;
+        verifiedResult[fieldName] = { ...originalField, value: verifiedValue };
+        aiReviewStatements.push(
+          env.DB.prepare(`INSERT INTO ai_field_reviews
+            (id, analysis_run_id, field_name, original_value_json,
+             verified_value_json, confidence, source_page, source_quote,
+             review_status, reviewed_by, reviewed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Selina Armstrong', ?)`).bind(
+            `aifield-${crypto.randomUUID()}`,
+            document.analysisRun.id,
+            fieldName,
+            JSON.stringify(originalField.value),
+            JSON.stringify(verifiedValue),
+            originalField.confidence,
+            originalField.sourcePage,
+            originalField.sourceQuote,
+            corrected ? 'corrected' : 'accepted',
+            now,
+          ),
+        );
+      }
+      aiReviewStatements.push(
+        env.DB.prepare(`UPDATE ai_analysis_runs SET supplier_id = ?,
+          document_id = ?, verified_result_json = ?, correction_count = ?,
+          status = 'verified', reviewed_by = 'Selina Armstrong', reviewed_at = ?
+          WHERE id = ?`).bind(
+          supplierId,
+          document.documentId,
+          JSON.stringify(verifiedResult),
+          correctionCount,
+          now,
+          document.analysisRun.id,
+        ),
+      );
+    }
 
     await env.DB.batch([
       env.DB.prepare(`INSERT INTO suppliers
@@ -190,8 +296,9 @@ export async function POST(request: Request) {
       ...storedDocuments.map((document) =>
         env.DB.prepare(`INSERT INTO documents
           (id, supplier_id, file_name, file_type, lifecycle_stage, storage_key, mime_type,
-           issuer, document_number, expiration_date, review_status, ai_status, uploaded_at)
-          VALUES (?, ?, ?, ?, 'supplier_record', ?, ?, ?, ?, ?, 'pending', 'verified', ?)`).bind(
+           issuer, document_number, effective_date, expiration_date,
+           coverage_summary, review_status, ai_status, uploaded_at)
+          VALUES (?, ?, ?, ?, 'supplier_record', ?, ?, ?, ?, ?, ?, ?, 'pending', 'verified', ?)`).bind(
           document.documentId,
           supplierId,
           document.file.name,
@@ -200,10 +307,13 @@ export async function POST(request: Request) {
           document.file.type,
           document.issuer || null,
           document.documentNumber || null,
+          document.effectiveDate || null,
           document.expirationDate || null,
+          document.coverageSummary || null,
           now,
         ),
       ),
+      ...aiReviewStatements,
       env.DB.prepare(`INSERT INTO audit_logs
         (id, entity_type, entity_id, action, actor, details, created_at)
         VALUES (?, 'supplier', ?, 'supplier_onboarding_created', 'Selina Armstrong', ?, ?)`).bind(

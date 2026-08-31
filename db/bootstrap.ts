@@ -81,7 +81,9 @@ const schemaStatements = [
     page_count INTEGER,
     issuer TEXT,
     document_number TEXT,
+    effective_date TEXT,
     expiration_date TEXT,
+    coverage_summary TEXT,
     review_status TEXT,
     ai_status TEXT DEFAULT 'queued' NOT NULL,
     uploaded_at TEXT NOT NULL,
@@ -130,6 +132,56 @@ const schemaStatements = [
     status TEXT DEFAULT 'open' NOT NULL,
     FOREIGN KEY (intake_id) REFERENCES contract_intakes(id)
   )`,
+  `CREATE TABLE IF NOT EXISTS ai_analysis_runs (
+    id TEXT PRIMARY KEY NOT NULL,
+    stage TEXT NOT NULL,
+    intake_id TEXT,
+    contract_id TEXT,
+    supplier_id TEXT,
+    document_id TEXT,
+    file_name TEXT NOT NULL,
+    storage_key TEXT NOT NULL,
+    model TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+    original_result_json TEXT NOT NULL,
+    verified_result_json TEXT,
+    correction_count INTEGER DEFAULT 0 NOT NULL,
+    status TEXT DEFAULT 'pending_review' NOT NULL,
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (intake_id) REFERENCES contract_intakes(id),
+    FOREIGN KEY (contract_id) REFERENCES contracts(id),
+    FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
+    FOREIGN KEY (document_id) REFERENCES documents(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS ai_field_reviews (
+    id TEXT PRIMARY KEY NOT NULL,
+    analysis_run_id TEXT NOT NULL,
+    field_name TEXT NOT NULL,
+    original_value_json TEXT NOT NULL,
+    verified_value_json TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    source_page INTEGER,
+    source_quote TEXT,
+    review_status TEXT NOT NULL,
+    reviewed_by TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL,
+    FOREIGN KEY (analysis_run_id) REFERENCES ai_analysis_runs(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS ai_evaluation_runs (
+    id TEXT PRIMARY KEY NOT NULL,
+    model TEXT NOT NULL,
+    case_count INTEGER NOT NULL,
+    total_fields INTEGER NOT NULL,
+    correct_fields INTEGER NOT NULL,
+    source_backed_fields INTEGER NOT NULL,
+    accuracy_percent REAL NOT NULL,
+    source_coverage_percent REAL NOT NULL,
+    average_confidence REAL NOT NULL,
+    details_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS audit_logs (
     id TEXT PRIMARY KEY NOT NULL,
     entity_type TEXT NOT NULL,
@@ -156,6 +208,11 @@ const schemaStatements = [
   'CREATE INDEX IF NOT EXISTS idx_key_dates_due_status ON key_dates(due_date, status)',
   'CREATE INDEX IF NOT EXISTS idx_key_dates_contract_id ON key_dates(contract_id)',
   'CREATE INDEX IF NOT EXISTS idx_review_findings_intake_id ON review_findings(intake_id)',
+  'CREATE INDEX IF NOT EXISTS idx_ai_analysis_runs_contract_id ON ai_analysis_runs(contract_id)',
+  'CREATE INDEX IF NOT EXISTS idx_ai_analysis_runs_intake_id ON ai_analysis_runs(intake_id)',
+  'CREATE INDEX IF NOT EXISTS idx_ai_analysis_runs_supplier_id ON ai_analysis_runs(supplier_id)',
+  'CREATE INDEX IF NOT EXISTS idx_ai_field_reviews_analysis_run_id ON ai_field_reviews(analysis_run_id)',
+  'CREATE INDEX IF NOT EXISTS idx_ai_evaluation_runs_created_at ON ai_evaluation_runs(created_at)',
   'CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id)',
 ];
 
@@ -754,7 +811,9 @@ async function ensureWorkspaceColumns(db: D1Database) {
   await ensureTableColumns(db, 'documents', [
     ['issuer', 'TEXT'],
     ['document_number', 'TEXT'],
+    ['effective_date', 'TEXT'],
     ['expiration_date', 'TEXT'],
+    ['coverage_summary', 'TEXT'],
     ['review_status', 'TEXT'],
   ]);
 }
@@ -897,6 +956,7 @@ export async function resetWorkspaceDatabase() {
   for (const prefix of [
     'uploads/draft/',
     'uploads/executed/',
+    'uploads/supplier-document/',
     'supplier-documents/',
   ]) {
     let cursor: string | undefined;
@@ -909,6 +969,9 @@ export async function resetWorkspaceDatabase() {
   }
   await db.batch(
     [
+      'ai_field_reviews',
+      'ai_analysis_runs',
+      'ai_evaluation_runs',
       'audit_logs',
       'review_findings',
       'key_dates',

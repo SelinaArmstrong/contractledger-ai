@@ -27,6 +27,7 @@ import {
   FileSearch,
   FileSpreadsheet,
   FileText,
+  FlaskConical,
   FolderKanban,
   LayoutDashboard,
   LoaderCircle,
@@ -64,22 +65,25 @@ import type {
   AnalysisResponse,
   ContractAnalysis,
   ExtractedField,
+  SupplierDocumentAnalysisResponse,
   Workspace,
 } from '@/lib/contract-ledger-types';
+import { AI_EVALUATION_CASES } from '@/lib/ai-evaluation';
 import { exportCurrentRegisters } from '@/lib/export-registers';
 import {
   SUPPLIER_DOCUMENT_LABELS,
   SUPPLIER_DOCUMENT_TYPES,
+  normalizeSupplierName,
   type SupplierDocumentType,
 } from '@/lib/supplier-qualification';
 
 type ViewName =
   | 'Dashboard'
   | 'New Contract Review'
-  | 'Executed Intake'
   | 'Contract Register'
   | 'Supplier Register'
-  | 'Alerts & Exports';
+  | 'Alerts & Exports'
+  | 'AI Evaluation';
 
 type IntakeStage = 'draft' | 'executed';
 type DetailSelection = { type: 'contract' | 'supplier'; id: string };
@@ -88,20 +92,25 @@ type SupplierOnboardingDocument = {
   documentType: SupplierDocumentType;
   issuer: string;
   documentNumber: string;
+  effectiveDate: string;
   expirationDate: string;
+  coverageSummary: string;
   file: File | null;
+  aiResult: SupplierDocumentAnalysisResponse | null;
+  analyzing: boolean;
+  aiError: string;
 };
 
 const navItems: Array<{ label: ViewName; icon: ElementType }> = [
   { label: 'Dashboard', icon: LayoutDashboard },
   { label: 'New Contract Review', icon: FileSearch },
-  { label: 'Executed Intake', icon: FileCheck2 },
   { label: 'Contract Register', icon: FolderKanban },
   { label: 'Supplier Register', icon: Users },
   { label: 'Alerts & Exports', icon: BellRing },
+  { label: 'AI Evaluation', icon: FlaskConical },
 ];
 
-const extractionFields: Array<[keyof ContractAnalysis, string]> = [
+const extractionFields = [
   ['documentTitle', 'Document title'],
   ['supplierLegalName', 'Supplier legal name'],
   ['contractType', 'Contract type'],
@@ -113,7 +122,69 @@ const extractionFields: Array<[keyof ContractAnalysis, string]> = [
   ['noticeDays', 'Notice period'],
   ['governingLaw', 'Governing law'],
   ['paymentTerms', 'Payment terms'],
-];
+] as const satisfies ReadonlyArray<readonly [keyof ContractAnalysis, string]>;
+
+const demoPlaybookRules = [
+  {
+    id: 'PAY-001',
+    rule: 'Payment terms',
+    standard: 'Net 30 preferred',
+    appliesTo: 'All supplier contracts',
+    risk: 'Medium',
+  },
+  {
+    id: 'LAW-001',
+    rule: 'Governing law',
+    standard: 'California preferred',
+    appliesTo: 'All contracts',
+    risk: 'Medium',
+  },
+  {
+    id: 'APR-001',
+    rule: 'CFO approval threshold',
+    standard: 'Required above $500,000',
+    appliesTo: 'Executed and proposed value',
+    risk: 'High',
+  },
+  {
+    id: 'REN-001',
+    rule: 'Automatic renewal',
+    standard: 'Human decision before notice deadline',
+    appliesTo: 'Auto-renewing contracts',
+    risk: 'High',
+  },
+  {
+    id: 'INS-001',
+    rule: 'Supplier insurance',
+    standard: 'CGL $2M; professional $2M; cyber $1M when applicable',
+    appliesTo: 'Services and data access',
+    risk: 'High',
+  },
+  {
+    id: 'TERM-001',
+    rule: 'Termination for convenience',
+    standard: '30-day customer right without early termination fee',
+    appliesTo: 'Service agreements',
+    risk: 'Medium',
+  },
+  {
+    id: 'SEC-001',
+    rule: 'Security incident notice',
+    standard: 'Confirmed incidents reported within 72 hours',
+    appliesTo: 'Data-access agreements',
+    risk: 'High',
+  },
+  {
+    id: 'CHG-001',
+    rule: 'Change control',
+    standard: 'Signed change order for scope, fees, or schedule',
+    appliesTo: 'Project and service contracts',
+    risk: 'Medium',
+  },
+] as const;
+
+type ExtractionFieldKey = (typeof extractionFields)[number][0];
+type FieldReviewStatus = 'pending' | 'accepted' | 'corrected';
 
 function moneyFromCents(value: unknown, compact = false) {
   const cents = typeof value === 'number' ? value : Number(value ?? 0);
@@ -165,6 +236,36 @@ function toneForStatus(status: unknown) {
   )
     return 'rose';
   return 'blue';
+}
+
+function alertTiming(value: unknown) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+    return null;
+  const dueDate = Date.parse(`${value}T00:00:00Z`);
+  const today = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(dueDate)) return null;
+  const days = Math.round((dueDate - today) / 86_400_000);
+  if (days < 0)
+    return {
+      days,
+      label: `${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} overdue`,
+      tone: 'rose',
+    };
+  if (days === 0) return { days, label: 'Due today', tone: 'rose' };
+  if (days <= 30)
+    return {
+      days,
+      label: `${days} day${days === 1 ? '' : 's'} remaining`,
+      tone: 'rose',
+    };
+  if (days <= 90)
+    return { days, label: `${days} days remaining`, tone: 'amber' };
+  return { days, label: `${days} days remaining`, tone: 'blue' };
+}
+
+function supplierDocumentLabel(value: unknown) {
+  const key = String(value) as SupplierDocumentType;
+  return SUPPLIER_DOCUMENT_LABELS[key] ?? titleCase(value);
 }
 
 function StatusBadge({
@@ -260,6 +361,11 @@ export function ContractLedgerApp() {
   const [analysisResult, setAnalysisResult] = useState<AnalysisResponse | null>(
     null,
   );
+  const [originalAnalysis, setOriginalAnalysis] =
+    useState<ContractAnalysis | null>(null);
+  const [fieldReviews, setFieldReviews] = useState<
+    Partial<Record<ExtractionFieldKey, FieldReviewStatus>>
+  >({});
   const [analysisStatus, setAnalysisStatus] = useState<
     'idle' | 'analyzing' | 'ready' | 'saving' | 'saved' | 'error'
   >('idle');
@@ -296,6 +402,8 @@ export function ContractLedgerApp() {
     setStage(nextStage);
     setSelectedFile(null);
     setAnalysisResult(null);
+    setOriginalAnalysis(null);
+    setFieldReviews({});
     setAnalysisError('');
     setAnalysisStatus('idle');
     setDialogOpen(true);
@@ -310,6 +418,8 @@ export function ContractLedgerApp() {
     const blob = await response.blob();
     setSelectedFile(new File([blob], fileName, { type: 'application/pdf' }));
     setAnalysisResult(null);
+    setOriginalAnalysis(null);
+    setFieldReviews({});
     setAnalysisStatus('idle');
     setAnalysisError('');
   };
@@ -336,6 +446,12 @@ export function ContractLedgerApp() {
       if (!response.ok)
         throw new Error(body.error || 'The document could not be analyzed.');
       setAnalysisResult(body);
+      setOriginalAnalysis(structuredClone(body.analysis));
+      setFieldReviews(
+        Object.fromEntries(
+          extractionFields.map(([key]) => [key, 'pending']),
+        ) as Record<ExtractionFieldKey, FieldReviewStatus>,
+      );
       setAnalysisStatus('ready');
     } catch (error) {
       setAnalysisError(
@@ -347,8 +463,78 @@ export function ContractLedgerApp() {
     }
   };
 
+  const updateReviewedField = (
+    fieldName: ExtractionFieldKey,
+    value: string | number | null,
+  ) => {
+    setAnalysisResult((current) => {
+      if (!current) return current;
+      const field = current.analysis[fieldName] as ExtractedField;
+      return {
+        ...current,
+        analysis: {
+          ...current.analysis,
+          [fieldName]: { ...field, value },
+        },
+      };
+    });
+    setFieldReviews((current) => ({
+      ...current,
+      [fieldName]: 'corrected',
+    }));
+  };
+
+  const confirmReviewedField = (fieldName: ExtractionFieldKey) => {
+    if (!analysisResult || !originalAnalysis) return;
+    const originalValue = (originalAnalysis[fieldName] as ExtractedField).value;
+    const verifiedValue = (analysisResult.analysis[fieldName] as ExtractedField)
+      .value;
+    setFieldReviews((current) => ({
+      ...current,
+      [fieldName]:
+        JSON.stringify(originalValue) === JSON.stringify(verifiedValue)
+          ? 'accepted'
+          : 'corrected',
+    }));
+  };
+
+  const confirmAllUnchangedFields = () => {
+    if (!analysisResult || !originalAnalysis) return;
+    setFieldReviews((current) => ({
+      ...current,
+      ...Object.fromEntries(
+        extractionFields.map(([fieldName]) => {
+          if (current[fieldName] === 'corrected')
+            return [fieldName, 'corrected'];
+          const originalValue = (originalAnalysis[fieldName] as ExtractedField)
+            .value;
+          const verifiedValue = (
+            analysisResult.analysis[fieldName] as ExtractedField
+          ).value;
+          return [
+            fieldName,
+            JSON.stringify(originalValue) === JSON.stringify(verifiedValue)
+              ? 'accepted'
+              : 'corrected',
+          ];
+        }),
+      ),
+    }));
+  };
+
+  const pendingReviewCount = extractionFields.filter(
+    ([fieldName]) => !fieldReviews[fieldName] || fieldReviews[fieldName] === 'pending',
+  ).length;
+
   const saveVerifiedRecord = async () => {
     if (!analysisResult) return;
+    if (pendingReviewCount) {
+      setAnalysisError(
+        `Confirm the remaining ${pendingReviewCount} extracted field${pendingReviewCount === 1 ? '' : 's'} before saving.`,
+      );
+      setAnalysisStatus('error');
+      return;
+    }
     setAnalysisStatus('saving');
     setAnalysisError('');
     try {
@@ -356,14 +542,22 @@ export function ContractLedgerApp() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          analysisRunId: analysisResult.analysisRunId,
           stage,
           analysis: analysisResult.analysis,
           document: analysisResult.document,
+          review: {
+            fields: extractionFields.map(([fieldName]) => ({
+              fieldName,
+              status: fieldReviews[fieldName],
+            })),
+          },
         }),
       });
       const body = (await response.json()) as {
         saved?: boolean;
         workspace?: Workspace;
+        registeredContract?: { id: string; contractNumber: string } | null;
         error?: string;
       };
       if (!response.ok || !body.workspace)
@@ -371,7 +565,14 @@ export function ContractLedgerApp() {
           body.error || 'The verified record could not be saved.',
         );
       setWorkspace(body.workspace);
-      setAnalysisStatus('saved');
+      if (stage === 'executed' && body.registeredContract) {
+        setActiveView('Contract Register');
+        setSearch(body.registeredContract.contractNumber);
+        setDialogOpen(false);
+        setAnalysisStatus('idle');
+      } else {
+        setAnalysisStatus('saved');
+      }
     } catch (error) {
       setAnalysisError(
         error instanceof Error
@@ -425,17 +626,13 @@ export function ContractLedgerApp() {
     review:
       workspace?.intakes.filter((item) => item.review_status !== 'complete')
         .length ?? 0,
-    executed:
-      workspace?.intakes.filter((item) => item.status === 'executed').length ??
-      0,
     alerts:
-      workspace?.keyDates.filter((item) => item.status !== 'completed')
-        .length ?? 0,
+      (workspace?.keyDates.filter((item) => item.status !== 'completed')
+        .length ?? 0) + (workspace?.supplierAlerts.length ?? 0),
   };
 
   const navCount = (label: ViewName) => {
     if (label === 'New Contract Review') return counts.review;
-    if (label === 'Executed Intake') return counts.executed;
     if (label === 'Alerts & Exports') return counts.alerts;
     return 0;
   };
@@ -655,17 +852,13 @@ export function ContractLedgerApp() {
               onOpen={() => openIntake('draft')}
             />
           ) : null}
-          {activeView === 'Executed Intake' ? (
-            <ExecutedIntakeView
-              workspace={workspace}
-              onOpen={() => openIntake('executed')}
-            />
-          ) : null}
           {activeView === 'Contract Register' ? (
             <ContractRegisterView
               contracts={filteredContracts}
+              recentContracts={workspace?.contracts.slice(0, 5) ?? []}
               search={search}
               onSearch={setSearch}
+              onRegister={() => openIntake('executed')}
               onExport={exportRegisters}
               exporting={exporting}
               onSelect={(id) => setDetail({ type: 'contract', id })}
@@ -686,6 +879,18 @@ export function ContractLedgerApp() {
               onExport={exportRegisters}
               exporting={exporting}
               onRefresh={loadWorkspace}
+              onSelectContract={(id) =>
+                setDetail({ type: 'contract', id })
+              }
+              onSelectSupplier={(id) =>
+                setDetail({ type: 'supplier', id })
+              }
+            />
+          ) : null}
+          {activeView === 'AI Evaluation' ? (
+            <AIEvaluationView
+              workspace={workspace}
+              onCompleted={(nextWorkspace) => setWorkspace(nextWorkspace)}
             />
           ) : null}
         </div>
@@ -762,6 +967,8 @@ export function ContractLedgerApp() {
                       onChange={(event) => {
                         setSelectedFile(event.target.files?.[0] ?? null);
                         setAnalysisResult(null);
+                        setOriginalAnalysis(null);
+                        setFieldReviews({});
                         setAnalysisStatus('idle');
                         setAnalysisError('');
                       }}
@@ -821,7 +1028,15 @@ export function ContractLedgerApp() {
                   ) : null}
 
                   {analysisResult && analysisStatus !== 'analyzing' ? (
-                    <AnalysisReview result={analysisResult} stage={stage} />
+                    <AnalysisReview
+                      result={analysisResult}
+                      originalAnalysis={originalAnalysis}
+                      stage={stage}
+                      fieldReviews={fieldReviews}
+                      onFieldChange={updateReviewedField}
+                      onConfirmField={confirmReviewedField}
+                      onConfirmAll={confirmAllUnchangedFields}
+                    />
                   ) : null}
                 </>
               )}
@@ -835,6 +1050,8 @@ export function ContractLedgerApp() {
                       variant="outline"
                       onClick={() => {
                         setAnalysisResult(null);
+                        setOriginalAnalysis(null);
+                        setFieldReviews({});
                         setAnalysisStatus('idle');
                       }}
                     >
@@ -842,7 +1059,9 @@ export function ContractLedgerApp() {
                     </Button>
                     <Button
                       onClick={saveVerifiedRecord}
-                      disabled={analysisStatus === 'saving'}
+                      disabled={
+                        analysisStatus === 'saving' || pendingReviewCount > 0
+                      }
                       className="bg-[#1d718f] hover:bg-[#185f78]"
                     >
                       {analysisStatus === 'saving' ? (
@@ -851,8 +1070,12 @@ export function ContractLedgerApp() {
                         <Database />
                       )}{' '}
                       {stage === 'draft'
-                        ? 'Save to review queue'
-                        : 'Add to official registers'}
+                        ? pendingReviewCount
+                          ? `Confirm ${pendingReviewCount} fields to save`
+                          : 'Save reviewed intake'
+                        : pendingReviewCount
+                          ? `Confirm ${pendingReviewCount} fields to save`
+                          : 'Add verified data to registers'}
                     </Button>
                   </>
                 ) : (
@@ -1092,7 +1315,9 @@ function DashboardView({
           </Button>
         </article>
       </section>
-      <DemoTransactionComparison />
+      <DemoTransactionComparison
+        comparison={workspace?.transactionComparisons[0]}
+      />
       <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]">
         <Panel className="overflow-hidden">
           <PanelHeader
@@ -1134,27 +1359,90 @@ function DashboardView({
   );
 }
 
-function DemoTransactionComparison() {
-  const changes = [
-    ['Contract value', '$585,000 proposed', '$475,000 official'],
-    ['Payment terms', 'Net 60', 'Net 30'],
-    ['Governing law', 'New York', 'California'],
-    ['Renewal notice', 'Automatic · 45 days', 'Automatic · 60 days'],
-    ['Supplier status', 'Pending', 'Active after verification'],
-    ['Official register impact', '$0', '+$475,000'],
-    ['Human review', '15 playbook differences', '1 renewal decision'],
-  ];
+function DemoTransactionComparison({
+  comparison,
+}: {
+  comparison?: Workspace['transactionComparisons'][number];
+}) {
+  const displayValue = (
+    fieldName: string,
+    value: string | number | null,
+  ) => {
+    if (value === null || value === '') return 'Not found';
+    if (fieldName === 'contractValue')
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        maximumFractionDigits: 0,
+      }).format(Number(value));
+    if (fieldName === 'noticeDays') return `${value} days`;
+    if (fieldName === 'renewalType') return titleCase(value);
+    return String(value);
+  };
+
+  if (!comparison)
+    return (
+      <Panel className="mb-7 overflow-hidden border-[#c9dbe2]">
+        <PanelHeader
+          title="AI draft-to-executed comparison"
+          description="Generated only from two human-verified analyses for the same supplier—not from fixed dashboard text."
+          action={
+            <Badge
+              variant="outline"
+              className="border-sky-200 bg-sky-50 text-sky-800"
+            >
+              Ready for live demo
+            </Badge>
+          }
+        />
+        <div className="grid gap-3 bg-[#f8fafb] p-5 md:grid-cols-3">
+          {[
+            [
+              '1',
+              'Review the draft',
+              'AI extracts proposed terms and records playbook differences.',
+            ],
+            [
+              '2',
+              'Register the signed copy',
+              'AI extracts the executed source of truth after human verification.',
+            ],
+            [
+              '3',
+              'Compare automatically',
+              'The dashboard shows actual value and clause-field changes between both files.',
+            ],
+          ].map(([number, title, description]) => (
+            <div
+              key={number}
+              className="rounded-xl border border-[#dce3e8] bg-white p-4"
+            >
+              <span className="flex size-7 items-center justify-center rounded-full bg-[#e4f2f6] text-xs font-semibold text-[#287693]">
+                {number}
+              </span>
+              <p className="mt-3 text-xs font-semibold text-[#203845]">
+                {title}
+              </p>
+              <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                {description}
+              </p>
+            </div>
+          ))}
+        </div>
+      </Panel>
+    );
+
   return (
     <Panel className="mb-7 overflow-hidden border-[#c9dbe2]">
       <PanelHeader
-        title="Fictional transaction — negotiation outcome"
-        description="The same Westline project moves from proposed data to an executed source of truth."
+        title="AI draft-to-executed comparison"
+        description={`${comparison.supplierName} · ${comparison.draftFileName} compared with ${comparison.executedFileName}`}
         action={
           <Badge
             variant="outline"
-            className="border-sky-200 bg-sky-50 text-sky-800"
+            className="border-emerald-200 bg-emerald-50 text-emerald-800"
           >
-            Same supplier · Same project
+            AI generated · Human verified
           </Badge>
         }
       />
@@ -1174,30 +1462,47 @@ function DemoTransactionComparison() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {changes.map(([label, draft, executed]) => (
-              <TableRow key={label}>
+            {comparison.changes.map((change) => (
+              <TableRow key={change.fieldName}>
                 <TableCell className="px-5 py-3 text-xs font-medium text-[#294454]">
-                  {label}
+                  <span>{change.label}</span>
+                  {change.changed ? (
+                    <StatusBadge tone="amber">Changed</StatusBadge>
+                  ) : (
+                    <StatusBadge tone="green">Unchanged</StatusBadge>
+                  )}
                 </TableCell>
                 <TableCell className="text-xs text-slate-500">
-                  {draft}
+                  {displayValue(change.fieldName, change.draftValue)}
                 </TableCell>
                 <TableCell className="text-xs font-medium text-[#1f5f4c]">
-                  {executed}
+                  {displayValue(change.fieldName, change.executedValue)}
                 </TableCell>
               </TableRow>
             ))}
+            <TableRow>
+              <TableCell className="px-5 py-3 text-xs font-medium text-[#294454]">
+                Playbook findings
+              </TableCell>
+              <TableCell className="text-xs text-slate-500">
+                {comparison.draftFindingCount} draft differences
+              </TableCell>
+              <TableCell className="text-xs font-medium text-[#1f5f4c]">
+                {comparison.executedFindingCount} executed exceptions
+              </TableCell>
+            </TableRow>
           </TableBody>
         </Table>
       </div>
       <div className="flex flex-col gap-2 border-t border-[#e3e9ed] bg-[#f7fbfc] px-5 py-3 text-[11px] text-slate-600 sm:flex-row sm:items-center sm:justify-between">
         <span className="flex items-center gap-2">
           <ShieldCheck className="size-3.5 text-[#2f7b94]" />
-          Draft terms support review and supplier onboarding only.
+          Comparison uses the saved, human-verified AI values—not temporary
+          model output.
         </span>
         <span className="flex items-center gap-2">
           <CircleCheck className="size-3.5 text-emerald-600" />
-          Only the verified executed copy updates official totals and alerts.
+          Only the executed side updates official totals and alerts.
         </span>
       </div>
     </Panel>
@@ -1244,84 +1549,6 @@ function NewContractReviewView({
         />
       </Panel>
     </>
-  );
-}
-
-function ExecutedIntakeView({
-  workspace,
-  onOpen,
-}: {
-  workspace: Workspace | null;
-  onOpen: () => void;
-}) {
-  const executed = (workspace?.intakes ?? []).filter(
-    (item) => item.status === 'executed',
-  );
-  return (
-    <>
-      <PageHeading
-        eyebrow="Post-execution intake"
-        title="Executed contract registration"
-        description="The signed version becomes the source of truth for official contract value, dates, supplier status, and renewal monitoring."
-        action={
-          <Button onClick={onOpen} className="bg-[#1d718f] hover:bg-[#185f78]">
-            <Upload />
-            Upload executed copy
-          </Button>
-        }
-      />
-      <div className="mb-5 grid gap-4 md:grid-cols-3">
-        <WorkflowCard
-          number="01"
-          title="Extract"
-          description="Read official values and dates from the signed copy."
-        />
-        <WorkflowCard
-          number="02"
-          title="Verify"
-          description="Confirm confidence, source page, and supplier match."
-        />
-        <WorkflowCard
-          number="03"
-          title="Register"
-          description="Update both registers and activate key dates."
-        />
-      </div>
-      <Panel className="overflow-hidden">
-        <PanelHeader
-          title="Executed intake queue"
-          description="Signed documents ready for, or recently added to, the official register"
-        />
-        {executed.length ? (
-          <IntakeTable intakes={executed} />
-        ) : (
-          <EmptyState
-            title="No executed intake items"
-            description="Upload an executed copy to demonstrate the official registration workflow."
-          />
-        )}
-      </Panel>
-    </>
-  );
-}
-
-function WorkflowCard({
-  number,
-  title,
-  description,
-}: {
-  number: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-xl border border-[#dce3e8] bg-white p-5">
-      <span className="text-[10px] font-semibold tracking-[0.14em] text-[#43849a]">
-        STEP {number}
-      </span>
-      <h3 className="mt-2 text-sm font-semibold">{title}</h3>
-      <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>
-    </div>
   );
 }
 
@@ -1397,15 +1624,19 @@ function DateFilter({
 
 function ContractRegisterView({
   contracts,
+  recentContracts,
   search,
   onSearch,
+  onRegister,
   onExport,
   exporting,
   onSelect,
 }: {
   contracts: Workspace['contracts'];
+  recentContracts: Workspace['contracts'];
   search: string;
   onSearch: (value: string) => void;
+  onRegister: () => void;
   onExport: () => void;
   exporting: boolean;
   onSelect: (id: string) => void;
@@ -1477,16 +1708,50 @@ function ContractRegisterView({
         title="Contract register"
         description="Executed, active, expired, terminated, and closed contracts. Drafts and proposed values never appear here."
         action={
-          <Button variant="outline" onClick={onExport}>
-            {exporting ? (
-              <LoaderCircle className="animate-spin" />
-            ) : (
-              <FileSpreadsheet />
-            )}
-            Export workbook
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={onRegister}
+              className="bg-[#1d718f] hover:bg-[#185f78]"
+            >
+              <Upload />
+              Register executed contract
+            </Button>
+            <Button variant="outline" onClick={onExport}>
+              {exporting ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <FileSpreadsheet />
+              )}
+              Export workbook
+            </Button>
+          </div>
         }
       />
+      <div className="mb-5 rounded-xl border border-[#c9dbe2] bg-white px-5 py-4 shadow-[0_1px_2px_rgb(15_23_42/3%)]">
+        <div className="grid gap-3 md:grid-cols-4">
+          {[
+            ['01', 'Signed agreement', 'Upload the executed source copy'],
+            ['02', 'AI extraction', 'Read official values, dates, and terms'],
+            ['03', 'Human verification', 'Confirm fields and source pages'],
+            ['04', 'Official register', 'Update supplier, dates, and totals'],
+          ].map(([number, title, description], index) => (
+            <div
+              key={number}
+              className={`relative rounded-lg px-3 py-2 ${index ? 'md:border-l md:border-[#dce4e8] md:pl-5' : ''}`}
+            >
+              <div className="text-[9px] font-semibold tracking-[0.14em] text-[#43849a]">
+                STEP {number}
+              </div>
+              <div className="mt-1 text-xs font-semibold text-[#203845]">
+                {title}
+              </div>
+              <div className="mt-0.5 text-[10px] leading-4 text-slate-500">
+                {description}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
       <Panel className="overflow-hidden">
         <PanelHeader
           title="Current contract register"
@@ -1678,6 +1943,48 @@ function ContractRegisterView({
           </Table>
         </div>
       </Panel>
+      <details className="group mt-5 overflow-hidden rounded-xl border border-[#dce3e8] bg-white shadow-[0_1px_2px_rgb(15_23_42/3%)]">
+        <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4">
+          <div>
+            <h2 className="text-[14px] font-semibold text-[#1b2e3a]">
+              Recent registrations
+            </h2>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              Most recently updated official contract records
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            {recentContracts.length} records
+            <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
+          </div>
+        </summary>
+        <div className="grid gap-3 border-t border-[#e3e9ed] bg-[#f8fafb] p-4 md:grid-cols-2 xl:grid-cols-3">
+          {recentContracts.map((item) => (
+            <button
+              key={String(item.id)}
+              type="button"
+              onClick={() => onSelect(String(item.id))}
+              className="rounded-lg border border-[#dce3e8] bg-white p-4 text-left hover:border-[#9fc4d1] hover:bg-[#fbfdfe]"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <span className="text-xs font-semibold text-[#1d718f]">
+                  {valueText(item.contract_number)}
+                </span>
+                <StatusBadge tone={toneForStatus(item.status)}>
+                  {titleCase(item.status)}
+                </StatusBadge>
+              </div>
+              <div className="mt-2 text-xs font-medium text-[#203845]">
+                {valueText(item.title)}
+              </div>
+              <div className="mt-1 text-[10px] text-slate-500">
+                {valueText(item.supplier_name)} · Registered{' '}
+                {valueText(item.last_updated)}
+              </div>
+            </button>
+          ))}
+        </div>
+      </details>
     </>
   );
 }
@@ -1688,8 +1995,13 @@ function newSupplierDocument(): SupplierOnboardingDocument {
     documentType: 'w9',
     issuer: '',
     documentNumber: '',
+    effectiveDate: '',
     expirationDate: '',
+    coverageSummary: '',
     file: null,
+    aiResult: null,
+    analyzing: false,
+    aiError: '',
   };
 }
 
@@ -1741,6 +2053,68 @@ function SupplierOnboardingDialog({
     setError('');
   };
 
+  const analyzeDocument = async (document: SupplierOnboardingDocument) => {
+    if (!document.file) {
+      updateDocument(document.id, {
+        aiError: 'Choose a PDF, PNG, or JPEG file first.',
+      });
+      return;
+    }
+    updateDocument(document.id, { analyzing: true, aiError: '' });
+    try {
+      const form = new FormData();
+      form.append('file', document.file);
+      form.append('expectedDocumentType', document.documentType);
+      const response = await fetch('/api/analyze-supplier-document', {
+        method: 'POST',
+        body: form,
+      });
+      const body = (await response.json()) as SupplierDocumentAnalysisResponse & {
+        error?: string;
+      };
+      if (!response.ok)
+        throw new Error(body.error || 'Unable to analyze this supplier file.');
+      const extractedType = body.analysis.documentType.value;
+      const extractedName = valueText(
+        body.analysis.supplierLegalName.value,
+      ).replace('Not found', '');
+      updateDocument(document.id, {
+        aiResult: body,
+        analyzing: false,
+        documentType:
+          typeof extractedType === 'string' &&
+          SUPPLIER_DOCUMENT_TYPES.includes(
+            extractedType as SupplierDocumentType,
+          )
+            ? (extractedType as SupplierDocumentType)
+            : document.documentType,
+        issuer: valueText(body.analysis.issuer.value).replace('Not found', ''),
+        documentNumber: valueText(
+          body.analysis.documentNumber.value,
+        ).replace('Not found', ''),
+        effectiveDate: valueText(
+          body.analysis.effectiveDate.value,
+        ).replace('Not found', ''),
+        expirationDate: valueText(
+          body.analysis.expirationDate.value,
+        ).replace('Not found', ''),
+        coverageSummary: valueText(
+          body.analysis.coverageSummary.value,
+        ).replace('Not found', ''),
+      });
+      if (!supplier.legalName.trim() && extractedName)
+        updateSupplier('legalName', extractedName);
+    } catch (analysisError) {
+      updateDocument(document.id, {
+        analyzing: false,
+        aiError:
+          analysisError instanceof Error
+            ? analysisError.message
+            : 'Unable to analyze this supplier file.',
+      });
+    }
+  };
+
   const submit = async () => {
     const requiredFields = [
       supplier.legalName,
@@ -1780,10 +2154,13 @@ function SupplierOnboardingDialog({
         JSON.stringify(
           documents.map((item, index) => ({
             fileField: `document-${index}`,
+            analysisRunId: item.aiResult?.analysisRunId ?? '',
             documentType: item.documentType,
             issuer: item.issuer,
             documentNumber: item.documentNumber,
+            effectiveDate: item.effectiveDate,
             expirationDate: item.expirationDate,
+            coverageSummary: item.coverageSummary,
           })),
         ),
       );
@@ -2040,7 +2417,7 @@ function SupplierOnboardingDialog({
                       </Button>
                     ) : null}
                   </div>
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <select
                       value={document.documentType}
                       onChange={(event) =>
@@ -2082,6 +2459,17 @@ function SupplierOnboardingDialog({
                     />
                     <Input
                       type="date"
+                      value={document.effectiveDate}
+                      onChange={(event) =>
+                        updateDocument(document.id, {
+                          effectiveDate: event.target.value,
+                        })
+                      }
+                      aria-label={`Qualification file ${index + 1} effective date`}
+                      className="bg-white text-xs"
+                    />
+                    <Input
+                      type="date"
                       value={document.expirationDate}
                       onChange={(event) =>
                         updateDocument(document.id, {
@@ -2092,21 +2480,65 @@ function SupplierOnboardingDialog({
                       className="bg-white text-xs"
                     />
                     <Input
+                      value={document.coverageSummary}
+                      onChange={(event) =>
+                        updateDocument(document.id, {
+                          coverageSummary: event.target.value,
+                        })
+                      }
+                      placeholder="Coverage / qualification summary"
+                      aria-label={`Qualification file ${index + 1} coverage or qualification summary`}
+                      className="bg-white text-xs md:col-span-2"
+                    />
+                    <Input
                       key={document.id}
                       type="file"
                       accept="application/pdf,image/png,image/jpeg"
                       onChange={(event) =>
                         updateDocument(document.id, {
                           file: event.target.files?.[0] ?? null,
+                          aiResult: null,
+                          aiError: '',
                         })
                       }
                       aria-label={`Qualification file ${index + 1}`}
                       className="bg-white text-xs file:mr-2 file:border-0 file:bg-transparent"
                     />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => analyzeDocument(document)}
+                      disabled={!document.file || document.analyzing || saving}
+                      className="bg-white"
+                    >
+                      {document.analyzing ? (
+                        <LoaderCircle className="animate-spin" />
+                      ) : (
+                        <Sparkles />
+                      )}
+                      Analyze file with AI
+                    </Button>
                   </div>
                   {document.documentType === 'insurance_certificate' ? (
                     <p className="mt-2 text-[10px] text-amber-700">
                       Insurance expiration date is required.
+                    </p>
+                  ) : null}
+                  {document.aiResult ? (
+                    <SupplierDocumentAIReview
+                      result={document.aiResult}
+                      supplierName={
+                        supplier.legalName ||
+                        valueText(
+                          document.aiResult.analysis.supplierLegalName.value,
+                        )
+                      }
+                    />
+                  ) : null}
+                  {document.aiError ? (
+                    <p className="mt-2 text-[10px] text-rose-700">
+                      {document.aiError}
                     </p>
                   ) : null}
                 </div>
@@ -2530,17 +2962,408 @@ function SupplierRegisterView({
   );
 }
 
+type EvaluationDetail = {
+  caseId: string;
+  title: string;
+  model: string;
+  totalFields: number;
+  correctFields: number;
+  accuracyPercent: number;
+  fields: Array<{
+    fieldName: string;
+    label: string;
+    expected: string | number;
+    actual: string | number | null;
+    correct: boolean;
+    confidence: number;
+    sourceBacked: boolean;
+  }>;
+};
+
+function AIEvaluationView({
+  workspace,
+  onCompleted,
+}: {
+  workspace: Workspace | null;
+  onCompleted: (workspace: Workspace) => void;
+}) {
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState('');
+  const [error, setError] = useState('');
+  const latest = workspace?.evaluationRuns[0];
+  let details: EvaluationDetail[] = [];
+  if (typeof latest?.details_json === 'string') {
+    try {
+      details = JSON.parse(latest.details_json) as EvaluationDetail[];
+    } catch {
+      details = [];
+    }
+  }
+
+  const runEvaluation = async () => {
+    setRunning(true);
+    setError('');
+    try {
+      const results: Array<{
+        caseId: string;
+        model: string;
+        analysis: Record<string, unknown>;
+      }> = [];
+      for (const [index, evaluationCase] of AI_EVALUATION_CASES.entries()) {
+        setProgress(
+          `Analyzing ${index + 1} of ${AI_EVALUATION_CASES.length}: ${evaluationCase.title}`,
+        );
+        const fileResponse = await fetch(
+          `/demo-documents/${evaluationCase.fileName}`,
+        );
+        if (!fileResponse.ok)
+          throw new Error(`Unable to load ${evaluationCase.fileName}.`);
+        const file = new File([await fileResponse.blob()], evaluationCase.fileName, {
+          type: 'application/pdf',
+        });
+        const form = new FormData();
+        form.append('file', file);
+        form.append('purpose', 'evaluation');
+        const supplierCase = evaluationCase.id === 'supplier-coi';
+        if (supplierCase) {
+          form.append('expectedDocumentType', 'insurance_certificate');
+        } else {
+          form.append(
+            'stage',
+            evaluationCase.id === 'contract-executed' ? 'executed' : 'draft',
+          );
+        }
+        const response = await fetch(
+          supplierCase ? '/api/analyze-supplier-document' : '/api/analyze',
+          { method: 'POST', body: form },
+        );
+        const body = (await response.json()) as {
+          analysis?: Record<string, unknown>;
+          model?: string;
+          error?: string;
+        };
+        if (!response.ok || !body.analysis || !body.model)
+          throw new Error(
+            body.error || `Unable to evaluate ${evaluationCase.title}.`,
+          );
+        results.push({
+          caseId: evaluationCase.id,
+          model: body.model,
+          analysis: body.analysis,
+        });
+      }
+      setProgress('Comparing AI output with verified ground truth…');
+      const response = await fetch('/api/evaluations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cases: results }),
+      });
+      const body = (await response.json()) as {
+        workspace?: Workspace;
+        error?: string;
+      };
+      if (!response.ok || !body.workspace)
+        throw new Error(body.error || 'Unable to save the evaluation result.');
+      onCompleted(body.workspace);
+      setProgress('Evaluation completed and saved.');
+    } catch (runError) {
+      setError(
+        runError instanceof Error
+          ? runError.message
+          : 'Unable to complete the AI evaluation.',
+      );
+      setProgress('');
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="Evidence, not a claim"
+        title="AI evaluation"
+        description="Run the same three fictional documents against a locked ground-truth set. Accuracy, source traceability, and confidence are calculated from the live model output and saved for interview evidence."
+        action={
+          <Button
+            onClick={runEvaluation}
+            disabled={running}
+            className="bg-[#1d718f] hover:bg-[#185f78]"
+          >
+            {running ? (
+              <LoaderCircle className="animate-spin" />
+            ) : (
+              <FlaskConical />
+            )}
+            Run 3-document evaluation
+          </Button>
+        }
+      />
+      <Alert className="mb-5 border-amber-200 bg-amber-50 text-amber-900">
+        <AlertTriangle />
+        <AlertTitle>Portfolio evidence—not a production benchmark</AlertTitle>
+        <AlertDescription>
+          This intentionally small locked set proves that the evaluation is
+          repeatable and measurable. Production validation would require a
+          larger, more varied, access-controlled document corpus.
+        </AlertDescription>
+      </Alert>
+
+      {progress ? (
+        <Alert className="mb-5 border-sky-200 bg-sky-50 text-sky-900">
+          {running ? (
+            <LoaderCircle className="animate-spin" />
+          ) : (
+            <CircleCheck />
+          )}
+          <AlertTitle>{running ? 'Evaluation in progress' : 'Evaluation saved'}</AlertTitle>
+          <AlertDescription>{progress}</AlertDescription>
+        </Alert>
+      ) : null}
+      {error ? (
+        <Alert variant="destructive" className="mb-5">
+          <AlertCircle />
+          <AlertTitle>Evaluation needs attention</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {latest ? (
+        <>
+          <section className="mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {[
+              [
+                'Field accuracy',
+                `${valueText(latest.accuracy_percent)}%`,
+                `${valueText(latest.correct_fields)} of ${valueText(latest.total_fields)} ground-truth fields`,
+              ],
+              [
+                'Source coverage',
+                `${valueText(latest.source_coverage_percent)}%`,
+                `${valueText(latest.source_backed_fields)} fields include page and quote`,
+              ],
+              [
+                'Average confidence',
+                `${valueText(latest.average_confidence)}%`,
+                'Model confidence shown separately from measured accuracy',
+              ],
+              [
+                'Evaluation set',
+                `${valueText(latest.case_count)} documents`,
+                `Latest run ${valueText(latest.created_at)}`,
+              ],
+            ].map(([label, metric, note]) => (
+              <article
+                key={label}
+                className="rounded-xl border border-[#dce3e8] bg-white p-5"
+              >
+                <p className="text-[11px] font-medium text-slate-500">
+                  {label}
+                </p>
+                <p className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[#173246]">
+                  {metric}
+                </p>
+                <p className="mt-2 text-[10px] leading-4 text-slate-500">
+                  {note}
+                </p>
+              </article>
+            ))}
+          </section>
+
+          <Panel className="overflow-hidden">
+            <PanelHeader
+              title="Latest evaluation evidence"
+              description={`${valueText(latest.model)} · Results are compared server-side with fixed expected values`}
+              action={<StatusBadge tone="green">Persisted result</StatusBadge>}
+            />
+            <div className="divide-y divide-[#e3e9ed]">
+              {details.map((detail) => (
+                <details key={detail.caseId} className="group">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4">
+                    <div>
+                      <p className="text-xs font-semibold text-[#203845]">
+                        {detail.title}
+                      </p>
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        {detail.correctFields} of {detail.totalFields} fields
+                        matched
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge
+                        tone={detail.accuracyPercent >= 90 ? 'green' : 'amber'}
+                      >
+                        {detail.accuracyPercent}% accuracy
+                      </StatusBadge>
+                      <ChevronDown className="size-4 text-slate-400 transition-transform group-open:rotate-180" />
+                    </div>
+                  </summary>
+                  <div className="overflow-x-auto border-t border-[#e3e9ed] bg-[#f8fafb]">
+                    <Table className="min-w-[820px]">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="px-5">Field</TableHead>
+                          <TableHead>Expected</TableHead>
+                          <TableHead>AI result</TableHead>
+                          <TableHead>Accuracy</TableHead>
+                          <TableHead>Confidence</TableHead>
+                          <TableHead className="pr-5">Source evidence</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {detail.fields.map((field) => (
+                          <TableRow key={field.fieldName}>
+                            <TableCell className="px-5 text-xs font-medium">
+                              {field.label}
+                            </TableCell>
+                            <TableCell className="text-xs text-slate-500">
+                              {valueText(field.expected)}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {valueText(field.actual)}
+                            </TableCell>
+                            <TableCell>
+                              <StatusBadge tone={field.correct ? 'green' : 'rose'}>
+                                {field.correct ? 'Match' : 'Mismatch'}
+                              </StatusBadge>
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {Math.round(field.confidence * 100)}%
+                            </TableCell>
+                            <TableCell className="pr-5">
+                              <StatusBadge
+                                tone={field.sourceBacked ? 'green' : 'rose'}
+                              >
+                                {field.sourceBacked
+                                  ? 'Page + quote'
+                                  : 'Missing source'}
+                              </StatusBadge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </details>
+              ))}
+            </div>
+          </Panel>
+        </>
+      ) : (
+        <Panel>
+          <PanelHeader
+            title="Locked fictional evaluation set"
+            description="No saved run yet. Running the evaluation calls the live AI but does not add these test files to operational registers."
+          />
+          <div className="grid gap-3 p-5 md:grid-cols-3">
+            {AI_EVALUATION_CASES.map((evaluationCase, index) => (
+              <article
+                key={evaluationCase.id}
+                className="rounded-xl border border-[#dce3e8] bg-[#f8fafb] p-4"
+              >
+                <span className="flex size-8 items-center justify-center rounded-lg bg-[#e4f2f6] text-xs font-semibold text-[#287693]">
+                  {index + 1}
+                </span>
+                <p className="mt-3 text-xs font-semibold text-[#203845]">
+                  {evaluationCase.title}
+                </p>
+                <p className="mt-1 text-[10px] text-slate-500">
+                  {evaluationCase.fileName}
+                </p>
+              </article>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      <Panel className="mt-5 overflow-hidden">
+        <PanelHeader
+          title="Versioned fictional U.S. contract playbook"
+          description="The AI compares documents with explicit operational rules. These are portfolio-demo standards, not legal advice or real company policy."
+          action={
+            <Badge
+              variant="outline"
+              className="border-sky-200 bg-sky-50 text-sky-800"
+            >
+              Version 2026.1
+            </Badge>
+          }
+        />
+        <div className="overflow-x-auto">
+          <Table className="min-w-[850px]">
+            <TableHeader>
+              <TableRow className="bg-[#f7f9fa]">
+                <TableHead className="px-5">Rule ID</TableHead>
+                <TableHead>Control</TableHead>
+                <TableHead>Demo standard</TableHead>
+                <TableHead>Applies to</TableHead>
+                <TableHead className="pr-5">Risk</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {demoPlaybookRules.map((rule) => (
+                <TableRow key={rule.id}>
+                  <TableCell className="px-5 font-mono text-[10px] text-[#287693]">
+                    {rule.id}
+                  </TableCell>
+                  <TableCell className="text-xs font-medium text-[#203845]">
+                    {rule.rule}
+                  </TableCell>
+                  <TableCell className="max-w-[320px] text-xs text-slate-600">
+                    {rule.standard}
+                  </TableCell>
+                  <TableCell className="text-xs text-slate-500">
+                    {rule.appliesTo}
+                  </TableCell>
+                  <TableCell className="pr-5">
+                    <StatusBadge
+                      tone={rule.risk === 'High' ? 'rose' : 'amber'}
+                    >
+                      {rule.risk}
+                    </StatusBadge>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </Panel>
+    </>
+  );
+}
+
 function AlertsExportsView({
   workspace,
   onExport,
   exporting,
   onRefresh,
+  onSelectContract,
+  onSelectSupplier,
 }: {
   workspace: Workspace | null;
   onExport: () => void;
   exporting: boolean;
   onRefresh: () => Promise<void>;
+  onSelectContract: (id: string) => void;
+  onSelectSupplier: (id: string) => void;
 }) {
+  const contractAlerts = (workspace?.keyDates ?? []).filter(
+    (item) => item.contract_id && item.status !== 'completed',
+  );
+  const completedContractAlerts = (workspace?.keyDates ?? []).filter(
+    (item) => item.contract_id && item.status === 'completed',
+  );
+  const supplierAlerts = workspace?.supplierAlerts ?? [];
+  const contractCriticalCount = contractAlerts.filter((item) => {
+    const timing = alertTiming(item.due_date);
+    return timing && timing.days <= 30;
+  }).length;
+  const supplierCriticalCount = supplierAlerts.filter((item) => {
+    if (item.source_type === 'missing_record') return true;
+    const timing = alertTiming(item.due_date);
+    return timing && timing.days <= 30;
+  }).length;
+
   return (
     <>
       <PageHeading
@@ -2549,21 +3372,99 @@ function AlertsExportsView({
         description="Assign ownership, record renewal decisions, close obligations, and export the latest registers—without expanding this focused portfolio into a full CLM."
       />
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <Panel>
-          <PanelHeader
-            title="Obligations and renewal decisions"
-            description="Operational actions linked to verified contract and supplier records"
-          />
-          <div className="space-y-3 p-5">
-            {(workspace?.keyDates ?? []).map((item) => (
-              <ObligationEditor
-                key={String(item.id)}
-                item={item}
-                onSaved={onRefresh}
-              />
-            ))}
-          </div>
-        </Panel>
+        <div className="space-y-5">
+          <Panel>
+            <PanelHeader
+              title="Contract register alerts"
+              description="Contract expirations, notice deadlines, renewals, and assigned follow-up"
+              action={
+                <div className="flex gap-2">
+                  <StatusBadge tone="blue">
+                    {contractAlerts.length} active
+                  </StatusBadge>
+                  {contractCriticalCount ? (
+                    <StatusBadge tone="rose">
+                      {contractCriticalCount} urgent
+                    </StatusBadge>
+                  ) : null}
+                </div>
+              }
+            />
+            <div className="space-y-3 p-5">
+              {contractAlerts.map((item) => (
+                <ObligationEditor
+                  key={String(item.id)}
+                  item={item}
+                  onSaved={onRefresh}
+                  onOpenRecord={() =>
+                    onSelectContract(String(item.contract_id))
+                  }
+                />
+              ))}
+              {!contractAlerts.length ? (
+                <EmptyState
+                  title="No open contract alerts"
+                  description="Upcoming contract deadlines will appear here after an executed agreement is registered."
+                />
+              ) : null}
+              {completedContractAlerts.length ? (
+                <details className="rounded-xl border border-[#dce3e8] bg-slate-50">
+                  <summary className="cursor-pointer px-4 py-3 text-xs font-medium text-slate-600">
+                    Completed contract actions ({completedContractAlerts.length})
+                  </summary>
+                  <div className="space-y-3 border-t border-[#dce3e8] p-3">
+                    {completedContractAlerts.map((item) => (
+                      <ObligationEditor
+                        key={String(item.id)}
+                        item={item}
+                        onSaved={onRefresh}
+                        onOpenRecord={() =>
+                          onSelectContract(String(item.contract_id))
+                        }
+                      />
+                    ))}
+                  </div>
+                </details>
+              ) : null}
+            </div>
+          </Panel>
+
+          <Panel>
+            <PanelHeader
+              title="Supplier compliance alerts"
+              description="Expiring qualification evidence and missing core supplier records"
+              action={
+                <div className="flex gap-2">
+                  <StatusBadge tone="blue">
+                    {supplierAlerts.length} records
+                  </StatusBadge>
+                  {supplierCriticalCount ? (
+                    <StatusBadge tone="rose">
+                      {supplierCriticalCount} urgent
+                    </StatusBadge>
+                  ) : null}
+                </div>
+              }
+            />
+            <div className="space-y-3 p-5">
+              {supplierAlerts.map((item) => (
+                <SupplierComplianceAlert
+                  key={String(item.alert_id)}
+                  item={item}
+                  onOpenSupplier={() =>
+                    onSelectSupplier(String(item.supplier_id))
+                  }
+                />
+              ))}
+              {!supplierAlerts.length ? (
+                <EmptyState
+                  title="No supplier compliance alerts"
+                  description="Documents with expiration dates and missing W-9 or insurance records will appear here."
+                />
+              ) : null}
+            </div>
+          </Panel>
+        </div>
         <Panel>
           <PanelHeader
             title="Current register package"
@@ -2616,9 +3517,11 @@ function AlertsExportsView({
 function ObligationEditor({
   item,
   onSaved,
+  onOpenRecord,
 }: {
   item: Workspace['keyDates'][number];
   onSaved: () => Promise<void>;
+  onOpenRecord?: () => void;
 }) {
   const [status, setStatus] = useState(valueText(item.status));
   const [owner, setOwner] = useState(
@@ -2634,6 +3537,7 @@ function ObligationEditor({
   const [message, setMessage] = useState('');
   const renewalItem =
     item.type === 'non_renewal_notice' || item.type === 'renewal';
+  const timing = alertTiming(item.due_date);
 
   const save = async () => {
     setSaving(true);
@@ -2669,7 +3573,7 @@ function ObligationEditor({
       className={`rounded-xl border p-4 ${status === 'completed' ? 'border-emerald-200 bg-emerald-50/40' : 'border-[#dce3e8] bg-white'}`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium text-[#203845]">
               {valueText(item.title)}
@@ -2677,13 +3581,24 @@ function ObligationEditor({
             <StatusBadge tone={toneForStatus(status)}>
               {titleCase(status)}
             </StatusBadge>
+            {timing ? (
+              <StatusBadge tone={timing.tone}>{timing.label}</StatusBadge>
+            ) : null}
           </div>
+          <p className="mt-1 text-xs font-medium text-[#335565]">
+            {valueText(item.contract_number)} · {valueText(item.contract_title)}
+          </p>
           <p className="mt-1 text-[11px] text-slate-500">
-            {valueText(item.contract_number ?? item.supplier_name)} · Due{' '}
+            Supplier: {valueText(item.supplier_name)} · Due{' '}
             {valueText(item.due_date)}
             {item.source_page ? ` · Source p. ${item.source_page}` : ''}
           </p>
         </div>
+        {onOpenRecord ? (
+          <Button variant="outline" size="sm" onClick={onOpenRecord}>
+            <FileText /> Open contract
+          </Button>
+        ) : null}
       </div>
       <div
         className={`mt-4 grid gap-3 ${renewalItem ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}
@@ -2749,6 +3664,73 @@ function ObligationEditor({
           {saving ? <LoaderCircle className="animate-spin" /> : <Check />}Save
           obligation
         </Button>
+      </div>
+    </article>
+  );
+}
+
+function SupplierComplianceAlert({
+  item,
+  onOpenSupplier,
+}: {
+  item: Workspace['supplierAlerts'][number];
+  onOpenSupplier: () => void;
+}) {
+  const missing = item.source_type === 'missing_record';
+  const timing = alertTiming(item.due_date);
+  const tone = missing ? 'rose' : (timing?.tone ?? 'blue');
+
+  return (
+    <article
+      className={`rounded-xl border p-4 ${tone === 'rose' ? 'border-rose-200 bg-rose-50/40' : tone === 'amber' ? 'border-amber-200 bg-amber-50/30' : 'border-[#dce3e8] bg-white'}`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-medium text-[#203845]">
+              {valueText(item.supplier_name)}
+            </p>
+            <StatusBadge tone={tone}>
+              {missing ? 'Missing record' : timing?.label ?? 'Date pending'}
+            </StatusBadge>
+          </div>
+          <p className="mt-1 text-xs font-medium text-[#335565]">
+            {supplierDocumentLabel(item.item_type)} · {valueText(item.title)}
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            Vendor {valueText(item.vendor_number)}
+            {item.due_date ? ` · Expires ${valueText(item.due_date)}` : ''}
+            {item.document_number
+              ? ` · Document ${valueText(item.document_number)}`
+              : ''}
+            {item.issuer ? ` · Issuer ${valueText(item.issuer)}` : ''}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {item.document_id ? (
+            <a
+              href={`/api/document?id=${encodeURIComponent(String(item.document_id))}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d4dfe4] bg-white px-3 text-[11px] font-medium text-[#27657c]"
+            >
+              <ExternalLink className="size-3.5" /> Open file
+            </a>
+          ) : null}
+          <Button variant="outline" size="sm" onClick={onOpenSupplier}>
+            <Building2 /> Open supplier
+          </Button>
+        </div>
+      </div>
+      <div className="mt-3 flex items-center justify-between border-t border-current/10 pt-3 text-[10px] text-slate-500">
+        <span>Review status: {titleCase(item.review_status)}</span>
+        <span>
+          {missing
+            ? 'Qualification file required'
+            : item.document_id
+              ? 'Qualification document'
+              : 'Supplier register record'}
+        </span>
       </div>
     </article>
   );
@@ -2878,6 +3860,11 @@ function RecordDetailDialog({
   const selectedDocument =
     documents.find((item) => String(item.id) === selectedDocumentId) ??
     documents[0];
+  const aiReviews = selectedDocument
+    ? workspace.aiReviews.filter(
+        (item) => item.document_id === selectedDocument.id,
+      )
+    : [];
   const title =
     selection.type === 'contract'
       ? valueText(contract?.title)
@@ -2929,6 +3916,7 @@ function RecordDetailDialog({
           <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
         </div>
         <div className="space-y-6 p-6">
+          {aiReviews.length ? <AIReviewTrail items={aiReviews} /> : null}
           <section>
             {documents.length && selectedDocument ? (
               <div className="grid overflow-hidden rounded-xl border border-[#d7e1e6] bg-[#f6f8f9] lg:grid-cols-[250px_minmax(0,1fr)]">
@@ -2967,6 +3955,11 @@ function RecordDetailDialog({
                                 Expires {valueText(item.expiration_date)}
                               </span>
                             ) : null}
+                            {item.coverage_summary ? (
+                              <span className="mt-0.5 block line-clamp-2 text-[10px] opacity-70">
+                                {valueText(item.coverage_summary)}
+                              </span>
+                            ) : null}
                           </span>
                         </button>
                       );
@@ -2987,8 +3980,10 @@ function RecordDetailDialog({
                         {titleCase(selectedDocument.file_type)} · Review{' '}
                         {titleCase(selectedDocument.review_status)} · Issuer{' '}
                         {valueText(selectedDocument.issuer)} · Document no.{' '}
-                        {valueText(selectedDocument.document_number)} · Expires{' '}
-                        {valueText(selectedDocument.expiration_date)}
+                        {valueText(selectedDocument.document_number)} · Effective{' '}
+                        {valueText(selectedDocument.effective_date)} · Expires{' '}
+                        {valueText(selectedDocument.expiration_date)} · Summary{' '}
+                        {valueText(selectedDocument.coverage_summary)}
                       </p>
                     </div>
                     <a
@@ -3020,7 +4015,7 @@ function RecordDetailDialog({
                 </h3>
                 <p className="mt-2 max-w-md text-xs leading-5 text-slate-500">
                   {selection.type === 'contract'
-                    ? 'This legacy register record has no digital file attached. Register an executed contract through Executed Intake and its verified PDF will open here as the source of truth.'
+                    ? 'This legacy register record has no digital file attached. Use Register executed contract from the Contract Register and its verified PDF will open here as the source of truth.'
                     : 'The status may come from a legacy register, but no digital file is attached. Upload the applicable W-9, insurance, registration, license, or risk-review evidence below.'}
                 </p>
               </div>
@@ -3030,6 +4025,7 @@ function RecordDetailDialog({
           {selection.type === 'supplier' && supplier ? (
             <SupplierDocumentUpload
               supplierId={String(supplier.id)}
+              supplierName={String(supplier.legal_name)}
               onUploaded={onRefresh}
             />
           ) : null}
@@ -3039,20 +4035,188 @@ function RecordDetailDialog({
   );
 }
 
+function storedReviewValue(value: unknown) {
+  if (typeof value !== 'string') return valueText(value);
+  try {
+    return valueText(JSON.parse(value));
+  } catch {
+    return valueText(value);
+  }
+}
+
+function AIReviewTrail({ items }: { items: Workspace['aiReviews'] }) {
+  const run = items[0];
+  const labelByField: Record<string, string> = {
+    ...Object.fromEntries(extractionFields),
+    supplierLegalName: 'Supplier legal name',
+    documentType: 'Document type',
+    issuer: 'Issuer / authority',
+    documentNumber: 'Document / policy number',
+    effectiveDate: 'Effective date',
+    expirationDate: 'Expiration date',
+    coverageSummary: 'Coverage / qualification summary',
+  };
+  const orderedItems = [...items].sort((a, b) => {
+    const order = [
+      ...extractionFields.map(([fieldName]) => fieldName),
+      'documentType',
+      'issuer',
+      'documentNumber',
+      'coverageSummary',
+    ];
+    return (
+      order.indexOf(String(a.field_name) as ExtractionFieldKey) -
+      order.indexOf(String(b.field_name) as ExtractionFieldKey)
+    );
+  });
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-[#bdd7e0] bg-[#f7fbfc]">
+      <div className="flex flex-col justify-between gap-3 border-b border-[#d6e4e9] px-5 py-4 sm:flex-row sm:items-center">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Sparkles className="size-4 text-[#287d9b]" />
+            <h3 className="text-sm font-semibold text-[#1b3442]">
+              {run.stage === 'supplier_document'
+                ? 'AI supplier-document audit trail'
+                : 'AI contract extraction audit trail'}
+            </h3>
+            <StatusBadge
+              tone={Number(run.correction_count ?? 0) ? 'amber' : 'green'}
+            >
+              {valueText(run.correction_count)} human corrections
+            </StatusBadge>
+          </div>
+          <p className="mt-1 text-[11px] text-slate-500">
+            {valueText(run.model)} · Playbook {valueText(run.prompt_version)} ·
+            Reviewed by {valueText(run.reviewed_by)} on{' '}
+            {valueText(run.reviewed_at)}
+          </p>
+        </div>
+        <StatusBadge tone="green">Human verified</StatusBadge>
+      </div>
+      <div className="overflow-x-auto">
+        <Table className="min-w-[900px]">
+          <TableHeader>
+            <TableRow className="bg-white">
+              <TableHead className="px-5">Field</TableHead>
+              <TableHead>AI original</TableHead>
+              <TableHead>Verified value</TableHead>
+              <TableHead>Decision</TableHead>
+              <TableHead>Confidence</TableHead>
+              <TableHead className="pr-5">Source</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {orderedItems.map((item) => (
+              <TableRow key={String(item.id)}>
+                <TableCell className="px-5 text-xs font-medium text-[#294454]">
+                  {labelByField[String(item.field_name)] ??
+                    titleCase(item.field_name)}
+                </TableCell>
+                <TableCell className="max-w-[190px] text-xs text-slate-500">
+                  {storedReviewValue(item.original_value_json)}
+                </TableCell>
+                <TableCell className="max-w-[190px] text-xs font-medium text-[#203845]">
+                  {storedReviewValue(item.verified_value_json)}
+                </TableCell>
+                <TableCell>
+                  <StatusBadge
+                    tone={
+                      item.review_status === 'corrected' ? 'amber' : 'green'
+                    }
+                  >
+                    {titleCase(item.review_status)}
+                  </StatusBadge>
+                </TableCell>
+                <TableCell className="text-xs">
+                  {Math.round(Number(item.confidence ?? 0) * 100)}%
+                </TableCell>
+                <TableCell className="max-w-[280px] pr-5 text-[10px] leading-4 text-slate-500">
+                  {item.source_page ? `Page ${item.source_page}` : 'No page'}
+                  {item.source_quote ? ` · “${item.source_quote}”` : ''}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </section>
+  );
+}
+
 function SupplierDocumentUpload({
   supplierId,
+  supplierName,
   onUploaded,
 }: {
   supplierId: string;
+  supplierName: string;
   onUploaded: () => Promise<void>;
 }) {
   const [documentType, setDocumentType] = useState('w9');
+  const [effectiveDate, setEffectiveDate] = useState('');
   const [expirationDate, setExpirationDate] = useState('');
   const [issuer, setIssuer] = useState('');
   const [documentNumber, setDocumentNumber] = useState('');
+  const [coverageSummary, setCoverageSummary] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [aiResult, setAiResult] =
+    useState<SupplierDocumentAnalysisResponse | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+
+  const analyze = async () => {
+    if (!file) return setMessage('Choose a PDF, PNG, or JPEG file.');
+    setAnalyzing(true);
+    setMessage('');
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('expectedDocumentType', documentType);
+      const response = await fetch('/api/analyze-supplier-document', {
+        method: 'POST',
+        body: form,
+      });
+      const body = (await response.json()) as SupplierDocumentAnalysisResponse & {
+        error?: string;
+      };
+      if (!response.ok)
+        throw new Error(body.error || 'Unable to analyze the supplier file.');
+      setAiResult(body);
+      const extractedType = body.analysis.documentType.value;
+      if (
+        typeof extractedType === 'string' &&
+        SUPPLIER_DOCUMENT_TYPES.includes(
+          extractedType as SupplierDocumentType,
+        )
+      )
+        setDocumentType(extractedType);
+      setIssuer(valueText(body.analysis.issuer.value).replace('Not found', ''));
+      setDocumentNumber(
+        valueText(body.analysis.documentNumber.value).replace('Not found', ''),
+      );
+      setEffectiveDate(
+        valueText(body.analysis.effectiveDate.value).replace('Not found', ''),
+      );
+      setExpirationDate(
+        valueText(body.analysis.expirationDate.value).replace('Not found', ''),
+      );
+      setCoverageSummary(
+        valueText(body.analysis.coverageSummary.value).replace('Not found', ''),
+      );
+      setMessage('AI suggestions loaded. Review the metadata before upload.');
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Unable to analyze the supplier file.',
+      );
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   const upload = async () => {
     if (!file) return setMessage('Choose a PDF, PNG, or JPEG file.');
@@ -3061,10 +4225,13 @@ function SupplierDocumentUpload({
     try {
       const form = new FormData();
       form.append('supplierId', supplierId);
+      form.append('analysisRunId', aiResult?.analysisRunId ?? '');
       form.append('documentType', documentType);
+      form.append('effectiveDate', effectiveDate);
       form.append('expirationDate', expirationDate);
       form.append('issuer', issuer);
       form.append('documentNumber', documentNumber);
+      form.append('coverageSummary', coverageSummary);
       form.append('file', file);
       const response = await fetch('/api/supplier-documents', {
         method: 'POST',
@@ -3075,9 +4242,12 @@ function SupplierDocumentUpload({
         throw new Error(body.error || 'Unable to upload the document.');
       setMessage('Document saved to the supplier record.');
       setFile(null);
+      setAiResult(null);
       setIssuer('');
       setDocumentNumber('');
+      setEffectiveDate('');
       setExpirationDate('');
+      setCoverageSummary('');
       await onUploaded();
     } catch (error) {
       setMessage(
@@ -3100,8 +4270,9 @@ function SupplierDocumentUpload({
       </div>
       <p className="mt-1 text-[11px] text-slate-500">
         Store tax, insurance, business registration, licensing, risk, safety,
-        diversity, and other qualification evidence. Upload creates a pending
-        human review record; it does not automatically approve the supplier.
+        diversity, and other qualification evidence. AI can extract the
+        metadata, but upload still creates a pending human-review record and
+        never approves the supplier automatically.
       </p>
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <select
@@ -3129,30 +4300,64 @@ function SupplierDocumentUpload({
         />
         <Input
           type="date"
+          value={effectiveDate}
+          onChange={(event) => setEffectiveDate(event.target.value)}
+          aria-label="Qualification document effective date"
+          className="h-9 bg-white text-xs"
+        />
+        <Input
+          type="date"
           value={expirationDate}
           onChange={(event) => setExpirationDate(event.target.value)}
           aria-label="Qualification document expiration date"
           className="h-9 bg-white text-xs"
         />
         <Input
+          value={coverageSummary}
+          onChange={(event) => setCoverageSummary(event.target.value)}
+          placeholder="Coverage / qualification summary"
+          className="h-9 bg-white text-xs md:col-span-2"
+        />
+        <Input
           type="file"
           accept="application/pdf,image/png,image/jpeg"
-          onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+          onChange={(event) => {
+            setFile(event.target.files?.[0] ?? null);
+            setAiResult(null);
+            setMessage('');
+          }}
           className="h-9 bg-white text-xs file:mr-3 file:border-0 file:bg-transparent"
         />
-        <Button
-          size="sm"
-          onClick={upload}
-          disabled={saving}
-          className="xl:col-start-4"
-        >
-          {saving ? <LoaderCircle className="animate-spin" /> : <Upload />}
-          Upload
-        </Button>
+        <div className="flex gap-2 xl:col-start-4 xl:justify-end">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={analyze}
+            disabled={!file || analyzing || saving}
+            className="bg-white"
+          >
+            {analyzing ? (
+              <LoaderCircle className="animate-spin" />
+            ) : (
+              <Sparkles />
+            )}
+            Analyze with AI
+          </Button>
+          <Button size="sm" onClick={upload} disabled={saving || analyzing}>
+            {saving ? <LoaderCircle className="animate-spin" /> : <Upload />}
+            Upload reviewed file
+          </Button>
+        </div>
       </div>
+      {aiResult ? (
+        <SupplierDocumentAIReview
+          result={aiResult}
+          supplierName={supplierName}
+        />
+      ) : null}
       {message ? (
         <p
-          className={`mt-2 text-[11px] ${message.startsWith('Document saved') ? 'text-emerald-700' : 'text-rose-600'}`}
+          className={`mt-2 text-[11px] ${message.startsWith('Document saved') || message.startsWith('AI suggestions') ? 'text-emerald-700' : 'text-rose-600'}`}
         >
           {message}
         </p>
@@ -3161,22 +4366,41 @@ function SupplierDocumentUpload({
   );
 }
 
-function AnalysisReview({
+function SupplierDocumentAIReview({
   result,
-  stage,
+  supplierName,
 }: {
-  result: AnalysisResponse;
-  stage: IntakeStage;
+  result: SupplierDocumentAnalysisResponse;
+  supplierName: string;
 }) {
+  const extractedName = valueText(result.analysis.supplierLegalName.value);
+  const supplierMatch =
+    extractedName !== 'Not found' &&
+    normalizeSupplierName(extractedName) === normalizeSupplierName(supplierName);
+  const fields: Array<[string, ExtractedField]> = [
+    ['Detected type', result.analysis.documentType],
+    ['Issuer', result.analysis.issuer],
+    ['Document number', result.analysis.documentNumber],
+    ['Effective date', result.analysis.effectiveDate],
+    ['Expiration date', result.analysis.expirationDate],
+    ['Coverage / qualification', result.analysis.coverageSummary],
+  ];
+
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="mt-4 rounded-xl border border-[#bdd7e0] bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-[#1b3442]">
-            Extracted fields
-          </h3>
-          <p className="mt-1 text-[11px] text-slate-500">
-            Verify every field against its source before saving.
+          <div className="flex flex-wrap items-center gap-2">
+            <Sparkles className="size-4 text-[#287d9b]" />
+            <h4 className="text-xs font-semibold text-[#203845]">
+              AI qualification-document extraction
+            </h4>
+            <StatusBadge tone={supplierMatch ? 'green' : 'rose'}>
+              {supplierMatch ? 'Supplier name matched' : 'Name needs review'}
+            </StatusBadge>
+          </div>
+          <p className="mt-1 text-[10px] text-slate-500">
+            File identifies {extractedName}; current record is {supplierName}.
           </p>
         </div>
         <Badge
@@ -3186,37 +4410,250 @@ function AnalysisReview({
           {result.model}
         </Badge>
       </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {fields.map(([label, field]) => (
+          <div
+            key={label}
+            className="rounded-lg border border-[#e0e7ea] bg-[#f8fafb] p-3"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                {label}
+              </span>
+              <FieldConfidence field={field} />
+            </div>
+            <p className="mt-1.5 text-[11px] font-medium text-[#294354]">
+              {valueText(field.value)}
+            </p>
+            <p className="mt-1 line-clamp-2 text-[9px] leading-4 text-slate-500">
+              {field.sourcePage ? `Page ${field.sourcePage}` : 'No page'}
+              {field.sourceQuote ? ` · “${field.sourceQuote}”` : ''}
+            </p>
+          </div>
+        ))}
+      </div>
+      {result.analysis.findings.length || result.analysis.warnings.length ? (
+        <div className="mt-3 space-y-2">
+          {result.analysis.findings.map((finding, index) => (
+            <div
+              key={`${finding.title}-${index}`}
+              className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-[10px] text-amber-900"
+            >
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                <strong>{finding.title}:</strong> {finding.detail}
+              </span>
+            </div>
+          ))}
+          {result.analysis.warnings.map((warning) => (
+            <div
+              key={warning}
+              className="flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-[10px] text-rose-800"
+            >
+              <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+              {warning}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <p className="mt-3 text-[10px] text-slate-500">
+        The editable fields above contain the AI suggestions. Review or correct
+        them before selecting “Upload reviewed file.”
+      </p>
+    </div>
+  );
+}
+
+function AnalysisReview({
+  result,
+  originalAnalysis,
+  stage,
+  fieldReviews,
+  onFieldChange,
+  onConfirmField,
+  onConfirmAll,
+}: {
+  result: AnalysisResponse;
+  originalAnalysis: ContractAnalysis | null;
+  stage: IntakeStage;
+  fieldReviews: Partial<Record<ExtractionFieldKey, FieldReviewStatus>>;
+  onFieldChange: (
+    fieldName: ExtractionFieldKey,
+    value: string | number | null,
+  ) => void;
+  onConfirmField: (fieldName: ExtractionFieldKey) => void;
+  onConfirmAll: () => void;
+}) {
+  const confirmedCount = extractionFields.filter(
+    ([fieldName]) =>
+      fieldReviews[fieldName] === 'accepted' ||
+      fieldReviews[fieldName] === 'corrected',
+  ).length;
+  const correctedCount = extractionFields.filter(
+    ([fieldName]) => fieldReviews[fieldName] === 'corrected',
+  ).length;
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl border border-[#bdd7e0] bg-[#f0f8fa] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-semibold text-[#1b3442]">
+                Human verification required
+              </h3>
+              <Badge
+                variant="outline"
+                className="border-sky-200 bg-white text-sky-800"
+              >
+                {result.model}
+              </Badge>
+            </div>
+            <p className="mt-1 text-[11px] text-slate-600">
+              Confirm or correct every AI-extracted field before database values
+              can change.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={onConfirmAll}
+            disabled={confirmedCount === extractionFields.length}
+            className="bg-white"
+          >
+            <Check /> Confirm all unchanged
+          </Button>
+        </div>
+        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white">
+          <div
+            className="h-full rounded-full bg-[#287d9b] transition-all"
+            style={{
+              width: `${(confirmedCount / extractionFields.length) * 100}%`,
+            }}
+          />
+        </div>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-600">
+          <span>
+            {confirmedCount} of {extractionFields.length} fields reviewed
+          </span>
+          <span>
+            {correctedCount
+              ? `${correctedCount} human correction${correctedCount === 1 ? '' : 's'} recorded`
+              : 'No corrections recorded yet'}
+          </span>
+        </div>
+      </div>
       <div className="grid gap-3 md:grid-cols-2">
         {extractionFields.map(([key, label]) => {
           const field = result.analysis[key] as ExtractedField;
+          const originalField = (originalAnalysis?.[key] ??
+            field) as ExtractedField;
+          const reviewStatus = fieldReviews[key] ?? 'pending';
+          const lowConfidence = field.confidence < 0.75;
+          const inputValue = field.value === null ? '' : String(field.value);
+          const updateValue = (rawValue: string) => {
+            if (key === 'contractValue' || key === 'noticeDays') {
+              onFieldChange(key, rawValue === '' ? null : Number(rawValue));
+              return;
+            }
+            onFieldChange(key, rawValue === '' ? null : rawValue);
+          };
           return (
             <div
               key={key}
-              className="rounded-lg border border-[#dce3e8] bg-white p-3"
+              className={`rounded-lg border bg-white p-3 ${reviewStatus === 'corrected' ? 'border-amber-300' : reviewStatus === 'accepted' ? 'border-emerald-200' : lowConfidence ? 'border-rose-300' : 'border-[#dce3e8]'}`}
             >
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
                   {label}
                 </span>
-                <FieldConfidence field={field} />
+                <div className="flex items-center gap-1.5">
+                  <FieldConfidence field={originalField} />
+                  <StatusBadge
+                    tone={
+                      reviewStatus === 'accepted'
+                        ? 'green'
+                        : reviewStatus === 'corrected'
+                          ? 'amber'
+                          : lowConfidence
+                            ? 'rose'
+                            : 'blue'
+                    }
+                  >
+                    {reviewStatus === 'pending'
+                      ? lowConfidence
+                        ? 'Needs review'
+                        : 'Pending'
+                      : titleCase(reviewStatus)}
+                  </StatusBadge>
+                </div>
               </div>
-              <p className="mt-2 text-sm font-medium text-[#203845]">
-                {key === 'contractValue' && typeof field.value === 'number'
-                  ? new Intl.NumberFormat('en-US', {
-                      style: 'currency',
-                      currency: 'USD',
-                      maximumFractionDigits: 0,
-                    }).format(field.value)
-                  : valueText(field.value)}
-              </p>
+              {key === 'renewalType' ? (
+                <select
+                  aria-label={label}
+                  value={inputValue}
+                  onChange={(event) => updateValue(event.target.value)}
+                  className="mt-2 h-9 w-full rounded-md border border-input bg-white px-3 text-xs font-medium text-[#203845]"
+                >
+                  <option value="">Not found</option>
+                  <option value="automatic">Automatic</option>
+                  <option value="optional">Optional</option>
+                  <option value="none">None</option>
+                </select>
+              ) : (
+                <Input
+                  aria-label={label}
+                  type={
+                    key === 'effectiveDate' || key === 'expirationDate'
+                      ? 'date'
+                      : key === 'contractValue' || key === 'noticeDays'
+                        ? 'number'
+                        : 'text'
+                  }
+                  min={
+                    key === 'contractValue' || key === 'noticeDays'
+                      ? '0'
+                      : undefined
+                  }
+                  step={key === 'contractValue' ? '0.01' : undefined}
+                  value={inputValue}
+                  onChange={(event) => updateValue(event.target.value)}
+                  placeholder="Not found in document"
+                  className="mt-2 h-9 bg-white text-xs font-medium text-[#203845]"
+                />
+              )}
+              {reviewStatus === 'corrected' ? (
+                <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
+                  AI original: {valueText(originalField.value)}
+                </p>
+              ) : null}
               <div className="mt-2 flex items-start gap-2 text-[10px] leading-4 text-slate-500">
                 <BookOpenCheck className="mt-0.5 size-3 shrink-0" />
                 <span>
-                  {field.sourcePage ? `Page ${field.sourcePage}` : 'No page'}
-                  {field.sourceQuote
-                    ? ` · “${field.sourceQuote}”`
+                  {originalField.sourcePage
+                    ? `Page ${originalField.sourcePage}`
+                    : 'No page'}
+                  {originalField.sourceQuote
+                    ? ` · “${originalField.sourceQuote}”`
                     : ' · No supporting quote found'}
                 </span>
+              </div>
+              <div className="mt-3 flex justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={reviewStatus === 'pending' ? 'default' : 'outline'}
+                  onClick={() => onConfirmField(key)}
+                  className="h-7 px-2.5 text-[10px]"
+                >
+                  <Check />
+                  {reviewStatus === 'pending'
+                    ? 'Confirm field'
+                    : reviewStatus === 'corrected'
+                      ? 'Correction recorded'
+                      : 'Confirmed'}
+                </Button>
               </div>
             </div>
           );

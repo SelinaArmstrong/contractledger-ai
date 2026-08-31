@@ -11,7 +11,22 @@ const fieldSchema = z.object({
   sourceQuote: z.string().nullable(),
 });
 
+const reviewFieldNames = [
+  'documentTitle',
+  'supplierLegalName',
+  'contractType',
+  'contractNumber',
+  'contractValue',
+  'effectiveDate',
+  'expirationDate',
+  'renewalType',
+  'noticeDays',
+  'governingLaw',
+  'paymentTerms',
+] as const;
+
 const saveSchema = z.object({
+  analysisRunId: z.string().min(1),
   stage: z.enum(['draft', 'executed']),
   document: z.object({
     fileName: z.string(),
@@ -51,6 +66,14 @@ const saveSchema = z.object({
     ),
     warnings: z.array(z.string()),
   }),
+  review: z.object({
+    fields: z.array(
+      z.object({
+        fieldName: z.enum(reviewFieldNames),
+        status: z.enum(['accepted', 'corrected']),
+      }),
+    ),
+  }),
 });
 
 function stringValue(field: z.infer<typeof fieldSchema>, fallback = '') {
@@ -74,6 +97,98 @@ function subtractDays(dateValue: string, days: number | null) {
   return date.toISOString().slice(0, 10);
 }
 
+type VerifiedAnalysisRun = {
+  id: string;
+  stage: 'draft' | 'executed';
+  supplier_id: string;
+  supplier_name: string;
+  intake_id: string | null;
+  contract_id: string | null;
+  file_name: string;
+  verified_result_json: string;
+  reviewed_at: string;
+};
+
+function buildTransactionComparisons(rows: VerifiedAnalysisRun[]) {
+  const fieldLabels = [
+    ['contractValue', 'Contract value'],
+    ['paymentTerms', 'Payment terms'],
+    ['governingLaw', 'Governing law'],
+    ['renewalType', 'Renewal type'],
+    ['noticeDays', 'Notice period'],
+    ['effectiveDate', 'Effective date'],
+    ['expirationDate', 'Expiration date'],
+    ['contractType', 'Contract type'],
+  ] as const;
+  const drafts = rows.filter((row) => row.stage === 'draft');
+  const usedDrafts = new Set<string>();
+  return rows
+    .filter((row) => row.stage === 'executed')
+    .flatMap((executed) => {
+      const draft = drafts.find(
+        (candidate) =>
+          candidate.supplier_id === executed.supplier_id &&
+          !usedDrafts.has(candidate.id),
+      );
+      if (!draft || !draft.intake_id || !executed.contract_id) return [];
+      try {
+        const draftAnalysis = JSON.parse(draft.verified_result_json) as Record<
+          string,
+          { value?: string | number | null } | unknown[]
+        >;
+        const executedAnalysis = JSON.parse(
+          executed.verified_result_json,
+        ) as Record<string, { value?: string | number | null } | unknown[]>;
+        usedDrafts.add(draft.id);
+        const valueFor = (
+          analysis: Record<
+            string,
+            { value?: string | number | null } | unknown[]
+          >,
+          fieldName: string,
+        ) => {
+          const field = analysis[fieldName];
+          return field && !Array.isArray(field) ? (field.value ?? null) : null;
+        };
+        const draftFindings = Array.isArray(draftAnalysis.findings)
+          ? draftAnalysis.findings.length
+          : 0;
+        const executedFindings = Array.isArray(executedAnalysis.findings)
+          ? executedAnalysis.findings.length
+          : 0;
+        return [
+          {
+            id: `${draft.id}:${executed.id}`,
+            supplierId: executed.supplier_id,
+            supplierName: executed.supplier_name,
+            intakeId: draft.intake_id,
+            contractId: executed.contract_id,
+            draftFileName: draft.file_name,
+            executedFileName: executed.file_name,
+            draftReviewedAt: draft.reviewed_at,
+            executedReviewedAt: executed.reviewed_at,
+            draftFindingCount: draftFindings,
+            executedFindingCount: executedFindings,
+            changes: fieldLabels.map(([fieldName, label]) => {
+              const draftValue = valueFor(draftAnalysis, fieldName);
+              const executedValue = valueFor(executedAnalysis, fieldName);
+              return {
+                fieldName,
+                label,
+                draftValue,
+                executedValue,
+                changed:
+                  JSON.stringify(draftValue) !== JSON.stringify(executedValue),
+              };
+            }),
+          },
+        ];
+      } catch {
+        return [];
+      }
+    });
+}
+
 export async function getWorkspace() {
   const db = env.DB;
   const [
@@ -82,6 +197,10 @@ export async function getWorkspace() {
     supplierRows,
     intakeRows,
     keyDateRows,
+    supplierAlertRows,
+    aiReviewRows,
+    aiComparisonRows,
+    evaluationRows,
     documentRows,
     auditRows,
   ] = await Promise.all([
@@ -129,11 +248,88 @@ export async function getWorkspace() {
       FROM contract_intakes i ORDER BY i.received_at DESC`)
       .all(),
     db
-      .prepare(`SELECT k.*, c.contract_number, s.legal_name AS supplier_name
+      .prepare(`SELECT k.*, c.contract_number, c.title AS contract_title,
+      c.expiration_date AS contract_expiration_date, c.status AS contract_status,
+      s.legal_name AS supplier_name
       FROM key_dates k
       LEFT JOIN contracts c ON c.id = k.contract_id
       LEFT JOIN suppliers s ON s.id = k.supplier_id
       ORDER BY CASE WHEN k.status = 'completed' THEN 1 ELSE 0 END, k.due_date`)
+      .all(),
+    db
+      .prepare(`SELECT * FROM (
+        SELECT 'document:' || d.id AS alert_id, 'document' AS source_type,
+          s.id AS supplier_id, s.vendor_number, s.legal_name AS supplier_name,
+          d.file_type AS item_type, d.file_name AS title,
+          d.expiration_date AS due_date,
+          COALESCE(d.review_status, 'pending') AS review_status,
+          d.id AS document_id, d.issuer, d.document_number
+        FROM documents d
+        JOIN suppliers s ON s.id = d.supplier_id
+        WHERE d.lifecycle_stage = 'supplier_record'
+          AND d.expiration_date IS NOT NULL
+        UNION ALL
+        SELECT 'insurance:' || s.id AS alert_id,
+          'supplier_register' AS source_type, s.id AS supplier_id,
+          s.vendor_number, s.legal_name AS supplier_name,
+          'insurance_certificate' AS item_type,
+          'Insurance certificate (register record)' AS title,
+          s.insurance_expiration AS due_date,
+          s.insurance_status AS review_status, NULL AS document_id,
+          NULL AS issuer, NULL AS document_number
+        FROM suppliers s
+        WHERE s.insurance_expiration IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM documents d
+            WHERE d.supplier_id = s.id
+              AND d.lifecycle_stage = 'supplier_record'
+              AND d.file_type = 'insurance_certificate'
+              AND d.expiration_date IS NOT NULL
+          )
+        UNION ALL
+        SELECT 'missing-w9:' || s.id AS alert_id,
+          'missing_record' AS source_type, s.id AS supplier_id,
+          s.vendor_number, s.legal_name AS supplier_name,
+          'w9' AS item_type, 'W-9 not on file' AS title,
+          NULL AS due_date, 'missing' AS review_status,
+          NULL AS document_id, NULL AS issuer, NULL AS document_number
+        FROM suppliers s WHERE s.w9_status = 'missing'
+        UNION ALL
+        SELECT 'missing-insurance:' || s.id AS alert_id,
+          'missing_record' AS source_type, s.id AS supplier_id,
+          s.vendor_number, s.legal_name AS supplier_name,
+          'insurance_certificate' AS item_type,
+          'Insurance certificate not on file' AS title,
+          NULL AS due_date, 'missing' AS review_status,
+          NULL AS document_id, NULL AS issuer, NULL AS document_number
+        FROM suppliers s WHERE s.insurance_status = 'missing'
+      ) supplier_alerts
+      ORDER BY CASE WHEN due_date IS NULL THEN 0 ELSE 1 END,
+        due_date, supplier_name`)
+      .all(),
+    db
+      .prepare(`SELECT f.*, r.stage, r.intake_id, r.contract_id,
+        r.supplier_id, r.document_id, r.file_name, r.model,
+        r.prompt_version, r.correction_count, r.status AS analysis_status,
+        r.reviewed_by, r.reviewed_at
+      FROM ai_field_reviews f
+      JOIN ai_analysis_runs r ON r.id = f.analysis_run_id
+      ORDER BY r.reviewed_at DESC, f.field_name`)
+      .all(),
+    db
+      .prepare(`SELECT r.id, r.stage, r.supplier_id, s.legal_name AS supplier_name,
+        r.intake_id, r.contract_id, r.file_name, r.verified_result_json,
+        r.reviewed_at
+      FROM ai_analysis_runs r
+      JOIN suppliers s ON s.id = r.supplier_id
+      WHERE r.status = 'verified'
+        AND r.stage IN ('draft', 'executed')
+        AND r.verified_result_json IS NOT NULL
+      ORDER BY r.reviewed_at DESC`)
+      .all<VerifiedAnalysisRun>(),
+    db
+      .prepare(`SELECT * FROM ai_evaluation_runs
+        ORDER BY created_at DESC LIMIT 20`)
       .all(),
     db.prepare(`SELECT * FROM documents ORDER BY uploaded_at DESC`).all(),
     db
@@ -147,6 +343,12 @@ export async function getWorkspace() {
     suppliers: supplierRows.results,
     intakes: intakeRows.results,
     keyDates: keyDateRows.results,
+    supplierAlerts: supplierAlertRows.results,
+    aiReviews: aiReviewRows.results,
+    transactionComparisons: buildTransactionComparisons(
+      aiComparisonRows.results,
+    ),
+    evaluationRuns: evaluationRows.results,
     documents: documentRows.results,
     auditLogs: auditRows.results,
   };
@@ -175,6 +377,49 @@ export async function POST(request: Request) {
     const input = saveSchema.parse(await request.json());
     const db = env.DB;
     const now = new Date().toISOString();
+    const submittedReviewFields = new Set(
+      input.review.fields.map((field) => field.fieldName),
+    );
+    if (submittedReviewFields.size !== reviewFieldNames.length) {
+      throw new Error(
+        'Confirm every extracted field before saving the reviewed record.',
+      );
+    }
+    const analysisRun = await db
+      .prepare(`SELECT id, stage, file_name, storage_key, model,
+        original_result_json, status
+      FROM ai_analysis_runs WHERE id = ? LIMIT 1`)
+      .bind(input.analysisRunId)
+      .first<{
+        id: string;
+        stage: string;
+        file_name: string;
+        storage_key: string;
+        model: string;
+        original_result_json: string;
+        status: string;
+      }>();
+    if (!analysisRun) throw new Error('The AI analysis record was not found.');
+    if (
+      analysisRun.stage !== input.stage ||
+      analysisRun.file_name !== input.document.fileName ||
+      analysisRun.storage_key !== input.document.storageKey
+    ) {
+      throw new Error('The reviewed values do not match the analyzed document.');
+    }
+    if (analysisRun.status !== 'pending_review') {
+      throw new Error('This AI analysis has already been saved.');
+    }
+    const originalAnalysis = saveSchema.shape.analysis.parse(
+      JSON.parse(analysisRun.original_result_json),
+    );
+    const correctionCount = reviewFieldNames.filter(
+      (fieldName) =>
+        JSON.stringify(originalAnalysis[fieldName].value) !==
+        JSON.stringify(input.analysis[fieldName].value),
+    ).length;
+    let registeredContract: { id: string; contractNumber: string } | null =
+      null;
     const supplierName = stringValue(
       input.analysis.supplierLegalName,
       'Supplier pending verification',
@@ -225,6 +470,59 @@ export async function POST(request: Request) {
     const valueCents = Math.round(
       numberValue(input.analysis.contractValue) * 100,
     );
+    const documentId = `doc-${crypto.randomUUID()}`;
+    const aiReviewStatements = ({
+      intakeId,
+      contractId,
+    }: {
+      intakeId: string | null;
+      contractId: string | null;
+    }) => [
+      db
+        .prepare(`UPDATE ai_analysis_runs SET intake_id = ?, contract_id = ?,
+          supplier_id = ?, document_id = ?, verified_result_json = ?,
+          correction_count = ?, status = 'verified', reviewed_by = ?,
+          reviewed_at = ? WHERE id = ?`)
+        .bind(
+          intakeId,
+          contractId,
+          supplier.id,
+          documentId,
+          JSON.stringify(input.analysis),
+          correctionCount,
+          'Selina Armstrong',
+          now,
+          input.analysisRunId,
+        ),
+      ...reviewFieldNames.map((fieldName) => {
+        const originalField = originalAnalysis[fieldName];
+        const verifiedField = input.analysis[fieldName];
+        const reviewStatus =
+          JSON.stringify(originalField.value) ===
+          JSON.stringify(verifiedField.value)
+            ? 'accepted'
+            : 'corrected';
+        return db
+          .prepare(`INSERT INTO ai_field_reviews
+            (id, analysis_run_id, field_name, original_value_json,
+             verified_value_json, confidence, source_page, source_quote,
+             review_status, reviewed_by, reviewed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .bind(
+            `aifield-${crypto.randomUUID()}`,
+            input.analysisRunId,
+            fieldName,
+            JSON.stringify(originalField.value),
+            JSON.stringify(verifiedField.value),
+            originalField.confidence,
+            originalField.sourcePage,
+            originalField.sourceQuote,
+            reviewStatus,
+            'Selina Armstrong',
+            now,
+          );
+      }),
+    ];
 
     if (input.stage === 'draft') {
       const count = await db
@@ -253,7 +551,7 @@ export async function POST(request: Request) {
           (id, supplier_id, intake_id, file_name, file_type, lifecycle_stage, storage_key, mime_type, page_count, ai_status, uploaded_at)
           VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?, 'needs_review', ?)`)
           .bind(
-            `doc-${crypto.randomUUID()}`,
+            documentId,
             supplier.id,
             id,
             input.document.fileName,
@@ -271,32 +569,30 @@ export async function POST(request: Request) {
             id,
             JSON.stringify({
               source: input.document.fileName,
-              model: 'deepseek-v4-flash',
+              model: analysisRun.model,
+              analysisRunId: input.analysisRunId,
+              correctionCount,
             }),
             now,
           ),
-      ]);
-
-      if (input.analysis.findings.length) {
-        await db.batch(
-          input.analysis.findings.map((finding) =>
-            db
-              .prepare(`INSERT INTO review_findings
+        ...aiReviewStatements({ intakeId: id, contractId: null }),
+        ...input.analysis.findings.map((finding) =>
+          db
+            .prepare(`INSERT INTO review_findings
               (id, intake_id, field, rule_name, standard_text, observed_text, severity, source_page, status)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open')`)
-              .bind(
-                `finding-${crypto.randomUUID()}`,
-                id,
-                finding.rule.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-                finding.rule,
-                finding.standard,
-                finding.observed,
-                finding.severity,
-                finding.sourcePage,
-              ),
-          ),
-        );
-      }
+            .bind(
+              `finding-${crypto.randomUUID()}`,
+              id,
+              finding.rule.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+              finding.rule,
+              finding.standard,
+              finding.observed,
+              finding.severity,
+              finding.sourcePage,
+            ),
+        ),
+      ]);
     } else {
       const count = await db
         .prepare('SELECT COUNT(*) AS count FROM contracts')
@@ -315,6 +611,25 @@ export async function POST(request: Request) {
         Math.round(numberValue(input.analysis.noticeDays)) || null;
       const renewalType = stringValue(input.analysis.renewalType, 'none');
       const noticeDeadline = subtractDays(expirationDate ?? '', noticeDays);
+      const extractedDates = input.analysis.keyDates.filter(
+        (item) => item.dueDate,
+      );
+      if (
+        noticeDeadline &&
+        !extractedDates.some(
+          (item) =>
+            item.type === 'non_renewal_notice' &&
+            item.dueDate === noticeDeadline,
+        )
+      ) {
+        extractedDates.unshift({
+          type: 'non_renewal_notice',
+          title: 'Non-renewal notice deadline',
+          dueDate: noticeDeadline,
+          sourcePage: input.analysis.noticeDays.sourcePage,
+          sourceQuote: input.analysis.noticeDays.sourceQuote,
+        });
+      }
 
       await db.batch([
         db
@@ -345,7 +660,7 @@ export async function POST(request: Request) {
           (id, supplier_id, contract_id, file_name, file_type, lifecycle_stage, storage_key, mime_type, page_count, ai_status, uploaded_at)
           VALUES (?, ?, ?, ?, ?, 'executed', ?, ?, ?, 'verified', ?)`)
           .bind(
-            `doc-${crypto.randomUUID()}`,
+            documentId,
             supplier.id,
             id,
             input.document.fileName,
@@ -363,49 +678,40 @@ export async function POST(request: Request) {
             id,
             JSON.stringify({
               source: input.document.fileName,
-              model: 'deepseek-v4-flash',
+              model: analysisRun.model,
+              analysisRunId: input.analysisRunId,
+              correctionCount,
             }),
             now,
           ),
-      ]);
-
-      const extractedDates = input.analysis.keyDates.filter(
-        (item) => item.dueDate,
-      );
-      if (noticeDeadline) {
-        extractedDates.unshift({
-          type: 'non_renewal_notice',
-          title: 'Non-renewal notice deadline',
-          dueDate: noticeDeadline,
-          sourcePage: input.analysis.noticeDays.sourcePage,
-          sourceQuote: input.analysis.noticeDays.sourceQuote,
-        });
-      }
-      if (extractedDates.length) {
-        await db.batch(
-          extractedDates.map((item) =>
-            db
-              .prepare(`INSERT INTO key_dates
+        ...aiReviewStatements({ intakeId: null, contractId: id }),
+        ...extractedDates.map((item) =>
+          db
+            .prepare(`INSERT INTO key_dates
               (id, contract_id, supplier_id, type, title, due_date, status, owner, decision, source_clause, source_page)
               VALUES (?, ?, ?, ?, ?, ?, 'upcoming', 'Selina Armstrong', ?, ?, ?)`)
-              .bind(
-                `date-${crypto.randomUUID()}`,
-                id,
-                supplier.id,
-                item.type,
-                item.title,
-                item.dueDate,
-                item.type === 'non_renewal_notice' ? 'under_review' : null,
-                item.sourceQuote,
-                item.sourcePage,
-              ),
-          ),
-        );
-      }
+            .bind(
+              `date-${crypto.randomUUID()}`,
+              id,
+              supplier.id,
+              item.type,
+              item.title,
+              item.dueDate,
+              item.type === 'non_renewal_notice' ? 'under_review' : null,
+              item.sourceQuote,
+              item.sourcePage,
+            ),
+        ),
+      ]);
+      registeredContract = { id, contractNumber };
     }
 
     await db.prepare('PRAGMA optimize').run();
-    return Response.json({ saved: true, workspace: await getWorkspace() });
+    return Response.json({
+      saved: true,
+      registeredContract,
+      workspace: await getWorkspace(),
+    });
   } catch (error) {
     return Response.json(
       {

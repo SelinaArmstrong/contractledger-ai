@@ -1,6 +1,7 @@
 import {
   index,
   integer,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -157,7 +158,9 @@ export const documents = sqliteTable(
     pageCount: integer('page_count'),
     issuer: text('issuer'),
     documentNumber: text('document_number'),
+    effectiveDate: text('effective_date'),
     expirationDate: text('expiration_date'),
+    coverageSummary: text('coverage_summary'),
     reviewStatus: text('review_status', {
       enum: ['pending', 'approved', 'rejected', 'expired', 'not_applicable'],
     }),
@@ -241,6 +244,82 @@ export const reviewFindings = sqliteTable(
       .default('open'),
   },
   (table) => [index('idx_review_findings_intake_id').on(table.intakeId)],
+);
+
+export const aiAnalysisRuns = sqliteTable(
+  'ai_analysis_runs',
+  {
+    id: text('id').primaryKey(),
+    stage: text('stage', {
+      enum: ['draft', 'executed', 'supplier_document'],
+    }).notNull(),
+    intakeId: text('intake_id').references(() => contractIntakes.id),
+    contractId: text('contract_id').references(() => contracts.id),
+    supplierId: text('supplier_id').references(() => suppliers.id),
+    documentId: text('document_id').references(() => documents.id),
+    fileName: text('file_name').notNull(),
+    storageKey: text('storage_key').notNull(),
+    model: text('model').notNull(),
+    promptVersion: text('prompt_version').notNull(),
+    originalResultJson: text('original_result_json').notNull(),
+    verifiedResultJson: text('verified_result_json'),
+    correctionCount: integer('correction_count').notNull().default(0),
+    status: text('status', {
+      enum: ['pending_review', 'verified'],
+    })
+      .notNull()
+      .default('pending_review'),
+    reviewedBy: text('reviewed_by'),
+    reviewedAt: text('reviewed_at'),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('idx_ai_analysis_runs_contract_id').on(table.contractId),
+    index('idx_ai_analysis_runs_intake_id').on(table.intakeId),
+    index('idx_ai_analysis_runs_supplier_id').on(table.supplierId),
+  ],
+);
+
+export const aiFieldReviews = sqliteTable(
+  'ai_field_reviews',
+  {
+    id: text('id').primaryKey(),
+    analysisRunId: text('analysis_run_id')
+      .notNull()
+      .references(() => aiAnalysisRuns.id),
+    fieldName: text('field_name').notNull(),
+    originalValueJson: text('original_value_json').notNull(),
+    verifiedValueJson: text('verified_value_json').notNull(),
+    confidence: real('confidence').notNull(),
+    sourcePage: integer('source_page'),
+    sourceQuote: text('source_quote'),
+    reviewStatus: text('review_status', {
+      enum: ['accepted', 'corrected'],
+    }).notNull(),
+    reviewedBy: text('reviewed_by').notNull(),
+    reviewedAt: text('reviewed_at').notNull(),
+  },
+  (table) => [
+    index('idx_ai_field_reviews_analysis_run_id').on(table.analysisRunId),
+  ],
+);
+
+export const aiEvaluationRuns = sqliteTable(
+  'ai_evaluation_runs',
+  {
+    id: text('id').primaryKey(),
+    model: text('model').notNull(),
+    caseCount: integer('case_count').notNull(),
+    totalFields: integer('total_fields').notNull(),
+    correctFields: integer('correct_fields').notNull(),
+    sourceBackedFields: integer('source_backed_fields').notNull(),
+    accuracyPercent: real('accuracy_percent').notNull(),
+    sourceCoveragePercent: real('source_coverage_percent').notNull(),
+    averageConfidence: real('average_confidence').notNull(),
+    detailsJson: text('details_json').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [index('idx_ai_evaluation_runs_created_at').on(table.createdAt)],
 );
 
 export const auditLogs = sqliteTable(

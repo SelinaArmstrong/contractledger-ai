@@ -1,25 +1,32 @@
 # ContractLedger AI
 
-ContractLedger AI is a focused contract-administration portfolio application. It automates the two manual registers that were recurring pain points in the creator's prior work: the official contract register and the supplier register. It also demonstrates a controlled AI workflow for draft review, executed-contract intake, key obligations, renewals, data-quality checks, and Excel handoff.
+ContractLedger AI is a focused AI-assisted contract-administration portfolio application. It converts unstructured contract and supplier-qualification documents into human-verified register data, traceable playbook findings, compliance alerts, and auditable decisions. It addresses two recurring pain points from the creator's prior work: manual contract-register entry and manual supplier-register maintenance.
 
 This is intentionally **not** a full contract lifecycle management (CLM) platform. It does not attempt negotiation, e-signature, approval routing, enterprise identity, or every legal workflow.
 
 ## Workflow boundary
 
-1. **Draft review (pre-execution):** upload a draft PDF; DeepSeek extracts traceable fields and compares selected terms with a fictional U.S. company playbook. Saving creates an intake record and may create a `Pending` supplier. It never adds contract value to the official register.
-2. **Executed intake (post-execution):** upload a signed PDF; DeepSeek extracts the executed terms for human verification. Saving updates the official contract register, activates or matches the supplier, and creates obligation and renewal dates.
-3. **Registers and alerts:** search contracts and suppliers, review upcoming notice dates, resolve low-confidence fields, and export the latest registers in one Excel workbook.
+1. **Draft review (pre-execution):** upload a draft PDF; DeepSeek extracts traceable fields and compares selected terms with a versioned fictional U.S. company playbook.
+2. **Human verification:** every extracted field can be corrected and must be confirmed before saving. The system preserves the AI original value, verified value, confidence, source page, source quote, reviewer, and review time.
+3. **Executed registration (post-execution):** upload a signed PDF from the Contract Register. Saving the reviewed values updates the official contract register, activates or matches the supplier, and creates obligation and renewal dates.
+4. **Supplier-document intelligence:** analyze W-9s, insurance certificates, business licenses, registrations, and other qualification evidence. AI suggests the document type, supplier name, issuer, number, dates, and coverage/qualification summary before human-reviewed upload.
+5. **Dynamic draft-to-executed comparison:** after both stages are verified for the same supplier, the dashboard calculates actual changes from the saved analyses instead of displaying a hard-coded comparison.
+6. **Registers and alerts:** search and filter contracts and suppliers, review separate contract and supplier-compliance alerts, manage renewal decisions, and export the latest database state.
+7. **AI evaluation:** run three locked fictional documents against fixed ground truth. The app calculates field accuracy, source coverage, and average confidence from live model output without adding evaluation files to operational registers.
 
 The fictional policy checks are operational review prompts, not legal advice. AI output must be verified against the source document before saving.
 
 ## Interview demo
 
 - Start on **Portfolio Dashboard** and explain that only executed contracts count toward the official value.
-- Use the **Fictional transaction — negotiation outcome** table to explain how the same supplier and project changed from the proposed draft to the signed source of truth.
-- Open **Draft Review**, choose **Use demo PDF**, then run **Analyze with DeepSeek**. Point out source quotes, confidence indicators, and playbook deviations.
-- Save the verified draft and show that the supplier is `Pending` while the official contract total is unchanged.
-- Open **Executed Intake**, load the executed demo, analyze, verify, and save. Show the new official contract, active supplier, and calculated renewal-notice deadline.
-- Use **Export Latest Registers** to download an `.xlsx` workbook containing Contract Register, Supplier Register, and Data Quality Exceptions sheets.
+- Open **New Contract Review**, choose **Use demo PDF**, and run **Analyze with DeepSeek**. Correct or confirm every extracted field; point out confidence, source page, source quote, and playbook differences.
+- Save the reviewed draft and show that the supplier is `Pending` while the official contract total is unchanged.
+- Open **Contract Register**, select **Register executed contract**, analyze the signed demo, confirm the extracted values, and save. Show the new official contract, active supplier, renewal deadline, and AI audit trail in contract details.
+- Return to the Dashboard and show the newly generated **AI draft-to-executed comparison**.
+- Open **Supplier Register**, select a supplier, upload the demo insurance certificate, and choose **Analyze with AI**. Explain supplier-name matching and human-reviewed metadata.
+- Open **Alerts & Exports** to show separate contract and supplier-compliance warnings.
+- Open **AI Evaluation** to show the saved accuracy and source-traceability evidence, then rerun it if time allows.
+- Generate the current `.xlsx` handoff package from the live database.
 
 The two sample agreements form one realistic, fictional U.S. transaction: a ten-page draft and a thirteen-page executed version for the same supplier and project. The signed version reflects negotiated changes to payment, governing law, insurance, liability, intellectual property, subcontracting, data security, change control, and termination rights. All seeded organizations are fictional and safe to use in an interview demonstration.
 
@@ -48,7 +55,7 @@ npm run build
 
 ## Architecture and data handling
 
-- Vinext/React interface deployed on OpenAI Sites
+- Vinext/React interface running locally for the interview demo
 - Cloudflare D1 database for registers, findings, dates, and audit events
 - Cloudflare R2 storage for uploaded documents
 - DeepSeek Responses API with a strict JSON schema for extraction and review
@@ -58,7 +65,9 @@ The API key is server-side only. Uploaded document text is treated as untrusted 
 
 ## Source structure
 
-- `app/api/analyze/route.ts` — PDF extraction and DeepSeek analysis
+- `app/api/analyze/route.ts` — contract PDF extraction and DeepSeek analysis
+- `app/api/analyze-supplier-document/route.ts` — supplier PDF/image extraction and qualification review
+- `app/api/evaluations/route.ts` and `lib/ai-evaluation.ts` — locked ground truth and persisted AI evaluation evidence
 - `app/api/workspace/route.ts` — stage-aware save workflow
 - `db/schema.ts` and `db/bootstrap.ts` — D1 schema and fictional seed data
 - `components/contract-ledger-app.tsx` — interview-ready application interface

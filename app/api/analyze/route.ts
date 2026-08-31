@@ -2,9 +2,12 @@ import { extractText, getDocumentProxy } from 'unpdf';
 import { z } from 'zod';
 import { env } from 'cloudflare:workers';
 
+import { ensureWorkspaceDatabase } from '@/db/bootstrap';
+
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_PAGES = 40;
 const MAX_TEXT_CHARS = 80_000;
+const PROMPT_VERSION = 'us-contract-playbook-2026.1';
 
 const extractedFieldSchema = z.object({
   value: z.union([z.string(), z.number(), z.null()]),
@@ -167,6 +170,7 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const file = form.get('file');
     const rawStage = form.get('stage');
+    const evaluationOnly = form.get('purpose') === 'evaluation';
     const stage = rawStage === 'executed' ? 'executed' : 'draft';
 
     if (!(file instanceof File)) {
@@ -239,13 +243,48 @@ export async function POST(request: Request) {
         sourcePage: validated.renewalType.sourcePage,
       });
     }
+    const model = result.model ?? 'deepseek-v4-flash';
+    if (evaluationOnly)
+      return Response.json({
+        analysisRunId: 'evaluation-only',
+        analysis: validated,
+        document: {
+          fileName: file.name,
+          totalPages: extracted.totalPages,
+          stage,
+          storageKey: 'evaluation-only',
+          mimeType: file.type || 'application/octet-stream',
+        },
+        model,
+      });
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 160);
     const storageKey = `uploads/${stage}/${crypto.randomUUID()}-${safeName}`;
+    const analysisRunId = `airun-${crypto.randomUUID()}`;
     await env.FILES.put(storageKey, await file.arrayBuffer(), {
       httpMetadata: { contentType: file.type || 'application/octet-stream' },
       customMetadata: { lifecycleStage: stage },
     });
+    try {
+      await ensureWorkspaceDatabase();
+      await env.DB.prepare(`INSERT INTO ai_analysis_runs
+        (id, stage, file_name, storage_key, model, prompt_version,
+         original_result_json, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_review', ?)`).bind(
+        analysisRunId,
+        stage,
+        file.name,
+        storageKey,
+        model,
+        PROMPT_VERSION,
+        JSON.stringify(validated),
+        new Date().toISOString(),
+      ).run();
+    } catch (error) {
+      await env.FILES.delete(storageKey);
+      throw error;
+    }
     return Response.json({
+      analysisRunId,
       analysis: validated,
       document: {
         fileName: file.name,
@@ -254,7 +293,7 @@ export async function POST(request: Request) {
         storageKey,
         mimeType: file.type || 'application/octet-stream',
       },
-      model: result.model ?? 'deepseek-v4-flash',
+      model,
     });
   } catch (error) {
     const message = error instanceof z.ZodError
