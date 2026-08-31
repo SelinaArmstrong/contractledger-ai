@@ -182,6 +182,17 @@ const schemaStatements = [
     details_json TEXT NOT NULL,
     created_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS management_insight_runs (
+    id TEXT PRIMARY KEY NOT NULL,
+    scope TEXT NOT NULL,
+    record_ids_json TEXT NOT NULL,
+    metrics_json TEXT NOT NULL,
+    attention_json TEXT NOT NULL,
+    model TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+    response_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS audit_logs (
     id TEXT PRIMARY KEY NOT NULL,
     entity_type TEXT NOT NULL,
@@ -213,6 +224,7 @@ const schemaStatements = [
   'CREATE INDEX IF NOT EXISTS idx_ai_analysis_runs_supplier_id ON ai_analysis_runs(supplier_id)',
   'CREATE INDEX IF NOT EXISTS idx_ai_field_reviews_analysis_run_id ON ai_field_reviews(analysis_run_id)',
   'CREATE INDEX IF NOT EXISTS idx_ai_evaluation_runs_created_at ON ai_evaluation_runs(created_at)',
+  'CREATE INDEX IF NOT EXISTS idx_management_insight_runs_scope_created_at ON management_insight_runs(scope, created_at)',
   'CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id)',
 ];
 

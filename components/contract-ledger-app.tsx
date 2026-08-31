@@ -40,10 +40,17 @@ import {
   Upload,
   Users,
 } from 'lucide-react';
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart';
 import {
   Dialog,
   DialogContent,
@@ -53,6 +60,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import {
   Table,
   TableBody,
@@ -70,6 +84,13 @@ import type {
 } from '@/lib/contract-ledger-types';
 import { AI_EVALUATION_CASES } from '@/lib/ai-evaluation';
 import { exportCurrentRegisters } from '@/lib/export-registers';
+import type {
+  ManagementChart,
+  ManagementInsightResponse,
+  ManagementInsightScope,
+  ManagementMetric,
+  ManagementPriority,
+} from '@/lib/management-insights';
 import {
   SUPPLIER_DOCUMENT_LABELS,
   SUPPLIER_DOCUMENT_TYPES,
@@ -242,7 +263,9 @@ function alertTiming(value: unknown) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value))
     return null;
   const dueDate = Date.parse(`${value}T00:00:00Z`);
-  const today = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+  const today = Date.parse(
+    `${new Date().toISOString().slice(0, 10)}T00:00:00Z`,
+  );
   if (Number.isNaN(dueDate)) return null;
   const days = Math.round((dueDate - today) / 86_400_000);
   if (days < 0)
@@ -523,7 +546,8 @@ export function ContractLedgerApp() {
   };
 
   const pendingReviewCount = extractionFields.filter(
-    ([fieldName]) => !fieldReviews[fieldName] || fieldReviews[fieldName] === 'pending',
+    ([fieldName]) =>
+      !fieldReviews[fieldName] || fieldReviews[fieldName] === 'pending',
   ).length;
 
   const saveVerifiedRecord = async () => {
@@ -855,6 +879,7 @@ export function ContractLedgerApp() {
           {activeView === 'Contract Register' ? (
             <ContractRegisterView
               contracts={filteredContracts}
+              allContracts={workspace?.contracts ?? []}
               recentContracts={workspace?.contracts.slice(0, 5) ?? []}
               search={search}
               onSearch={setSearch}
@@ -862,15 +887,18 @@ export function ContractLedgerApp() {
               onExport={exportRegisters}
               exporting={exporting}
               onSelect={(id) => setDetail({ type: 'contract', id })}
+              onOpenAlerts={() => setActiveView('Alerts & Exports')}
             />
           ) : null}
           {activeView === 'Supplier Register' ? (
             <SupplierRegisterView
               suppliers={filteredSuppliers}
+              allSuppliers={workspace?.suppliers ?? []}
               search={search}
               onSearch={setSearch}
               onSelect={(id) => setDetail({ type: 'supplier', id })}
               onAdd={() => setSupplierDialogOpen(true)}
+              onOpenAlerts={() => setActiveView('Alerts & Exports')}
             />
           ) : null}
           {activeView === 'Alerts & Exports' ? (
@@ -879,12 +907,8 @@ export function ContractLedgerApp() {
               onExport={exportRegisters}
               exporting={exporting}
               onRefresh={loadWorkspace}
-              onSelectContract={(id) =>
-                setDetail({ type: 'contract', id })
-              }
-              onSelectSupplier={(id) =>
-                setDetail({ type: 'supplier', id })
-              }
+              onSelectContract={(id) => setDetail({ type: 'contract', id })}
+              onSelectSupplier={(id) => setDetail({ type: 'supplier', id })}
             />
           ) : null}
           {activeView === 'AI Evaluation' ? (
@@ -1364,10 +1388,7 @@ function DemoTransactionComparison({
 }: {
   comparison?: Workspace['transactionComparisons'][number];
 }) {
-  const displayValue = (
-    fieldName: string,
-    value: string | number | null,
-  ) => {
+  const displayValue = (fieldName: string, value: string | number | null) => {
     if (value === null || value === '') return 'Not found';
     if (fieldName === 'contractValue')
       return new Intl.NumberFormat('en-US', {
@@ -1624,6 +1645,7 @@ function DateFilter({
 
 function ContractRegisterView({
   contracts,
+  allContracts,
   recentContracts,
   search,
   onSearch,
@@ -1631,8 +1653,10 @@ function ContractRegisterView({
   onExport,
   exporting,
   onSelect,
+  onOpenAlerts,
 }: {
   contracts: Workspace['contracts'];
+  allContracts: Workspace['contracts'];
   recentContracts: Workspace['contracts'];
   search: string;
   onSearch: (value: string) => void;
@@ -1640,7 +1664,9 @@ function ContractRegisterView({
   onExport: () => void;
   exporting: boolean;
   onSelect: (id: string) => void;
+  onOpenAlerts: () => void;
 }) {
+  const [insightsOpen, setInsightsOpen] = useState(false);
   const [typeFilter, setTypeFilter] = useState('all');
   const [supplierFilter, setSupplierFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
@@ -1723,6 +1749,15 @@ function ContractRegisterView({
                 <FileSpreadsheet />
               )}
               Export workbook
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setInsightsOpen(true)}
+              disabled={!visibleContracts.length}
+              className="border-[#9bc6d5] bg-[#edf8fb] text-[#1d657f] hover:bg-[#e1f2f7]"
+            >
+              <Sparkles />
+              AI management insights
             </Button>
           </div>
         }
@@ -1985,6 +2020,15 @@ function ContractRegisterView({
           ))}
         </div>
       </details>
+      <ManagementInsightsSheet
+        open={insightsOpen}
+        onOpenChange={setInsightsOpen}
+        scope="contracts"
+        currentRecordIds={visibleContracts.map((item) => String(item.id))}
+        allRecordIds={allContracts.map((item) => String(item.id))}
+        onSelectRecord={onSelect}
+        onOpenAlerts={onOpenAlerts}
+      />
     </>
   );
 }
@@ -2069,9 +2113,10 @@ function SupplierOnboardingDialog({
         method: 'POST',
         body: form,
       });
-      const body = (await response.json()) as SupplierDocumentAnalysisResponse & {
-        error?: string;
-      };
+      const body =
+        (await response.json()) as SupplierDocumentAnalysisResponse & {
+          error?: string;
+        };
       if (!response.ok)
         throw new Error(body.error || 'Unable to analyze this supplier file.');
       const extractedType = body.analysis.documentType.value;
@@ -2089,18 +2134,22 @@ function SupplierOnboardingDialog({
             ? (extractedType as SupplierDocumentType)
             : document.documentType,
         issuer: valueText(body.analysis.issuer.value).replace('Not found', ''),
-        documentNumber: valueText(
-          body.analysis.documentNumber.value,
-        ).replace('Not found', ''),
-        effectiveDate: valueText(
-          body.analysis.effectiveDate.value,
-        ).replace('Not found', ''),
-        expirationDate: valueText(
-          body.analysis.expirationDate.value,
-        ).replace('Not found', ''),
-        coverageSummary: valueText(
-          body.analysis.coverageSummary.value,
-        ).replace('Not found', ''),
+        documentNumber: valueText(body.analysis.documentNumber.value).replace(
+          'Not found',
+          '',
+        ),
+        effectiveDate: valueText(body.analysis.effectiveDate.value).replace(
+          'Not found',
+          '',
+        ),
+        expirationDate: valueText(body.analysis.expirationDate.value).replace(
+          'Not found',
+          '',
+        ),
+        coverageSummary: valueText(body.analysis.coverageSummary.value).replace(
+          'Not found',
+          '',
+        ),
       });
       if (!supplier.legalName.trim() && extractedName)
         updateSupplier('legalName', extractedName);
@@ -2581,17 +2630,22 @@ function SupplierOnboardingDialog({
 
 function SupplierRegisterView({
   suppliers,
+  allSuppliers,
   search,
   onSearch,
   onSelect,
   onAdd,
+  onOpenAlerts,
 }: {
   suppliers: Workspace['suppliers'];
+  allSuppliers: Workspace['suppliers'];
   search: string;
   onSearch: (value: string) => void;
   onSelect: (id: string) => void;
   onAdd: () => void;
+  onOpenAlerts: () => void;
 }) {
+  const [insightsOpen, setInsightsOpen] = useState(false);
   const [relationshipFilter, setRelationshipFilter] = useState('all');
   const [supplierStatusFilter, setSupplierStatusFilter] = useState('all');
   const [qualificationFilter, setQualificationFilter] = useState('all');
@@ -2666,10 +2720,21 @@ function SupplierRegisterView({
         title="Supplier register"
         description="Every supplier relationship is retained from onboarding through pre-contract review and executed work. A supplier does not need an active contract to appear here."
         action={
-          <Button onClick={onAdd} className="bg-[#1d718f] hover:bg-[#185f78]">
-            <Plus />
-            Add supplier
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={onAdd} className="bg-[#1d718f] hover:bg-[#185f78]">
+              <Plus />
+              Add supplier
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setInsightsOpen(true)}
+              disabled={!visibleSuppliers.length}
+              className="border-[#9bc6d5] bg-[#edf8fb] text-[#1d657f] hover:bg-[#e1f2f7]"
+            >
+              <Sparkles />
+              AI management insights
+            </Button>
+          </div>
         }
       />
       <Panel className="overflow-hidden">
@@ -2958,7 +3023,467 @@ function SupplierRegisterView({
           </Table>
         </div>
       </Panel>
+      <ManagementInsightsSheet
+        open={insightsOpen}
+        onOpenChange={setInsightsOpen}
+        scope="suppliers"
+        currentRecordIds={visibleSuppliers.map((item) => String(item.id))}
+        allRecordIds={allSuppliers.map((item) => String(item.id))}
+        onSelectRecord={onSelect}
+        onOpenAlerts={onOpenAlerts}
+      />
     </>
+  );
+}
+
+const managementChartConfig = {
+  value: {
+    label: 'Value',
+    color: '#2c7f9b',
+  },
+} satisfies ChartConfig;
+
+function managementMetricValue(metric: ManagementMetric) {
+  if (metric.format === 'currency') return moneyFromCents(metric.value, true);
+  if (metric.format === 'percent') return `${metric.value}%`;
+  return new Intl.NumberFormat('en-US').format(metric.value);
+}
+
+function priorityClasses(priority: ManagementPriority) {
+  if (priority === 'high') return 'border-rose-200 bg-rose-50 text-rose-800';
+  if (priority === 'medium')
+    return 'border-amber-200 bg-amber-50 text-amber-800';
+  return 'border-sky-200 bg-sky-50 text-sky-800';
+}
+
+function ManagementChartCard({ chart }: { chart: ManagementChart }) {
+  const data = chart.data.map((item) => ({
+    ...item,
+    value: chart.valueFormat === 'currency' ? item.value / 100 : item.value,
+  }));
+  return (
+    <article className="rounded-xl border border-[#dce3e8] bg-white p-4">
+      <h3 className="text-xs font-semibold text-[#203845]">{chart.title}</h3>
+      <p className="mt-1 text-[10px] leading-4 text-slate-500">
+        {chart.description}
+      </p>
+      {data.length ? (
+        <ChartContainer
+          config={managementChartConfig}
+          className="mt-3 h-[220px] w-full aspect-auto"
+          initialDimension={{ width: 480, height: 220 }}
+        >
+          <BarChart
+            accessibilityLayer
+            data={data}
+            layout="vertical"
+            margin={{ left: 0, right: 18, top: 4, bottom: 4 }}
+          >
+            <CartesianGrid horizontal={false} strokeDasharray="3 3" />
+            <XAxis
+              type="number"
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={(value) =>
+                chart.valueFormat === 'currency'
+                  ? new Intl.NumberFormat('en-US', {
+                      style: 'currency',
+                      currency: 'USD',
+                      notation: 'compact',
+                      maximumFractionDigits: 1,
+                    }).format(Number(value))
+                  : String(value)
+              }
+            />
+            <YAxis
+              type="category"
+              dataKey="label"
+              tickLine={false}
+              axisLine={false}
+              width={126}
+              tick={{ fontSize: 10 }}
+            />
+            <ChartTooltip
+              cursor={{ fill: '#edf4f6' }}
+              content={<ChartTooltipContent hideLabel />}
+            />
+            <Bar
+              dataKey="value"
+              fill="var(--color-value)"
+              radius={[0, 4, 4, 0]}
+              maxBarSize={28}
+            />
+          </BarChart>
+        </ChartContainer>
+      ) : (
+        <div className="mt-3 flex h-[220px] items-center justify-center rounded-lg bg-[#f8fafb] text-xs text-slate-500">
+          No dated records are available for this chart.
+        </div>
+      )}
+    </article>
+  );
+}
+
+function ManagementInsightsSheet({
+  open,
+  onOpenChange,
+  scope,
+  currentRecordIds,
+  allRecordIds,
+  onSelectRecord,
+  onOpenAlerts,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  scope: ManagementInsightScope;
+  currentRecordIds: string[];
+  allRecordIds: string[];
+  onSelectRecord: (id: string) => void;
+  onOpenAlerts: () => void;
+}) {
+  const [selection, setSelection] = useState<'current' | 'all'>('current');
+  const [result, setResult] = useState<ManagementInsightResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const requestSequence = useRef(0);
+  const previousOpen = useRef(false);
+  const currentIdsKey = currentRecordIds.join('\u001f');
+  const allIdsKey = allRecordIds.join('\u001f');
+  const label = scope === 'contracts' ? 'Contract' : 'Supplier';
+
+  const runAnalysis = useCallback(
+    async (nextSelection: 'current' | 'all') => {
+      const ids = (nextSelection === 'current' ? currentIdsKey : allIdsKey)
+        .split('\u001f')
+        .filter(Boolean);
+      if (!ids.length) {
+        setError('No records are available in this analysis scope.');
+        return;
+      }
+      const requestId = ++requestSequence.current;
+      setSelection(nextSelection);
+      setLoading(true);
+      setError('');
+      try {
+        const now = new Date();
+        const asOfDate = [
+          now.getFullYear(),
+          String(now.getMonth() + 1).padStart(2, '0'),
+          String(now.getDate()).padStart(2, '0'),
+        ].join('-');
+        const response = await fetch('/api/management-insights', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scope, recordIds: ids, asOfDate }),
+        });
+        const body = (await response.json()) as ManagementInsightResponse & {
+          error?: string;
+        };
+        if (!response.ok)
+          throw new Error(
+            body.error || 'Unable to generate management insights.',
+          );
+        if (requestId === requestSequence.current) setResult(body);
+      } catch (analysisError) {
+        if (requestId === requestSequence.current)
+          setError(
+            analysisError instanceof Error
+              ? analysisError.message
+              : 'Unable to generate management insights.',
+          );
+      } finally {
+        if (requestId === requestSequence.current) setLoading(false);
+      }
+    },
+    [allIdsKey, currentIdsKey, scope],
+  );
+
+  useEffect(() => {
+    const justOpened = open && !previousOpen.current;
+    previousOpen.current = open;
+    if (!open) {
+      requestSequence.current += 1;
+      return;
+    }
+    if (!justOpened) return;
+    const timer = window.setTimeout(() => void runAnalysis('current'), 0);
+    return () => window.clearTimeout(timer);
+  }, [open, runAnalysis]);
+
+  const openRecord = (id: string) => {
+    onOpenChange(false);
+    onSelectRecord(id);
+  };
+  const openActionCenter = () => {
+    onOpenChange(false);
+    onOpenAlerts();
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-[96vw] max-w-[1180px] gap-0 overflow-hidden p-0 sm:max-w-[1180px]">
+        <SheetHeader className="border-b border-[#dce3e8] bg-white px-6 py-5 pr-14">
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#347d96]">
+            <Sparkles className="size-3.5" />
+            AI-assisted management analysis
+          </div>
+          <SheetTitle className="mt-1 text-xl text-[#183040]">
+            {label} management insights
+          </SheetTitle>
+          <SheetDescription className="max-w-3xl text-xs leading-5">
+            Program-calculated facts and shared alert rules are interpreted by
+            AI. The complete operational queue remains in Alerts &amp; Exports.
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f3f6f8]">
+          <div className="flex flex-col justify-between gap-3 border-b border-[#dce3e8] bg-white px-6 py-3 md:flex-row md:items-center">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant={selection === 'current' ? 'default' : 'outline'}
+                onClick={() => void runAnalysis('current')}
+                disabled={loading || !currentRecordIds.length}
+                className={
+                  selection === 'current'
+                    ? 'bg-[#1d718f] hover:bg-[#185f78]'
+                    : 'bg-white'
+                }
+              >
+                Current view · {currentRecordIds.length}
+              </Button>
+              <Button
+                size="sm"
+                variant={selection === 'all' ? 'default' : 'outline'}
+                onClick={() => void runAnalysis('all')}
+                disabled={loading || !allRecordIds.length}
+                className={
+                  selection === 'all'
+                    ? 'bg-[#1d718f] hover:bg-[#185f78]'
+                    : 'bg-white'
+                }
+              >
+                Entire register · {allRecordIds.length}
+              </Button>
+            </div>
+            {result ? (
+              <div className="text-[10px] text-slate-500">
+                Generated {new Date(result.generatedAt).toLocaleString('en-US')}{' '}
+                · {result.model}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            {loading ? (
+              <div className="flex min-h-[420px] flex-col items-center justify-center text-center">
+                <LoaderCircle className="size-8 animate-spin text-[#2b819f]" />
+                <p className="mt-4 text-sm font-medium text-[#203845]">
+                  Calculating facts and generating management insights…
+                </p>
+                <p className="mt-1 max-w-md text-xs leading-5 text-slate-500">
+                  Counts, dates, values, and exceptions are calculated by
+                  program rules before the structured results are sent to AI.
+                </p>
+              </div>
+            ) : error ? (
+              <Alert variant="destructive">
+                <AlertCircle />
+                <AlertTitle>Analysis unavailable</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : result ? (
+              <div className="space-y-5">
+                <section>
+                  <div className="mb-3 flex items-end justify-between gap-3">
+                    <div>
+                      <h2 className="text-sm font-semibold text-[#203845]">
+                        Portfolio overview
+                      </h2>
+                      <p className="mt-0.5 text-[10px] text-slate-500">
+                        Deterministic database calculations as of{' '}
+                        {result.report.asOfDate}
+                      </p>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="bg-white text-slate-600"
+                    >
+                      {result.report.recordCount} verified records
+                    </Badge>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {result.report.metrics.map((metric) => (
+                      <div
+                        key={metric.key}
+                        className="rounded-xl border border-[#dce3e8] bg-white px-4 py-3"
+                      >
+                        <p className="text-[10px] font-medium text-slate-500">
+                          {metric.label}
+                        </p>
+                        <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#183040]">
+                          {managementMetricValue(metric)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="grid gap-4 xl:grid-cols-2">
+                  {result.report.charts.map((chart) => (
+                    <ManagementChartCard key={chart.key} chart={chart} />
+                  ))}
+                </section>
+
+                <section className="rounded-xl border border-[#dce3e8] bg-white">
+                  <div className="flex flex-col justify-between gap-3 border-b border-[#e3e9ed] px-5 py-4 sm:flex-row sm:items-center">
+                    <div>
+                      <h2 className="text-sm font-semibold text-[#203845]">
+                        Priority attention preview
+                      </h2>
+                      <p className="mt-0.5 text-[10px] text-slate-500">
+                        Top 3 of {result.report.attentionCount} rule-generated
+                        items
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={openActionCenter}
+                    >
+                      <BellRing />
+                      View all in Alerts &amp; Exports
+                    </Button>
+                  </div>
+                  <div className="divide-y divide-[#edf1f3]">
+                    {result.report.attentionItems.slice(0, 3).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => openRecord(item.entityId)}
+                        className="flex w-full flex-col gap-2 px-5 py-4 text-left hover:bg-[#f8fafb] sm:flex-row sm:items-start sm:justify-between"
+                      >
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-semibold text-[#1d718f]">
+                              {item.reference || item.label}
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className={priorityClasses(item.priority)}
+                            >
+                              {titleCase(item.priority)}
+                            </Badge>
+                          </div>
+                          <p className="mt-1 text-xs font-medium text-[#203845]">
+                            {item.issue}
+                          </p>
+                          <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                            {item.label} · {item.reason}
+                          </p>
+                        </div>
+                        <span className="shrink-0 text-[10px] text-slate-500">
+                          {item.dueDate ?? 'No due date'}
+                        </span>
+                      </button>
+                    ))}
+                    {!result.report.attentionItems.length ? (
+                      <div className="px-5 py-8 text-center text-xs text-slate-500">
+                        No current rule-based attention items in this scope.
+                      </div>
+                    ) : null}
+                  </div>
+                </section>
+
+                <section className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.75fr)]">
+                  <article className="rounded-xl border border-[#b9d9e5] bg-[#edf8fb] p-5">
+                    <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
+                      <Sparkles className="size-3.5" />
+                      AI management insights
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-[#244757]">
+                      {result.ai.executiveSummary}
+                    </p>
+                    <div className="mt-4 space-y-3">
+                      {result.ai.insights.map((insight) => (
+                        <div
+                          key={`${insight.title}-${insight.explanation}`}
+                          className="rounded-lg border border-[#c9e1e9] bg-white/80 p-4"
+                        >
+                          <h3 className="text-xs font-semibold text-[#203845]">
+                            {insight.title}
+                          </h3>
+                          <p className="mt-1 text-[11px] leading-5 text-slate-600">
+                            {insight.explanation}
+                          </p>
+                          {insight.supportingRecordIds.length ? (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {insight.supportingRecordIds.map((id) => (
+                                <button
+                                  key={id}
+                                  type="button"
+                                  onClick={() => openRecord(id)}
+                                  className="rounded-md border border-[#b9d9e5] bg-white px-2 py-1 text-[9px] font-medium text-[#1d718f] hover:bg-[#edf8fb]"
+                                >
+                                  Open supporting record
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+
+                  <article className="rounded-xl border border-[#dce3e8] bg-white p-5">
+                    <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                      <CircleCheck className="size-3.5" />
+                      Recommended actions
+                    </div>
+                    <div className="mt-3 space-y-3">
+                      {result.ai.recommendedActions.map((action) => (
+                        <div
+                          key={`${action.action}-${action.reason}`}
+                          className="rounded-lg border border-[#e1e7ea] p-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <h3 className="text-xs font-semibold text-[#203845]">
+                              {action.action}
+                            </h3>
+                            <Badge
+                              variant="outline"
+                              className={priorityClasses(action.priority)}
+                            >
+                              {titleCase(action.priority)}
+                            </Badge>
+                          </div>
+                          <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                            {action.reason}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4 rounded-lg bg-slate-50 px-3 py-3 text-[10px] leading-4 text-slate-500">
+                      Decision support only. AI does not change register data,
+                      approve suppliers, make legal determinations, or decide
+                      renewal and termination actions.
+                    </div>
+                    {result.ai.dataLimitations.length ? (
+                      <div className="mt-3 text-[10px] leading-4 text-slate-500">
+                        <span className="font-semibold text-slate-600">
+                          Data limitations:{' '}
+                        </span>
+                        {result.ai.dataLimitations.join(' ')}
+                      </div>
+                    ) : null}
+                  </article>
+                </section>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -3018,9 +3543,13 @@ function AIEvaluationView({
         );
         if (!fileResponse.ok)
           throw new Error(`Unable to load ${evaluationCase.fileName}.`);
-        const file = new File([await fileResponse.blob()], evaluationCase.fileName, {
-          type: 'application/pdf',
-        });
+        const file = new File(
+          [await fileResponse.blob()],
+          evaluationCase.fileName,
+          {
+            type: 'application/pdf',
+          },
+        );
         const form = new FormData();
         form.append('file', file);
         form.append('purpose', 'evaluation');
@@ -3116,7 +3645,9 @@ function AIEvaluationView({
           ) : (
             <CircleCheck />
           )}
-          <AlertTitle>{running ? 'Evaluation in progress' : 'Evaluation saved'}</AlertTitle>
+          <AlertTitle>
+            {running ? 'Evaluation in progress' : 'Evaluation saved'}
+          </AlertTitle>
           <AlertDescription>{progress}</AlertDescription>
         </Alert>
       ) : null}
@@ -3207,7 +3738,9 @@ function AIEvaluationView({
                           <TableHead>AI result</TableHead>
                           <TableHead>Accuracy</TableHead>
                           <TableHead>Confidence</TableHead>
-                          <TableHead className="pr-5">Source evidence</TableHead>
+                          <TableHead className="pr-5">
+                            Source evidence
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -3223,7 +3756,9 @@ function AIEvaluationView({
                               {valueText(field.actual)}
                             </TableCell>
                             <TableCell>
-                              <StatusBadge tone={field.correct ? 'green' : 'rose'}>
+                              <StatusBadge
+                                tone={field.correct ? 'green' : 'rose'}
+                              >
                                 {field.correct ? 'Match' : 'Mismatch'}
                               </StatusBadge>
                             </TableCell>
@@ -3316,9 +3851,7 @@ function AIEvaluationView({
                     {rule.appliesTo}
                   </TableCell>
                   <TableCell className="pr-5">
-                    <StatusBadge
-                      tone={rule.risk === 'High' ? 'rose' : 'amber'}
-                    >
+                    <StatusBadge tone={rule.risk === 'High' ? 'rose' : 'amber'}>
                       {rule.risk}
                     </StatusBadge>
                   </TableCell>
@@ -3410,7 +3943,8 @@ function AlertsExportsView({
               {completedContractAlerts.length ? (
                 <details className="rounded-xl border border-[#dce3e8] bg-slate-50">
                   <summary className="cursor-pointer px-4 py-3 text-xs font-medium text-slate-600">
-                    Completed contract actions ({completedContractAlerts.length})
+                    Completed contract actions ({completedContractAlerts.length}
+                    )
                   </summary>
                   <div className="space-y-3 border-t border-[#dce3e8] p-3">
                     {completedContractAlerts.map((item) => (
@@ -3691,7 +4225,7 @@ function SupplierComplianceAlert({
               {valueText(item.supplier_name)}
             </p>
             <StatusBadge tone={tone}>
-              {missing ? 'Missing record' : timing?.label ?? 'Date pending'}
+              {missing ? 'Missing record' : (timing?.label ?? 'Date pending')}
             </StatusBadge>
           </div>
           <p className="mt-1 text-xs font-medium text-[#335565]">
@@ -3980,10 +4514,10 @@ function RecordDetailDialog({
                         {titleCase(selectedDocument.file_type)} · Review{' '}
                         {titleCase(selectedDocument.review_status)} · Issuer{' '}
                         {valueText(selectedDocument.issuer)} · Document no.{' '}
-                        {valueText(selectedDocument.document_number)} · Effective{' '}
-                        {valueText(selectedDocument.effective_date)} · Expires{' '}
-                        {valueText(selectedDocument.expiration_date)} · Summary{' '}
-                        {valueText(selectedDocument.coverage_summary)}
+                        {valueText(selectedDocument.document_number)} ·
+                        Effective {valueText(selectedDocument.effective_date)} ·
+                        Expires {valueText(selectedDocument.expiration_date)} ·
+                        Summary {valueText(selectedDocument.coverage_summary)}
                       </p>
                     </div>
                     <a
@@ -4179,18 +4713,17 @@ function SupplierDocumentUpload({
         method: 'POST',
         body: form,
       });
-      const body = (await response.json()) as SupplierDocumentAnalysisResponse & {
-        error?: string;
-      };
+      const body =
+        (await response.json()) as SupplierDocumentAnalysisResponse & {
+          error?: string;
+        };
       if (!response.ok)
         throw new Error(body.error || 'Unable to analyze the supplier file.');
       setAiResult(body);
       const extractedType = body.analysis.documentType.value;
       if (
         typeof extractedType === 'string' &&
-        SUPPLIER_DOCUMENT_TYPES.includes(
-          extractedType as SupplierDocumentType,
-        )
+        SUPPLIER_DOCUMENT_TYPES.includes(extractedType as SupplierDocumentType)
       )
         setDocumentType(extractedType);
       setIssuer(valueText(body.analysis.issuer.value).replace('Not found', ''));
@@ -4376,7 +4909,8 @@ function SupplierDocumentAIReview({
   const extractedName = valueText(result.analysis.supplierLegalName.value);
   const supplierMatch =
     extractedName !== 'Not found' &&
-    normalizeSupplierName(extractedName) === normalizeSupplierName(supplierName);
+    normalizeSupplierName(extractedName) ===
+      normalizeSupplierName(supplierName);
   const fields: Array<[string, ExtractedField]> = [
     ['Detected type', result.analysis.documentType],
     ['Issuer', result.analysis.issuer],

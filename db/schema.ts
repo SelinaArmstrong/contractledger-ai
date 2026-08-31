@@ -322,6 +322,27 @@ export const aiEvaluationRuns = sqliteTable(
   (table) => [index('idx_ai_evaluation_runs_created_at').on(table.createdAt)],
 );
 
+export const managementInsightRuns = sqliteTable(
+  'management_insight_runs',
+  {
+    id: text('id').primaryKey(),
+    scope: text('scope', { enum: ['contracts', 'suppliers'] }).notNull(),
+    recordIdsJson: text('record_ids_json').notNull(),
+    metricsJson: text('metrics_json').notNull(),
+    attentionJson: text('attention_json').notNull(),
+    model: text('model').notNull(),
+    promptVersion: text('prompt_version').notNull(),
+    responseJson: text('response_json').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('idx_management_insight_runs_scope_created_at').on(
+      table.scope,
+      table.createdAt,
+    ),
+  ],
+);
+
 export const auditLogs = sqliteTable(
   'audit_logs',
   {

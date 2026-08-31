@@ -43,6 +43,13 @@
       "when": 1788143338422,
       "tag": "0005_fancy_alex_wilder",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788146046229,
+      "tag": "0006_fat_wallflower",
+      "breakpoints": true
     }
   ]
 }

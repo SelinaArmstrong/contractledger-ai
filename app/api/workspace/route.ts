@@ -249,6 +249,7 @@ export async function getWorkspace() {
       .all(),
     db
       .prepare(`SELECT k.*, c.contract_number, c.title AS contract_title,
+      c.current_value_cents,
       c.expiration_date AS contract_expiration_date, c.status AS contract_status,
       s.legal_name AS supplier_name
       FROM key_dates k
@@ -405,7 +406,9 @@ export async function POST(request: Request) {
       analysisRun.file_name !== input.document.fileName ||
       analysisRun.storage_key !== input.document.storageKey
     ) {
-      throw new Error('The reviewed values do not match the analyzed document.');
+      throw new Error(
+        'The reviewed values do not match the analyzed document.',
+      );
     }
     if (analysisRun.status !== 'pending_review') {
       throw new Error('This AI analysis has already been saved.');
