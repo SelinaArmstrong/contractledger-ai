@@ -2127,6 +2127,7 @@ function SupplierOnboardingDialog({
   >({});
   const [profileWarnings, setProfileWarnings] = useState<string[]>([]);
   const [error, setError] = useState('');
+  const packageUploadInputRef = useRef<HTMLInputElement>(null);
 
   const updateSupplier = (field: keyof typeof initialSupplier, value: string) =>
     setSupplier((current) => ({ ...current, [field]: value }));
@@ -2145,6 +2146,30 @@ function SupplierOnboardingDialog({
     setProfileEvidence({});
     setProfileWarnings([]);
     setError('');
+  };
+
+  const selectQualificationPackage = (fileList: FileList | null) => {
+    if (!fileList?.length) return;
+    const selectedFiles = Array.from(fileList);
+    const retained = documents.filter((item) => item.file);
+    const availableSlots = Math.max(0, 10 - retained.length);
+    const accepted = selectedFiles.slice(0, availableSlots);
+    setError(
+      accepted.length < selectedFiles.length
+        ? 'A supplier qualification package can contain up to 10 files.'
+        : '',
+    );
+    setDocuments([
+      ...retained,
+      ...accepted.map((file) => ({
+        ...newSupplierDocument(),
+        file,
+      })),
+    ]);
+    setSupplier(initialSupplier);
+    setProfileGenerated(false);
+    setProfileEvidence({});
+    setProfileWarnings([]);
   };
 
   const extractedText = (field: ExtractedField) => {
@@ -2506,16 +2531,35 @@ function SupplierOnboardingDialog({
                 are applied by system rules—not invented from the documents.
               </div>
             ) : (
-              <div className="mt-3 flex min-h-28 flex-col items-center justify-center rounded-xl border border-dashed border-[#c9dbe2] bg-[#f8fafb] px-5 text-center">
-                <FileSearch className="size-6 text-[#6da8bb]" />
-                <p className="mt-2 text-xs font-medium text-[#294354]">
-                  Upload qualification files first
-                </p>
-                <p className="mt-1 max-w-sm text-[10px] leading-4 text-slate-500">
-                  Select Generate register from files and AI will populate the
-                  supplier master automatically.
-                </p>
-              </div>
+              <>
+                <input
+                  ref={packageUploadInputRef}
+                  type="file"
+                  multiple
+                  accept="application/pdf,image/png,image/jpeg"
+                  className="sr-only"
+                  aria-label="Upload supplier qualification package"
+                  onChange={(event) => {
+                    selectQualificationPackage(event.target.files);
+                    event.target.value = '';
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => packageUploadInputRef.current?.click()}
+                  disabled={packageAnalyzing || saving}
+                  className="mt-3 flex min-h-28 w-full flex-col items-center justify-center rounded-xl border border-dashed border-[#8dbdcd] bg-[#f4fafc] px-5 text-center transition-colors hover:border-[#347d96] hover:bg-[#eaf6f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#347d96] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Upload className="size-6 text-[#347d96]" />
+                  <span className="mt-2 text-xs font-semibold text-[#245a70]">
+                    Upload qualification files
+                  </span>
+                  <span className="mt-1 max-w-sm text-[10px] leading-4 text-slate-500">
+                    Click to choose one or more PDF, PNG, or JPEG files. They
+                    will appear in the qualification package on the left.
+                  </span>
+                </button>
+              </>
             )}
             {profileWarnings.length ? (
               <Alert className="mt-3 border-amber-200 bg-amber-50 text-amber-900">
