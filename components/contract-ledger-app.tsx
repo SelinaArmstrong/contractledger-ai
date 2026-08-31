@@ -1385,11 +1385,28 @@ function AIAssistantDialog({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const conversationRef = useRef<HTMLDivElement>(null);
+  const questionInputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const scroller = conversationRef.current;
     if (scroller) scroller.scrollTop = scroller.scrollHeight;
   }, [messages, loading]);
+
+  useEffect(() => {
+    if (!open) return;
+    const focusTimer = window.setTimeout(
+      () => questionInputRef.current?.focus(),
+      0,
+    );
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onOpenChange(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [onOpenChange, open]);
 
   const submitQuestion = async (submittedQuestion?: string) => {
     const prompt = (submittedQuestion ?? question).trim();
@@ -1444,24 +1461,45 @@ function AIAssistantDialog({
     setError('');
   };
 
+  if (!open) return null;
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="w-[96vw] gap-0 border-[#cbd8de] p-0 sm:max-w-[780px]"
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/25 px-3 pb-3 pt-[86px] backdrop-blur-[2px] md:px-6"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onOpenChange(false);
+      }}
+    >
+      <dialog
+        open
+        aria-modal="true"
+        aria-labelledby="ai-assistant-dialog-title"
+        className="relative m-0 grid h-[84vh] min-h-[620px] w-[96vw] max-w-[1440px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl bg-white p-0 text-sm shadow-2xl ring-1 ring-slate-900/10"
       >
-        <SheetHeader className="border-b border-[#dce3e8] bg-[#f8fbfc] px-6 py-5 pr-14">
+        <button
+          type="button"
+          onClick={() => onOpenChange(false)}
+          aria-label="Close AI Contract Operations Assistant"
+          className="absolute right-4 top-4 z-10 flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+        >
+          ×
+        </button>
+        <div className="border-b border-[#dce3e8] bg-[#f8fbfc] px-6 py-4 pr-14">
           <div className="flex flex-wrap items-center gap-2">
             <span className="flex size-9 items-center justify-center rounded-lg bg-[#dceff5] text-[#1d718f]">
               <Bot className="size-[18px]" />
             </span>
             <div>
-              <SheetTitle className="text-base font-semibold text-[#183040]">
+              <h2
+                id="ai-assistant-dialog-title"
+                className="text-base font-semibold text-[#183040]"
+              >
                 AI Contract Operations Assistant
-              </SheetTitle>
-              <SheetDescription className="mt-0.5 text-[11px]">
+              </h2>
+              <p className="mt-0.5 text-[11px] text-slate-500">
                 Natural-language questions · verified database results
-              </SheetDescription>
+              </p>
             </div>
             <Badge
               variant="outline"
@@ -1485,13 +1523,13 @@ function AIAssistantDialog({
               <RotateCcw /> New chat
             </Button>
           </div>
-        </SheetHeader>
+        </div>
 
         <div
           ref={conversationRef}
           className="min-h-0 flex-1 overflow-y-auto bg-[#f4f7f8] px-4 py-5 sm:px-6"
         >
-          <div className="mx-auto max-w-[690px] space-y-5">
+          <div className="mx-auto max-w-[1260px] space-y-5">
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -1510,7 +1548,7 @@ function AIAssistantDialog({
                         <Sparkles className="size-3.5" />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <div className="whitespace-pre-line rounded-2xl rounded-tl-md border border-[#dce3e8] bg-white px-4 py-3 text-xs leading-5 text-[#2a414f] shadow-sm">
+                        <div className="max-w-[980px] whitespace-pre-line rounded-2xl rounded-tl-md border border-[#dce3e8] bg-white px-4 py-3 text-xs leading-5 text-[#2a414f] shadow-sm">
                           {message.content}
                         </div>
                         {message.response ? (
@@ -1534,7 +1572,7 @@ function AIAssistantDialog({
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
                   Try asking
                 </p>
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                   {assistantExamples.map((example) => (
                     <button
                       key={example}
@@ -1574,8 +1612,9 @@ function AIAssistantDialog({
           }}
           className="border-t border-[#dce3e8] bg-white px-4 py-4 sm:px-6"
         >
-          <div className="mx-auto max-w-[690px] rounded-xl border border-[#c9d9df] bg-white p-2 shadow-sm focus-within:border-[#7fb1c2] focus-within:ring-2 focus-within:ring-[#dceff5]">
+          <div className="mx-auto max-w-[1260px] rounded-xl border border-[#c9d9df] bg-white p-2 shadow-sm focus-within:border-[#7fb1c2] focus-within:ring-2 focus-within:ring-[#dceff5]">
             <textarea
+              ref={questionInputRef}
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
               onKeyDown={(event) => {
@@ -1604,13 +1643,13 @@ function AIAssistantDialog({
               </Button>
             </div>
           </div>
-          <p className="mx-auto mt-2 max-w-[690px] text-center text-[9px] leading-4 text-slate-400">
+          <p className="mx-auto mt-2 max-w-[1260px] text-center text-[9px] leading-4 text-slate-400">
             Decision support only. The assistant cannot edit registers, approve
             suppliers, or make legal determinations.
           </p>
         </form>
-      </SheetContent>
-    </Sheet>
+      </dialog>
+    </div>
   );
 }
 
