@@ -8,7 +8,10 @@ function dollars(cents: unknown) {
   return typeof cents === 'number' ? cents / 100 : 0;
 }
 
-export async function exportCurrentRegisters(workspace: Workspace) {
+export async function exportCurrentRegisters(
+  workspace: Workspace,
+  scope: 'all' | 'suppliers' = 'all',
+) {
   const ExcelJS = await import('exceljs');
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'ContractLedger AI';
@@ -237,6 +240,11 @@ export async function exportCurrentRegisters(workspace: Workspace) {
   });
   supplierSheet.getColumn('totalValue').numFmt = '$#,##0.00';
 
+  if (scope === 'suppliers') {
+    workbook.removeWorksheet(contractSheet.id);
+    workbook.removeWorksheet(exceptionSheet.id);
+  }
+
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -244,7 +252,10 @@ export async function exportCurrentRegisters(workspace: Workspace) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `ContractLedger_Registers_${dateStamp()}.xlsx`;
+  link.download =
+    scope === 'suppliers'
+      ? `ContractLedger_Supplier_Register_${dateStamp()}.xlsx`
+      : `ContractLedger_Registers_${dateStamp()}.xlsx`;
   link.click();
   URL.revokeObjectURL(url);
 }

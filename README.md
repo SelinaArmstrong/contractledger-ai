@@ -12,7 +12,7 @@ This is intentionally **not** a full contract lifecycle management (CLM) platfor
 4. **Supplier-document intelligence:** analyze W-9s, insurance certificates, business licenses, registrations, and other qualification evidence. AI suggests the document type, supplier name, issuer, number, dates, and coverage/qualification summary before human-reviewed upload.
 5. **Dynamic draft-to-executed comparison:** after both stages are verified for the same supplier, the dashboard calculates actual changes from the saved analyses instead of displaying a hard-coded comparison.
 6. **Registers and alerts:** search and filter contracts and suppliers, review separate contract and supplier-compliance alerts, manage renewal decisions, and export the latest database state.
-7. **AI evaluation:** run three locked fictional documents against fixed ground truth. The app calculates field accuracy, source coverage, and average confidence from live model output without adding evaluation files to operational registers.
+7. **Three distinct AI layers:** use AI Assistant for natural-language factual retrieval, Management Insights for register-level trends and recommended actions, and AI Accuracy & Validation for a locked ground-truth test that never adds evaluation files to operational registers.
 
 The fictional policy checks are operational review prompts, not legal advice. AI output must be verified against the source document before saving.
 
@@ -25,7 +25,8 @@ The fictional policy checks are operational review prompts, not legal advice. AI
 - Return to the Dashboard and show the newly generated **AI draft-to-executed comparison**.
 - Open **Supplier Register**, select a supplier, upload the demo insurance certificate, and choose **Analyze with AI**. Explain supplier-name matching and human-reviewed metadata.
 - Open **Alerts & Exports** to show separate contract and supplier-compliance warnings.
-- Open **AI Evaluation** to show the saved accuracy and source-traceability evidence, then rerun it if time allows.
+- Ask **AI Assistant** a factual question, then demonstrate how a broad portfolio-analysis request routes to the relevant register's **AI management insights**.
+- Open **AI Accuracy & Validation** under **Portfolio evidence** to show saved accuracy and source-traceability evidence, then rerun the locked validation set if time allows.
 - Generate the current `.xlsx` handoff package from the live database.
 
 The two sample agreements form one realistic, fictional U.S. transaction: a ten-page draft and a thirteen-page executed version for the same supplier and project. The signed version reflects negotiated changes to payment, governing law, insurance, liability, intellectual property, subcontracting, data security, change control, and termination rights. All seeded organizations are fictional and safe to use in an interview demonstration.
@@ -68,7 +69,7 @@ Hosted API requests require the authenticated Sites user headers. Audit events u
 
 D1 bootstrap is versioned with `PRAGMA user_version`: schema upgrades and fictional seed synchronization run only when the stored version is behind, rather than writing during every request. The workspace endpoint returns register summaries; document metadata and AI review history load only when a specific record is opened. Charting and workbook generation are lazy-loaded to keep them off the initial application path.
 
-AI evaluation is server-controlled. The server loads the three fixed fictional benchmark documents, performs fresh analysis, scores against locked ground truth, and persists the evidence; it does not accept client-submitted model results.
+AI Accuracy & Validation is server-controlled. The server loads the three fixed fictional benchmark documents, performs fresh analysis, scores against locked ground truth, and persists the evidence; it does not accept client-submitted model results.
 
 ## Source structure
 

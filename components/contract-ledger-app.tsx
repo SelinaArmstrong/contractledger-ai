@@ -35,6 +35,7 @@ import {
   FolderKanban,
   LayoutDashboard,
   LoaderCircle,
+  LogOut,
   Plus,
   RotateCcw,
   Search,
@@ -113,7 +114,7 @@ type ViewName =
   | 'Contract Register'
   | 'Supplier Register'
   | 'Alerts & Exports'
-  | 'AI Evaluation';
+  | 'AI Accuracy & Validation';
 
 type IntakeStage = 'draft' | 'executed';
 type DetailSelection = { type: 'contract' | 'supplier'; id: string };
@@ -170,14 +171,27 @@ const supplierProfileExtractionFields = [
   ['taxClassification', 'taxClassification'],
 ] as const;
 
-const navItems: Array<{ label: ViewName; icon: ElementType }> = [
-  { label: 'Dashboard', icon: LayoutDashboard },
-  { label: 'New Contract Review', icon: FileSearch },
-  { label: 'Contract Register', icon: FolderKanban },
-  { label: 'Supplier Register', icon: Users },
-  { label: 'Alerts & Exports', icon: BellRing },
-  { label: 'AI Evaluation', icon: FlaskConical },
+const navigationGroups: Array<{
+  label: string;
+  items: Array<{ label: ViewName; icon: ElementType }>;
+}> = [
+  {
+    label: 'Workspace',
+    items: [
+      { label: 'Dashboard', icon: LayoutDashboard },
+      { label: 'New Contract Review', icon: FileSearch },
+      { label: 'Contract Register', icon: FolderKanban },
+      { label: 'Supplier Register', icon: Users },
+      { label: 'Alerts & Exports', icon: BellRing },
+    ],
+  },
+  {
+    label: 'Portfolio evidence',
+    items: [{ label: 'AI Accuracy & Validation', icon: FlaskConical }],
+  },
 ];
+
+const navItems = navigationGroups.flatMap((group) => group.items);
 
 const extractionFields = [
   ['documentTitle', 'Document title'],
@@ -421,7 +435,13 @@ function FieldConfidence({ field }: { field: ExtractedField }) {
   return <StatusBadge tone={tone}>{percent}%</StatusBadge>;
 }
 
-export function ContractLedgerApp() {
+export function ContractLedgerApp({
+  currentUser,
+  signOutPath,
+}: {
+  currentUser: { displayName: string; email: string; local: boolean };
+  signOutPath: string | null;
+}) {
   const [activeView, setActiveView] = useState<ViewName>('Dashboard');
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [workspaceError, setWorkspaceError] = useState('');
@@ -447,9 +467,18 @@ export function ContractLedgerApp() {
   const [intakeDetailId, setIntakeDetailId] = useState<string | null>(null);
   const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [managementInsightsRequest, setManagementInsightsRequest] = useState<
+    'contracts' | 'suppliers' | null
+  >(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [selectedFilePreviewUrl, setSelectedFilePreviewUrl] = useState('');
   const selectedFilePreviewUrlRef = useRef('');
+  const userInitials = currentUser.displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
 
   const selectContractFile = useCallback((file: File | null) => {
     if (selectedFilePreviewUrlRef.current)
@@ -696,6 +725,16 @@ export function ContractLedgerApp() {
     }
   };
 
+  const exportSuppliers = async () => {
+    if (!workspace) return;
+    setExporting(true);
+    try {
+      await exportCurrentRegisters(workspace, 'suppliers');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const resetDemo = async () => {
     if (
       !window.confirm(
@@ -818,39 +857,45 @@ export function ContractLedgerApp() {
           className="flex-1 space-y-1 px-3 py-5"
           aria-label="Primary navigation"
         >
-          <p className="mb-3 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-            Workspace
-          </p>
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const count = navCount(item.label);
-            const active = activeView === item.label;
-            return (
-              <button
-                key={item.label}
-                type="button"
-                onClick={() => {
-                  setActiveView(item.label);
-                  setSearch('');
-                }}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] transition ${
-                  active
-                    ? 'bg-white/12 font-medium text-white shadow-sm'
-                    : 'text-slate-300 hover:bg-white/7 hover:text-white'
-                }`}
-              >
-                <Icon
-                  className={`size-[17px] ${active ? 'text-[#62c0dc]' : 'text-slate-400'}`}
-                />
-                <span className="flex-1">{item.label}</span>
-                {count ? (
-                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-slate-200">
-                    {count}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
+          {navigationGroups.map((group, groupIndex) => (
+            <div key={group.label} className={groupIndex ? 'pt-5' : ''}>
+              <p className="mb-3 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                {group.label}
+              </p>
+              <div className="space-y-1">
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const count = navCount(item.label);
+                  const active = activeView === item.label;
+                  return (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => {
+                        setActiveView(item.label);
+                        setSearch('');
+                      }}
+                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] transition ${
+                        active
+                          ? 'bg-white/12 font-medium text-white shadow-sm'
+                          : 'text-slate-300 hover:bg-white/7 hover:text-white'
+                      }`}
+                    >
+                      <Icon
+                        className={`size-[17px] ${active ? 'text-[#62c0dc]' : 'text-slate-400'}`}
+                      />
+                      <span className="flex-1">{item.label}</span>
+                      {count ? (
+                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-slate-200">
+                          {count}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
         <div className="m-3 rounded-xl border border-white/10 bg-white/5 p-4">
@@ -906,23 +951,34 @@ export function ContractLedgerApp() {
                 </span>
               ) : null}
             </button>
-            <button
-              type="button"
-              className="flex items-center gap-2 rounded-lg px-1 py-1 text-left"
-            >
-              <span className="flex size-9 items-center justify-center rounded-lg bg-[#d7ebf2] text-xs font-semibold text-[#17425a]">
-                SA
-              </span>
-              <span className="hidden sm:block">
-                <span className="block text-xs font-semibold">
-                  Selina Armstrong
+            <div className="flex items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2 rounded-lg px-1 py-1 text-left">
+                <span className="flex size-9 items-center justify-center rounded-lg bg-[#d7ebf2] text-xs font-semibold text-[#17425a]">
+                  {userInitials || 'U'}
                 </span>
-                <span className="block text-[10px] text-slate-500">
-                  Contract Administrator
+                <span className="hidden sm:block">
+                  <span className="block max-w-40 truncate text-xs font-semibold">
+                    {currentUser.displayName}
+                  </span>
+                  <span className="block text-[10px] text-slate-500">
+                    {currentUser.local
+                      ? 'Local demo session'
+                      : 'Signed in with ChatGPT'}
+                  </span>
                 </span>
-              </span>
-              <ChevronDown className="hidden size-3.5 text-slate-400 sm:block" />
-            </button>
+              </div>
+              {signOutPath ? (
+                <a
+                  href={signOutPath}
+                  target="_top"
+                  aria-label={`Sign out ${currentUser.email}`}
+                  className="flex h-9 items-center gap-1.5 rounded-lg border border-[#dce3e8] bg-white px-2.5 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50 hover:text-[#1d718f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6aa9bd]"
+                >
+                  <LogOut className="size-3.5" />
+                  <span className="hidden xl:inline">Sign out</span>
+                </a>
+              ) : null}
+            </div>
           </div>
         </header>
 
@@ -978,6 +1034,10 @@ export function ContractLedgerApp() {
               exporting={exporting}
               onSelect={(id) => setDetail({ type: 'contract', id })}
               onOpenAlerts={() => setActiveView('Alerts & Exports')}
+              openInsightsRequest={managementInsightsRequest === 'contracts'}
+              onInsightsRequestHandled={() =>
+                setManagementInsightsRequest(null)
+              }
             />
           ) : null}
           {activeView === 'Supplier Register' ? (
@@ -988,7 +1048,13 @@ export function ContractLedgerApp() {
               onSearch={setSearch}
               onSelect={(id) => setDetail({ type: 'supplier', id })}
               onAdd={() => setSupplierDialogOpen(true)}
+              onExport={exportSuppliers}
+              exporting={exporting}
               onOpenAlerts={() => setActiveView('Alerts & Exports')}
+              openInsightsRequest={managementInsightsRequest === 'suppliers'}
+              onInsightsRequestHandled={() =>
+                setManagementInsightsRequest(null)
+              }
             />
           ) : null}
           {activeView === 'Alerts & Exports' ? (
@@ -1001,7 +1067,7 @@ export function ContractLedgerApp() {
               onSelectSupplier={(id) => setDetail({ type: 'supplier', id })}
             />
           ) : null}
-          {activeView === 'AI Evaluation' ? (
+          {activeView === 'AI Accuracy & Validation' ? (
             <AIEvaluationView
               workspace={workspace}
               onCompleted={(nextWorkspace) => setWorkspace(nextWorkspace)}
@@ -1028,6 +1094,14 @@ export function ContractLedgerApp() {
               : 'Supplier Register',
           );
           setDetail({ type: target.type, id: target.id });
+        }}
+        onOpenManagementInsights={(scope) => {
+          setAssistantOpen(false);
+          setSearch('');
+          setManagementInsightsRequest(scope);
+          setActiveView(
+            scope === 'contracts' ? 'Contract Register' : 'Supplier Register',
+          );
         }}
       />
 
@@ -1368,10 +1442,12 @@ function AIAssistantDialog({
   open,
   onOpenChange,
   onOpenRecord,
+  onOpenManagementInsights,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onOpenRecord: (record: AssistantResultRecord) => void;
+  onOpenManagementInsights: (scope: 'contracts' | 'suppliers') => void;
 }) {
   const [messages, setMessages] = useState<AssistantConversationMessage[]>([
     {
@@ -1556,6 +1632,7 @@ function AIAssistantDialog({
                             response={message.response}
                             onOpenRecord={onOpenRecord}
                             onFollowUp={(prompt) => void submitQuestion(prompt)}
+                            onOpenManagementInsights={onOpenManagementInsights}
                           />
                         ) : null}
                       </div>
@@ -1657,10 +1734,12 @@ function AssistantStructuredResult({
   response,
   onOpenRecord,
   onFollowUp,
+  onOpenManagementInsights,
 }: {
   response: AssistantResponse;
   onOpenRecord: (record: AssistantResultRecord) => void;
   onFollowUp: (prompt: string) => void;
+  onOpenManagementInsights: (scope: 'contracts' | 'suppliers') => void;
 }) {
   const entityLabels: Record<string, string> = {
     contracts: 'Executed contracts',
@@ -1668,6 +1747,11 @@ function AssistantStructuredResult({
     obligations: 'Obligations & qualification alerts',
     intakes: 'Pre-execution reviews',
   };
+  const managementScope =
+    response.execution.entity === 'contracts' ||
+    response.execution.entity === 'suppliers'
+      ? response.execution.entity
+      : null;
   return (
     <div className="mt-3 space-y-3">
       <div className="rounded-xl border border-[#c9dbe2] bg-[#eef8fb] p-3">
@@ -1727,19 +1811,45 @@ function AssistantStructuredResult({
         ) : null}
       </div>
 
-      {response.insights.length ? (
+      {response.resultContext.length ? (
         <div className="rounded-xl border border-[#dce3e8] bg-white px-4 py-3">
           <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-            AI observations
+            Result context
           </p>
           <ul className="mt-2 space-y-1.5 text-[10px] leading-4 text-slate-600">
-            {response.insights.map((insight) => (
-              <li key={insight} className="flex items-start gap-2">
+            {response.resultContext.map((context) => (
+              <li key={context} className="flex items-start gap-2">
                 <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-[#4f9bb4]" />
-                {insight}
+                {context}
               </li>
             ))}
           </ul>
+        </div>
+      ) : null}
+
+      {response.plan.intent === 'summarize' && managementScope ? (
+        <div className="flex flex-col justify-between gap-3 rounded-xl border border-[#b8d9e5] bg-[#eaf7fa] px-4 py-3 sm:flex-row sm:items-center">
+          <div>
+            <p className="text-[11px] font-semibold text-[#1e5367]">
+              Continue in the dedicated portfolio analysis workspace
+            </p>
+            <p className="mt-1 text-[9px] leading-4 text-[#52727f]">
+              Management Insights provides charts, concentration analysis,
+              portfolio risks, and recommended actions for this register.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => onOpenManagementInsights(managementScope)}
+            className="shrink-0 bg-[#1d718f] hover:bg-[#185f78]"
+          >
+            <Sparkles />
+            Open {managementScope === 'contracts'
+              ? 'Contract'
+              : 'Supplier'}{' '}
+            Insights
+          </Button>
         </div>
       ) : null}
 
@@ -2732,6 +2842,8 @@ function ContractRegisterView({
   exporting,
   onSelect,
   onOpenAlerts,
+  openInsightsRequest,
+  onInsightsRequestHandled,
 }: {
   contracts: Workspace['contracts'];
   allContracts: Workspace['contracts'];
@@ -2743,6 +2855,8 @@ function ContractRegisterView({
   exporting: boolean;
   onSelect: (id: string) => void;
   onOpenAlerts: () => void;
+  openInsightsRequest: boolean;
+  onInsightsRequestHandled: () => void;
 }) {
   const contractTableScroll = useFloatingTableScrollbar();
   const [insightsOpen, setInsightsOpen] = useState(false);
@@ -2756,6 +2870,14 @@ function ContractRegisterView({
   const [effectiveDate, setEffectiveDate] = useState('');
   const [expirationCondition, setExpirationCondition] = useState('all');
   const [expirationDate, setExpirationDate] = useState('');
+  useEffect(() => {
+    if (!openInsightsRequest) return;
+    const timer = window.setTimeout(() => {
+      setInsightsOpen(true);
+      onInsightsRequestHandled();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [onInsightsRequestHandled, openInsightsRequest]);
   const options = (key: string) =>
     Array.from(
       new Set(
@@ -4087,7 +4209,11 @@ function SupplierRegisterView({
   onSearch,
   onSelect,
   onAdd,
+  onExport,
+  exporting,
   onOpenAlerts,
+  openInsightsRequest,
+  onInsightsRequestHandled,
 }: {
   suppliers: Workspace['suppliers'];
   allSuppliers: Workspace['suppliers'];
@@ -4095,7 +4221,11 @@ function SupplierRegisterView({
   onSearch: (value: string) => void;
   onSelect: (id: string) => void;
   onAdd: () => void;
+  onExport: () => void;
+  exporting: boolean;
   onOpenAlerts: () => void;
+  openInsightsRequest: boolean;
+  onInsightsRequestHandled: () => void;
 }) {
   const supplierTableScroll = useFloatingTableScrollbar();
   const [insightsOpen, setInsightsOpen] = useState(false);
@@ -4108,6 +4238,14 @@ function SupplierRegisterView({
   const [w9Filter, setW9Filter] = useState('all');
   const [insuranceFilter, setInsuranceFilter] = useState('all');
   const [documentExpiryFilter, setDocumentExpiryFilter] = useState('all');
+  useEffect(() => {
+    if (!openInsightsRequest) return;
+    const timer = window.setTimeout(() => {
+      setInsightsOpen(true);
+      onInsightsRequestHandled();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [onInsightsRequestHandled, openInsightsRequest]);
   const options = (key: string) =>
     Array.from(
       new Set(
@@ -4177,6 +4315,18 @@ function SupplierRegisterView({
             <Button onClick={onAdd} className="bg-[#1d718f] hover:bg-[#185f78]">
               <Plus />
               Create supplier from files
+            </Button>
+            <Button
+              variant="outline"
+              onClick={onExport}
+              disabled={exporting || !allSuppliers.length}
+            >
+              {exporting ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <FileSpreadsheet />
+              )}
+              Export all suppliers
             </Button>
             <Button
               variant="outline"
@@ -4959,9 +5109,9 @@ function AIEvaluationView({
   return (
     <>
       <PageHeading
-        eyebrow="Evidence, not a claim"
-        title="AI evaluation"
-        description="Run the same three fictional documents against a locked ground-truth set. Accuracy, source traceability, and confidence are calculated from the live model output and saved for interview evidence."
+        eyebrow="Portfolio evidence · model validation"
+        title="AI accuracy & validation"
+        description="Validate live AI extraction against a locked fictional ground-truth set. Accuracy, source traceability, and confidence are measured and saved as interview evidence—not used for daily contract operations."
         action={
           <Button
             onClick={runEvaluation}
@@ -4973,17 +5123,18 @@ function AIEvaluationView({
             ) : (
               <FlaskConical />
             )}
-            Run 3-document evaluation
+            Run validation set
           </Button>
         }
       />
       <Alert className="mb-5 border-amber-200 bg-amber-50 text-amber-900">
         <AlertTriangle />
-        <AlertTitle>Portfolio evidence—not a production benchmark</AlertTitle>
+        <AlertTitle>Validation evidence—not an operational workflow</AlertTitle>
         <AlertDescription>
-          This intentionally small locked set proves that the evaluation is
-          repeatable and measurable. Production validation would require a
-          larger, more varied, access-controlled document corpus.
+          This page measures extraction accuracy, source traceability, and
+          confidence. It does not search records or analyze the live contract
+          and supplier portfolios. Production validation would require a larger,
+          more varied, access-controlled document corpus.
         </AlertDescription>
       </Alert>
 
@@ -5052,7 +5203,7 @@ function AIEvaluationView({
 
           <Panel className="overflow-hidden">
             <PanelHeader
-              title="Latest evaluation evidence"
+              title="Latest validation evidence"
               description={`${valueText(latest.model)} · Results are compared server-side with fixed expected values`}
               action={<StatusBadge tone="green">Persisted result</StatusBadge>}
             />
@@ -5136,8 +5287,8 @@ function AIEvaluationView({
       ) : (
         <Panel>
           <PanelHeader
-            title="Locked fictional evaluation set"
-            description="No saved run yet. Running the evaluation calls the live AI but does not add these test files to operational registers."
+            title="Locked fictional validation set"
+            description="No saved run yet. Running validation calls the live AI but does not add these test files to operational registers."
           />
           <div className="grid gap-3 p-5 md:grid-cols-3">
             {AI_EVALUATION_CASES.map((evaluationCase, index) => (
@@ -5253,143 +5404,139 @@ function AlertsExportsView({
         title="Obligation & renewal management"
         description="Assign ownership, record renewal decisions, close obligations, and export the latest registers—without expanding this focused portfolio into a full CLM."
       />
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="space-y-5">
-          <Panel>
-            <PanelHeader
-              title="Contract register alerts"
-              description="Contract expirations, notice deadlines, renewals, and assigned follow-up"
-              action={
-                <div className="flex gap-2">
-                  <StatusBadge tone="blue">
-                    {contractAlerts.length} active
-                  </StatusBadge>
-                  {contractCriticalCount ? (
-                    <StatusBadge tone="rose">
-                      {contractCriticalCount} urgent
-                    </StatusBadge>
-                  ) : null}
-                </div>
-              }
-            />
-            <div className="space-y-3 p-5">
-              {contractAlerts.map((item) => (
-                <ObligationEditor
-                  key={String(item.id)}
-                  item={item}
-                  onSaved={onRefresh}
-                  onOpenRecord={() =>
-                    onSelectContract(String(item.contract_id))
-                  }
-                />
-              ))}
-              {!contractAlerts.length ? (
-                <EmptyState
-                  title="No open contract alerts"
-                  description="Upcoming contract deadlines will appear here after an executed agreement is registered."
-                />
-              ) : null}
-              {completedContractAlerts.length ? (
-                <details className="rounded-xl border border-[#dce3e8] bg-slate-50">
-                  <summary className="cursor-pointer px-4 py-3 text-xs font-medium text-slate-600">
-                    Completed contract actions ({completedContractAlerts.length}
-                    )
-                  </summary>
-                  <div className="space-y-3 border-t border-[#dce3e8] p-3">
-                    {completedContractAlerts.map((item) => (
-                      <ObligationEditor
-                        key={String(item.id)}
-                        item={item}
-                        onSaved={onRefresh}
-                        onOpenRecord={() =>
-                          onSelectContract(String(item.contract_id))
-                        }
-                      />
-                    ))}
-                  </div>
-                </details>
-              ) : null}
+      <Panel className="mb-5 overflow-hidden">
+        <div className="flex flex-col gap-5 bg-white p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#e4f2f6] text-[#1d718f]">
+              <FileSpreadsheet className="size-5" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-[#203845]">
+                Current register package
+              </p>
+              <p className="mt-1 max-w-xl text-[11px] leading-5 text-slate-500">
+                Generate one timestamped Excel workbook containing the complete
+                Contract Register, Supplier Register, and obligation exceptions
+                from the current database.
+              </p>
             </div>
-          </Panel>
-
-          <Panel>
-            <PanelHeader
-              title="Supplier compliance alerts"
-              description="Expiring qualification evidence and missing core supplier records"
-              action={
-                <div className="flex gap-2">
-                  <StatusBadge tone="blue">
-                    {supplierAlerts.length} records
-                  </StatusBadge>
-                  {supplierCriticalCount ? (
-                    <StatusBadge tone="rose">
-                      {supplierCriticalCount} urgent
-                    </StatusBadge>
-                  ) : null}
-                </div>
-              }
-            />
-            <div className="space-y-3 p-5">
-              {supplierAlerts.map((item) => (
-                <SupplierComplianceAlert
-                  key={String(item.alert_id)}
-                  item={item}
-                  onOpenSupplier={() =>
-                    onSelectSupplier(String(item.supplier_id))
-                  }
-                />
-              ))}
-              {!supplierAlerts.length ? (
-                <EmptyState
-                  title="No supplier compliance alerts"
-                  description="Documents with expiration dates and missing W-9 or insurance records will appear here."
-                />
-              ) : null}
-            </div>
-          </Panel>
+          </div>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 text-[11px] text-slate-600">
+            <span className="flex items-center gap-2">
+              <Check className="size-3.5 text-emerald-600" />
+              Executed values only
+            </span>
+            <span className="flex items-center gap-2">
+              <Check className="size-3.5 text-emerald-600" />
+              Owners and decisions included
+            </span>
+            <span className="flex items-center gap-2">
+              <Check className="size-3.5 text-emerald-600" />
+              Live database export
+            </span>
+          </div>
+          <Button
+            onClick={onExport}
+            disabled={!workspace || exporting}
+            className="shrink-0 bg-[#173f55] text-white hover:bg-[#123447]"
+          >
+            {exporting ? (
+              <LoaderCircle className="animate-spin" />
+            ) : (
+              <Download />
+            )}
+            Generate current registers
+          </Button>
         </div>
+      </Panel>
+      <div className="grid items-start gap-5 xl:grid-cols-2">
         <Panel>
           <PanelHeader
-            title="Current register package"
-            description="Generated live from the database at download time"
+            title="Contract risk & obligation alerts"
+            description="Contract expirations, notice deadlines, renewals, and assigned follow-up"
+            action={
+              <div className="flex gap-2">
+                <StatusBadge tone="blue">
+                  {contractAlerts.length} active
+                </StatusBadge>
+                {contractCriticalCount ? (
+                  <StatusBadge tone="rose">
+                    {contractCriticalCount} urgent
+                  </StatusBadge>
+                ) : null}
+              </div>
+            }
           />
-          <div className="p-5">
-            <div className="rounded-xl bg-[#0f3044] p-5 text-white">
-              <FileSpreadsheet className="size-7 text-[#65c5df]" />
-              <h3 className="mt-4 text-sm font-semibold">
-                ContractLedger Register Package
-              </h3>
-              <p className="mt-2 text-xs leading-5 text-slate-300">
-                One Excel workbook with Contract Register, Supplier Register,
-                and obligation exceptions.
-              </p>
-              <Button
-                onClick={onExport}
-                disabled={!workspace || exporting}
-                className="mt-5 w-full bg-white text-[#12384c] hover:bg-slate-100"
-              >
-                {exporting ? (
-                  <LoaderCircle className="animate-spin" />
-                ) : (
-                  <Download />
-                )}
-                Generate current registers
-              </Button>
-            </div>
-            <div className="mt-4 space-y-2 text-xs text-slate-600">
-              <div className="flex items-center gap-2">
-                <Check className="size-3.5 text-emerald-600" />
-                Executed values only
+          <div className="space-y-3 p-5">
+            {contractAlerts.map((item) => (
+              <ObligationEditor
+                key={String(item.id)}
+                item={item}
+                onSaved={onRefresh}
+                onOpenRecord={() => onSelectContract(String(item.contract_id))}
+              />
+            ))}
+            {!contractAlerts.length ? (
+              <EmptyState
+                title="No open contract alerts"
+                description="Upcoming contract deadlines will appear here after an executed agreement is registered."
+              />
+            ) : null}
+            {completedContractAlerts.length ? (
+              <details className="rounded-xl border border-[#dce3e8] bg-slate-50">
+                <summary className="cursor-pointer px-4 py-3 text-xs font-medium text-slate-600">
+                  Completed contract actions ({completedContractAlerts.length})
+                </summary>
+                <div className="space-y-3 border-t border-[#dce3e8] p-3">
+                  {completedContractAlerts.map((item) => (
+                    <ObligationEditor
+                      key={String(item.id)}
+                      item={item}
+                      onSaved={onRefresh}
+                      onOpenRecord={() =>
+                        onSelectContract(String(item.contract_id))
+                      }
+                    />
+                  ))}
+                </div>
+              </details>
+            ) : null}
+          </div>
+        </Panel>
+
+        <Panel>
+          <PanelHeader
+            title="Supplier qualification risk alerts"
+            description="Expiring qualification evidence and missing core supplier records"
+            action={
+              <div className="flex gap-2">
+                <StatusBadge tone="blue">
+                  {supplierAlerts.length} records
+                </StatusBadge>
+                {supplierCriticalCount ? (
+                  <StatusBadge tone="rose">
+                    {supplierCriticalCount} urgent
+                  </StatusBadge>
+                ) : null}
               </div>
-              <div className="flex items-center gap-2">
-                <Check className="size-3.5 text-emerald-600" />
-                Renewal decision and owner included
-              </div>
-              <div className="flex items-center gap-2">
-                <Check className="size-3.5 text-emerald-600" />
-                Timestamped workbook
-              </div>
-            </div>
+            }
+          />
+          <div className="space-y-3 p-5">
+            {supplierAlerts.map((item) => (
+              <SupplierComplianceAlert
+                key={String(item.alert_id)}
+                item={item}
+                onOpenSupplier={() =>
+                  onSelectSupplier(String(item.supplier_id))
+                }
+              />
+            ))}
+            {!supplierAlerts.length ? (
+              <EmptyState
+                title="No supplier compliance alerts"
+                description="Documents with expiration dates and missing W-9 or insurance records will appear here."
+              />
+            ) : null}
           </div>
         </Panel>
       </div>

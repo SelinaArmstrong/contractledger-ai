@@ -72,7 +72,7 @@ export type AssistantQueryExecution = {
 
 export type AssistantResponse = {
   answer: string;
-  insights: string[];
+  resultContext: string[];
   suggestedFollowUps: string[];
   plan: AssistantQueryPlan;
   execution: AssistantQueryExecution;
