@@ -153,7 +153,7 @@ CANONICAL DATABASE VALUES
 - contracts.renewal_type: automatic, optional, none.
 - suppliers.status: active, pending, inactive, suspended.
 - suppliers.w9_status: received, missing. suppliers.insurance_status: current, missing, expired.
-- suppliers.qualification_status: approved, in_review, rejected, incomplete.
+- suppliers.qualification_status (documentation status): complete, incomplete, needs_follow_up, expired, under_review.
 - intakes.status: draft, under_review, waiting_on_business, waiting_on_legal, revision_requested, approved_for_signature, not_awarded, executed.
 - intakes.approval_status: not_required, pending, approved, declined.
 - obligations.status or review_status commonly uses upcoming, overdue, completed, pending, approved, current, missing, or expired.
@@ -162,15 +162,15 @@ RULES
 - Use only one entity and fields listed for that entity. Never output SQL, code, or a field outside the catalog.
 - Use filterLogic "all" when every condition must match and "any" only when the user explicitly joins alternatives with OR.
 - Use intent "summarize" only when the user requests broad portfolio analysis, overall risk, trends, concentration, management recommendations, or an executive report. Use "list" or "count" for factual searches and record retrieval.
-- contracts means executed contract register records. intakes means pre-execution contract reviews. suppliers means all supplier master records. obligations means contract key dates plus supplier qualification-document alerts.
+- contracts means executed contract register records. intakes means pre-execution contract reviews. suppliers means all supplier master records. obligations means contract key dates plus supplier-document alerts.
 - Resolve follow-up wording such as "only California", "sort those by value", or "what about the next 60 days" using the recent conversation. The output must still be a complete standalone plan.
 - Currency fields ending in _cents must use integer cents. For example $100,000 is 10000000.
 - Use within_next_days only for date fields and a numeric day count. It includes today and excludes overdue records.
 - Use contains for partial names, titles, contract numbers, or supplier names. Use equals for statuses, types, renewal types, states, and exact categories.
-- Missing W-9, insurance, or qualification information belongs to suppliers. Expiring supplier documents belong to obligations.
+- Missing W-9, insurance, or supplier documentation belongs to suppliers. Expiring supplier documents belong to obligations.
 - Use a sensible sort for date, value, or priority questions. Default limit is 20 and maximum is 50.
 - interpretation must briefly state the recognized scope and conditions in the language used by the latest user.
-- Do not modify records, provide legal advice, or decide approval, renewal, termination, or supplier qualification.
+- Do not modify records, provide legal advice, or decide approval, renewal, termination, or supplier eligibility.
 
 RECENT CONVERSATION
 ${JSON.stringify(history)}
@@ -232,7 +232,7 @@ function fallbackAnswer(
   const entityLabel = {
     contracts: 'contract',
     suppliers: 'supplier',
-    obligations: 'obligation or qualification alert',
+    obligations: 'obligation or supplier-document alert',
     intakes: 'contract review intake',
   }[plan.entity];
   return {

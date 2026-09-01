@@ -24,10 +24,10 @@ export async function POST(request: Request) {
     await ensureWorkspaceDatabase();
     const input = obligationSchema.parse(await request.json());
     const current = await env.DB.prepare(
-      'SELECT id FROM key_dates WHERE id = ? LIMIT 1',
+      'SELECT id, contract_id FROM key_dates WHERE id = ? LIMIT 1',
     )
       .bind(input.id)
-      .first<{ id: string }>();
+      .first<{ id: string; contract_id: string | null }>();
     if (!current)
       return Response.json({ error: 'Obligation not found.' }, { status: 404 });
 
@@ -55,6 +55,13 @@ export async function POST(request: Request) {
         }),
         now,
       ),
+      ...(current.contract_id
+        ? [
+            env.DB.prepare(
+              'UPDATE contracts SET last_updated = ? WHERE id = ?',
+            ).bind(now, current.contract_id),
+          ]
+        : []),
     ]);
 
     return Response.json({ saved: true, workspace: await getWorkspace() });

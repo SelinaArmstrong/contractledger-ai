@@ -247,7 +247,7 @@ const schemaStatements = [
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_contracts_intake_id_unique ON contracts(intake_id) WHERE intake_id IS NOT NULL',
 ];
 
-const CURRENT_SCHEMA_VERSION = 9;
+const CURRENT_SCHEMA_VERSION = 10;
 
 const runtimeMigrationStatements = [
   `CREATE TABLE IF NOT EXISTS api_rate_limits (
@@ -264,6 +264,20 @@ const runtimeMigrationStatements = [
   'CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)',
   'CREATE INDEX IF NOT EXISTS idx_contract_intakes_status_owner ON contract_intakes(status, owner)',
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_contracts_intake_id_unique ON contracts(intake_id) WHERE intake_id IS NOT NULL',
+  `UPDATE suppliers SET qualification_status = CASE qualification_status
+    WHEN 'approved' THEN 'complete'
+    WHEN 'in_review' THEN 'under_review'
+    WHEN 'pending' THEN 'under_review'
+    WHEN 'rejected' THEN 'needs_follow_up'
+    ELSE qualification_status
+  END`,
+  `UPDATE suppliers SET status = 'inactive' WHERE status = 'rejected'`,
+  `UPDATE contract_intakes SET supplier_id = NULL
+    WHERE status != 'executed'`,
+  `UPDATE documents SET supplier_id = NULL
+    WHERE lifecycle_stage = 'draft'`,
+  `UPDATE ai_analysis_runs SET supplier_id = NULL
+    WHERE stage = 'draft'`,
 ] as const;
 
 const suppliersSeed = [
@@ -498,7 +512,7 @@ const intakeSeed = [
   [
     'int-001',
     'INT-2026-041',
-    'sup-westline',
+    null,
     'Westline Engineering Group LLC',
     'Plant Modernization Engineering Support',
     'Professional Services Agreement',
@@ -510,7 +524,7 @@ const intakeSeed = [
   [
     'int-002',
     'INT-2026-042',
-    'sup-apex',
+    null,
     'Apex Equipment LLC',
     'Amendment No. 1 — Equipment Supply',
     'Amendment',
@@ -646,7 +660,7 @@ const supplierProfileSeed = [
     'https://example.com/apex-equipment',
     'LLC - Partnership',
     'medium',
-    'approved',
+    'complete',
     '2026-02-01',
   ],
   [
@@ -662,7 +676,7 @@ const supplierProfileSeed = [
     'https://example.com/westline-engineering',
     'C Corporation',
     'high',
-    'in_review',
+    'under_review',
     '2026-08-29',
   ],
   [
@@ -678,7 +692,7 @@ const supplierProfileSeed = [
     'https://example.com/pacific-safety',
     'S Corporation',
     'high',
-    'approved',
+    'complete',
     '2026-03-10',
   ],
   [
@@ -694,7 +708,7 @@ const supplierProfileSeed = [
     'https://example.com/golden-state-logistics',
     'LLC - Partnership',
     'high',
-    'approved',
+    'complete',
     '2026-04-01',
   ],
   [
@@ -710,7 +724,7 @@ const supplierProfileSeed = [
     'https://example.com/harbor-technology',
     'C Corporation',
     'high',
-    'approved',
+    'complete',
     '2026-01-20',
   ],
   [
@@ -726,7 +740,7 @@ const supplierProfileSeed = [
     'https://example.com/redwood-facilities',
     'LLC - Partnership',
     'high',
-    'in_review',
+    'under_review',
     '2026-06-01',
   ],
   [
@@ -742,7 +756,7 @@ const supplierProfileSeed = [
     'https://example.com/sierra-environmental',
     'S Corporation',
     'high',
-    'in_review',
+    'under_review',
     '2026-07-01',
   ],
   [
@@ -758,7 +772,7 @@ const supplierProfileSeed = [
     'https://example.com/north-bay-supply',
     'C Corporation',
     'low',
-    'approved',
+    'complete',
     '2025-09-01',
   ],
 ] as const;
@@ -834,7 +848,7 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
       VALUES (?, ?, ?, ?, ?, 'draft', ?, 'application/pdf', 10, 'approved', 'verified', ?)`)
       .bind(
         'doc-demo-draft-westline',
-        'sup-westline',
+        null,
         'int-001',
         '01_Draft_Professional_Services_Agreement.pdf',
         'Professional Services Agreement',
@@ -850,7 +864,7 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
       .bind(
         'airun-demo-draft-westline',
         'int-001',
-        'sup-westline',
+        null,
         'doc-demo-draft-westline',
         '01_Draft_Professional_Services_Agreement.pdf',
         'public:/demo-documents/01_Draft_Professional_Services_Agreement.pdf',

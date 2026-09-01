@@ -112,7 +112,7 @@ function addDays(dateValue: string, days: number) {
 type VerifiedAnalysisRun = {
   id: string;
   stage: 'draft' | 'executed';
-  supplier_id: string;
+  supplier_id: string | null;
   supplier_name: string;
   intake_id: string | null;
   contract_id: string | null;
@@ -140,7 +140,13 @@ function buildTransactionComparisons(rows: VerifiedAnalysisRun[]) {
       const draft = drafts.find(
         (candidate) => candidate.intake_id === executed.source_intake_id,
       );
-      if (!draft || !draft.intake_id || !executed.contract_id) return [];
+      if (
+        !draft ||
+        !draft.intake_id ||
+        !executed.contract_id ||
+        !executed.supplier_id
+      )
+        return [];
       try {
         const draftAnalysis = JSON.parse(draft.verified_result_json) as Record<
           string,
@@ -207,6 +213,7 @@ export async function getWorkspace() {
     intakeRows,
     keyDateRows,
     supplierAlertRows,
+    supplierDocumentRows,
     aiComparisonRows,
     evaluationRows,
   ] = await Promise.all([
@@ -219,7 +226,11 @@ export async function getWorkspace() {
       (SELECT COUNT(*) FROM contract_intakes WHERE review_status != 'complete') AS records_to_verify`)
       .first(),
     db
-      .prepare(`SELECT c.*, s.legal_name AS supplier_name
+      .prepare(`SELECT c.*, s.legal_name AS supplier_name,
+      (SELECT COUNT(*) FROM key_dates k
+        WHERE k.contract_id = c.id AND k.status != 'completed') AS open_obligation_count,
+      (SELECT MIN(k.due_date) FROM key_dates k
+        WHERE k.contract_id = c.id AND k.status != 'completed') AS next_obligation_date
       FROM contracts c JOIN suppliers s ON s.id = c.supplier_id
       ORDER BY c.last_updated DESC`)
       .all(),
@@ -327,12 +338,24 @@ export async function getWorkspace() {
         due_date, supplier_name`)
       .all(),
     db
-      .prepare(`SELECT r.id, r.stage, r.supplier_id, s.legal_name AS supplier_name,
+      .prepare(`SELECT d.id, d.supplier_id, s.vendor_number,
+        s.legal_name AS supplier_name, d.file_name, d.file_type,
+        d.issuer, d.document_number, d.effective_date, d.expiration_date,
+        d.coverage_summary, d.review_status, d.ai_status, d.uploaded_at
+      FROM documents d
+      JOIN suppliers s ON s.id = d.supplier_id
+      WHERE d.lifecycle_stage = 'supplier_record'
+      ORDER BY s.legal_name, d.file_type, d.uploaded_at DESC`)
+      .all(),
+    db
+      .prepare(`SELECT r.id, r.stage, r.supplier_id,
+        COALESCE(s.legal_name, i.proposed_supplier_name, 'Supplier not recorded') AS supplier_name,
         r.intake_id, r.contract_id, r.file_name, r.verified_result_json,
         COALESCE(r.intake_id, c.intake_id) AS source_intake_id,
         r.reviewed_at
       FROM ai_analysis_runs r
-      JOIN suppliers s ON s.id = r.supplier_id
+      LEFT JOIN suppliers s ON s.id = r.supplier_id
+      LEFT JOIN contract_intakes i ON i.id = r.intake_id
       LEFT JOIN contracts c ON c.id = r.contract_id
       WHERE r.status = 'verified'
         AND r.stage IN ('draft', 'executed')
@@ -352,6 +375,7 @@ export async function getWorkspace() {
     intakes: intakeRows.results,
     keyDates: keyDateRows.results,
     supplierAlerts: supplierAlertRows.results,
+    supplierDocuments: supplierDocumentRows.results,
     transactionComparisons: buildTransactionComparisons(
       aiComparisonRows.results,
     ),
@@ -453,56 +477,59 @@ export async function POST(request: Request) {
     );
     const normalizedName =
       normalizeSupplierName(supplierName) || `pending-${crypto.randomUUID()}`;
-    let supplier = await db
-      .prepare(
-        'SELECT id, status FROM suppliers WHERE normalized_name = ? LIMIT 1',
-      )
-      .bind(normalizedName)
-      .first<{ id: string; status: string }>();
-
-    if (!supplier) {
-      const supplierId = `sup-${crypto.randomUUID()}`;
-      await db
-        .prepare(`INSERT INTO suppliers
-          (id, legal_name, normalized_name, category, status, w9_status, insurance_status, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, 'missing', 'missing', ?, ?)`)
-        .bind(
-          supplierId,
-          supplierName,
-          normalizedName,
-          'Pending classification',
-          input.stage === 'executed' ? 'active' : 'pending',
-          now,
-          now,
-        )
-        .run();
-      supplier = {
-        id: supplierId,
-        status: input.stage === 'executed' ? 'active' : 'pending',
-      };
-    } else if (input.stage === 'executed' && supplier.status !== 'active') {
-      await db
+    let supplier: { id: string; status: string } | null = null;
+    if (input.stage === 'executed') {
+      supplier = await db
         .prepare(
-          "UPDATE suppliers SET status = 'active', updated_at = ? WHERE id = ?",
+          'SELECT id, status FROM suppliers WHERE normalized_name = ? LIMIT 1',
         )
-        .bind(now, supplier.id)
-        .run();
+        .bind(normalizedName)
+        .first<{ id: string; status: string }>();
+
+      if (!supplier) {
+        const supplierId = `sup-${crypto.randomUUID()}`;
+        await db
+          .prepare(`INSERT INTO suppliers
+            (id, legal_name, normalized_name, category, status,
+             qualification_status, w9_status, insurance_status, created_at, updated_at)
+            VALUES (?, ?, ?, 'Pending classification', 'active',
+              'incomplete', 'missing', 'missing', ?, ?)`)
+          .bind(supplierId, supplierName, normalizedName, now, now)
+          .run();
+        supplier = { id: supplierId, status: 'active' };
+      } else if (supplier.status !== 'active') {
+        await db
+          .prepare(
+            "UPDATE suppliers SET status = 'active', updated_at = ? WHERE id = ?",
+          )
+          .bind(now, supplier.id)
+          .run();
+      }
     }
 
     let linkedIntakeId: string | null = null;
-    if (input.stage === 'executed') {
+    if (input.stage === 'executed' && supplier) {
       const candidates = await db
-        .prepare(`SELECT i.id
+        .prepare(`SELECT i.id, i.supplier_id, i.proposed_supplier_name
           FROM contract_intakes i
           LEFT JOIN contracts c ON c.intake_id = i.id
-          WHERE i.supplier_id = ? AND c.id IS NULL
+          WHERE c.id IS NULL
             AND i.status IN ('draft', 'under_review', 'revision_requested', 'approved_for_signature')
           ORDER BY i.updated_at DESC
-          LIMIT 2`)
-        .bind(supplier.id)
-        .all<{ id: string }>();
-      if (candidates.results.length === 1) {
-        linkedIntakeId = candidates.results[0].id;
+          LIMIT 100`)
+        .all<{
+          id: string;
+          supplier_id: string | null;
+          proposed_supplier_name: string;
+        }>();
+      const matchingCandidates = candidates.results.filter(
+        (candidate) =>
+          candidate.supplier_id === supplier?.id ||
+          normalizeSupplierName(candidate.proposed_supplier_name) ===
+            normalizedName,
+      );
+      if (matchingCandidates.length === 1) {
+        linkedIntakeId = matchingCandidates[0].id;
       }
     }
 
@@ -518,9 +545,11 @@ export async function POST(request: Request) {
     const aiReviewStatements = ({
       intakeId,
       contractId,
+      supplierId,
     }: {
       intakeId: string | null;
       contractId: string | null;
+      supplierId: string | null;
     }) => [
       db
         .prepare(`UPDATE ai_analysis_runs SET intake_id = ?, contract_id = ?,
@@ -530,7 +559,7 @@ export async function POST(request: Request) {
         .bind(
           intakeId,
           contractId,
-          supplier.id,
+          supplierId,
           documentId,
           JSON.stringify(input.analysis),
           correctionCount,
@@ -581,7 +610,7 @@ export async function POST(request: Request) {
           .bind(
             id,
             intakeNumber,
-            supplier.id,
+            null,
             supplierName,
             title,
             contractType,
@@ -598,7 +627,7 @@ export async function POST(request: Request) {
           VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?, 'needs_review', ?)`)
           .bind(
             documentId,
-            supplier.id,
+            null,
             id,
             input.document.fileName,
             contractType,
@@ -622,7 +651,11 @@ export async function POST(request: Request) {
             }),
             now,
           ),
-        ...aiReviewStatements({ intakeId: id, contractId: null }),
+        ...aiReviewStatements({
+          intakeId: id,
+          contractId: null,
+          supplierId: null,
+        }),
         ...input.analysis.findings.map((finding) =>
           db
             .prepare(`INSERT INTO review_findings
@@ -643,6 +676,7 @@ export async function POST(request: Request) {
         ),
       ]);
     } else {
+      if (!supplier) throw new Error('The executed supplier was not resolved.');
       const id = `con-${crypto.randomUUID()}`;
       const extractedNumber = stringValue(input.analysis.contractNumber);
       const contractNumber =
@@ -733,14 +767,19 @@ export async function POST(request: Request) {
             }),
             now,
           ),
-        ...aiReviewStatements({ intakeId: linkedIntakeId, contractId: id }),
+        ...aiReviewStatements({
+          intakeId: linkedIntakeId,
+          contractId: id,
+          supplierId: supplier.id,
+        }),
         ...(linkedIntakeId
           ? [
               db
                 .prepare(`UPDATE contract_intakes
-                  SET status = 'executed', review_status = 'complete', updated_at = ?
+                  SET supplier_id = ?, status = 'executed',
+                    review_status = 'complete', updated_at = ?
                   WHERE id = ?`)
-                .bind(now, linkedIntakeId),
+                .bind(supplier.id, now, linkedIntakeId),
             ]
           : []),
         ...extractedDates.map((item) =>

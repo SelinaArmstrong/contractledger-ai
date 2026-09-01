@@ -38,6 +38,34 @@ export const ALLOWED_SUPPLIER_DOCUMENT_MIME_TYPES = [
 
 export const MAX_SUPPLIER_DOCUMENT_BYTES = 8 * 1024 * 1024;
 
+export type SupplierDocumentationStatus =
+  | 'complete'
+  | 'incomplete'
+  | 'needs_follow_up'
+  | 'expired'
+  | 'under_review';
+
+export function supplierDocumentationStatus({
+  w9Status,
+  insuranceStatus,
+  documentStatuses,
+}: {
+  w9Status: string;
+  insuranceStatus: string;
+  documentStatuses: string[];
+}): SupplierDocumentationStatus {
+  if (
+    insuranceStatus === 'expired' ||
+    documentStatuses.includes('expired')
+  )
+    return 'expired';
+  if (documentStatuses.includes('needs_follow_up')) return 'needs_follow_up';
+  if (w9Status === 'missing' || insuranceStatus === 'missing')
+    return 'incomplete';
+  if (documentStatuses.includes('under_review')) return 'under_review';
+  return 'complete';
+}
+
 export function normalizeSupplierName(name: string) {
   return name
     .toLowerCase()

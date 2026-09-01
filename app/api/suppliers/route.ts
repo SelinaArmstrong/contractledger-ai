@@ -9,6 +9,7 @@ import {
   normalizeSupplierName,
   safeSupplierFileName,
   SUPPLIER_DOCUMENT_TYPES,
+  supplierDocumentationStatus,
 } from '@/lib/supplier-qualification';
 import { authorizeApiRequest } from '@/lib/server/request-security';
 import { assertSupplierFileSignature } from '@/lib/server/file-validation';
@@ -171,7 +172,30 @@ export async function POST(request: Request) {
       });
     }
 
-    const insuranceExpirations = storedDocuments
+    const reviewedDocuments = storedDocuments.map((document) => {
+      const analysis = document.analysisRun
+        ? (JSON.parse(document.analysisRun.original_result_json) as Record<
+            string,
+            unknown
+          >)
+        : null;
+      const hasIssues = Boolean(
+        analysis &&
+          ((Array.isArray(analysis.findings) && analysis.findings.length) ||
+            (Array.isArray(analysis.warnings) && analysis.warnings.length)),
+      );
+      const reviewStatus =
+        document.expirationDate && document.expirationDate < today
+          ? 'expired'
+          : !document.analysisRun
+            ? 'under_review'
+            : hasIssues
+              ? 'needs_follow_up'
+              : 'current';
+      return { ...document, analysis, reviewStatus };
+    });
+
+    const insuranceExpirations = reviewedDocuments
       .filter((item) => item.documentType === 'insurance_certificate')
       .map((item) => item.expirationDate)
       .filter((value): value is string => Boolean(value))
@@ -182,16 +206,21 @@ export async function POST(request: Request) {
         ? 'current'
         : 'expired'
       : 'missing';
-    const w9Status = storedDocuments.some((item) => item.documentType === 'w9')
+    const w9Status = reviewedDocuments.some(
+      (item) => item.documentType === 'w9',
+    )
       ? 'received'
       : 'missing';
+    const documentationStatus = supplierDocumentationStatus({
+      w9Status,
+      insuranceStatus,
+      documentStatuses: reviewedDocuments.map((item) => item.reviewStatus),
+    });
 
     const aiReviewStatements = [];
-    for (const document of storedDocuments) {
+    for (const document of reviewedDocuments) {
       if (!document.analysisRun) continue;
-      const original = JSON.parse(
-        document.analysisRun.original_result_json,
-      ) as Record<
+      const original = document.analysis as Record<
         string,
         {
           value: string | number | null;
@@ -287,7 +316,7 @@ export async function POST(request: Request) {
          postal_code, country, tax_classification, risk_tier, qualification_status,
          qualification_review_date, w9_status, insurance_status, insurance_expiration,
          created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_review', ?, ?, ?, ?, ?, ?)`).bind(
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
         supplierId,
         supplier.legalName,
         normalizedName,
@@ -306,6 +335,7 @@ export async function POST(request: Request) {
         supplier.country,
         supplier.taxClassification || 'Pending verification',
         supplier.riskTier,
+        documentationStatus,
         today,
         w9Status,
         insuranceStatus,
@@ -313,12 +343,12 @@ export async function POST(request: Request) {
         now,
         now,
       ),
-      ...storedDocuments.map((document) =>
+      ...reviewedDocuments.map((document) =>
         env.DB.prepare(`INSERT INTO documents
           (id, supplier_id, file_name, file_type, lifecycle_stage, storage_key, mime_type,
            issuer, document_number, effective_date, expiration_date,
            coverage_summary, review_status, ai_status, uploaded_at)
-          VALUES (?, ?, ?, ?, 'supplier_record', ?, ?, ?, ?, ?, ?, ?, 'pending', 'verified', ?)`).bind(
+          VALUES (?, ?, ?, ?, 'supplier_record', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
           document.documentId,
           supplierId,
           document.file.name,
@@ -330,6 +360,8 @@ export async function POST(request: Request) {
           document.effectiveDate || null,
           document.expirationDate || null,
           document.coverageSummary || null,
+          document.reviewStatus,
+          document.analysisRun ? 'verified' : 'needs_review',
           now,
         ),
       ),
@@ -343,8 +375,9 @@ export async function POST(request: Request) {
         JSON.stringify({
           vendorNumber,
           source: 'ai_qualification_package_onboarding',
-          documentCount: storedDocuments.length,
-          documentTypes: storedDocuments.map((item) => item.documentType),
+          documentCount: reviewedDocuments.length,
+          documentTypes: reviewedDocuments.map((item) => item.documentType),
+          documentationStatus,
         }),
         now,
       ),

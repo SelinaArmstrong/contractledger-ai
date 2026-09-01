@@ -20,10 +20,10 @@ import {
   Bot,
   BookOpenCheck,
   Building2,
+  CalendarDays,
   Check,
   ChevronDown,
   CircleCheck,
-  Clock3,
   Database,
   Download,
   ExternalLink,
@@ -50,6 +50,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Calendar } from '@/components/ui/calendar';
 import {
   Dialog,
   DialogContent,
@@ -59,6 +60,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import {
   Sheet,
   SheetContent,
@@ -292,6 +298,13 @@ function valueText(value: unknown) {
   return 'Structured value';
 }
 
+function usDateText(value: unknown) {
+  if (typeof value !== 'string') return valueText(value);
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return valueText(value);
+  return `${match[2]}/${match[3]}/${match[1]}`;
+}
+
 function titleCase(value: unknown) {
   return valueText(value)
     .replaceAll('_', ' ')
@@ -300,6 +313,14 @@ function titleCase(value: unknown) {
 
 function toneForStatus(status: unknown) {
   const normalized = valueText(status).toLowerCase();
+  if (
+    normalized.includes('missing') ||
+    normalized.includes('expired') ||
+    normalized.includes('incomplete') ||
+    normalized.includes('follow') ||
+    normalized.includes('high')
+  )
+    return 'rose';
   if (
     normalized.includes('active') ||
     normalized.includes('current') ||
@@ -312,12 +333,6 @@ function toneForStatus(status: unknown) {
     normalized.includes('upcoming')
   )
     return 'amber';
-  if (
-    normalized.includes('missing') ||
-    normalized.includes('expired') ||
-    normalized.includes('high')
-  )
-    return 'rose';
   return 'blue';
 }
 
@@ -401,9 +416,9 @@ function PanelHeader({
   return (
     <div className="flex flex-col justify-between gap-3 border-b border-[#e3e9ed] px-5 py-4 sm:flex-row sm:items-center">
       <div>
-        <h2 className="text-[14px] font-semibold text-[#1b2e3a]">{title}</h2>
+        <h2 className="app-section-title">{title}</h2>
         {description ? (
-          <p className="mt-0.5 text-[11px] text-slate-500">{description}</p>
+          <p className="app-body-copy mt-1">{description}</p>
         ) : null}
       </div>
       {action}
@@ -842,7 +857,7 @@ export function ContractLedgerApp({
   }, [search, workspace]);
 
   return (
-    <main className="min-h-screen bg-[#f3f6f8] text-[#17212b]">
+    <main className="contract-ledger-app min-h-screen bg-[#f3f6f8] text-[#17212b]">
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-[252px] border-r border-[#dce3e8] bg-[#0d2638] text-white lg:flex lg:flex-col">
         <div className="flex h-[78px] items-center gap-3 border-b border-white/10 px-6">
           <div className="flex size-10 items-center justify-center rounded-xl bg-[#2f86a6] shadow-lg shadow-black/10">
@@ -1004,7 +1019,7 @@ export function ContractLedgerApp({
           </div>
         </div>
 
-        <div className="mx-auto max-w-[1500px] px-5 py-7 md:px-8 md:py-9">
+        <div className="mx-auto w-full max-w-[1800px] px-4 py-7 md:px-6 md:py-9 xl:px-7">
           {workspaceError ? (
             <Alert variant="destructive" className="mb-5">
               <AlertCircle />
@@ -1016,8 +1031,6 @@ export function ContractLedgerApp({
             <DashboardView
               workspace={workspace}
               onOpen={openIntake}
-              onExport={exportRegisters}
-              exporting={exporting}
               onNavigate={setActiveView}
               onReset={resetDemo}
               resetting={resetting}
@@ -1442,8 +1455,8 @@ type AssistantConversationMessage = {
 const assistantExamples = [
   'Show active contracts over $100,000 that expire before December 31, 2026.',
   'Which supplier qualification documents expire in the next 90 days?',
-  '找出所有W-9缺失的供应商。',
-  '哪些新合同还在等待CFO审批？',
+  'Find all suppliers with a missing W-9.',
+  'Which new contract reviews are still waiting for CFO approval?',
 ] as const;
 
 function AIAssistantDialog({
@@ -1752,7 +1765,7 @@ function AssistantStructuredResult({
   const entityLabels: Record<string, string> = {
     contracts: 'Executed contracts',
     suppliers: 'Suppliers',
-    obligations: 'Obligations & qualification alerts',
+    obligations: 'Obligations & supplier-document alerts',
     intakes: 'Pre-execution reviews',
   };
   const managementScope =
@@ -1962,10 +1975,10 @@ function PageHeading({
           <Sparkles className="size-3.5" />
           {eyebrow}
         </div>
-        <h1 className="text-[28px] font-semibold tracking-[-0.03em] text-[#142534] md:text-[32px]">
+        <h1 className="app-page-title">
           {title}
         </h1>
-        <p className="mt-1.5 max-w-2xl text-[13px] leading-6 text-slate-500">
+        <p className="app-body-copy mt-2 max-w-2xl">
           {description}
         </p>
       </div>
@@ -1977,16 +1990,12 @@ function PageHeading({
 function DashboardView({
   workspace,
   onOpen,
-  onExport,
-  exporting,
   onNavigate,
   onReset,
   resetting,
 }: {
   workspace: Workspace | null;
   onOpen: (stage: IntakeStage) => void;
-  onExport: () => void;
-  exporting: boolean;
   onNavigate: (view: ViewName) => void;
   onReset: () => void;
   resetting: boolean;
@@ -2029,6 +2038,17 @@ function DashboardView({
     green: 'bg-emerald-50 text-emerald-700',
     amber: 'bg-amber-50 text-amber-700',
   };
+  const contractRecords = workspace?.contracts ?? [];
+  const supplierRecords = workspace?.suppliers ?? [];
+  const reviewRecords = workspace?.intakes.slice(0, 4) ?? [];
+  const contractAlerts =
+    workspace?.keyDates
+      .filter((item) => item.status !== 'completed')
+      .slice(0, 4) ?? [];
+  const supplierAlerts = workspace?.supplierAlerts.slice(0, 4) ?? [];
+  const supplierFollowUpCount = supplierRecords.filter(
+    (item) => item.qualification_status !== 'complete',
+  ).length;
   return (
     <>
       <PageHeading
@@ -2036,36 +2056,20 @@ function DashboardView({
         title="Contract operations dashboard"
         description="Turn draft and executed agreements into verified contract and supplier records—without mixing proposed data into the official register."
         action={
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={onReset}
-              disabled={resetting}
-              className="h-10 border-[#cdd9df] bg-white px-4 text-slate-600 shadow-sm"
-            >
-              {resetting ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <RotateCcw />
-              )}
-              Reset demo
-            </Button>
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={onExport}
-              disabled={!workspace || exporting}
-              className="h-10 border-[#cdd9df] bg-white px-4 text-[#244455] shadow-sm"
-            >
-              {exporting ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <Download />
-              )}
-              Generate current registers
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={onReset}
+            disabled={resetting}
+            className="h-10 border-[#cdd9df] bg-white px-4 text-slate-600 shadow-sm"
+          >
+            {resetting ? (
+              <LoaderCircle className="animate-spin" />
+            ) : (
+              <RotateCcw />
+            )}
+            Reset demo
+          </Button>
         }
       />
       <section className="mb-7 grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
@@ -2096,96 +2100,315 @@ function DashboardView({
           );
         })}
       </section>
-      <section className="mb-7 grid gap-4 xl:grid-cols-2">
-        <article className="relative overflow-hidden rounded-xl border border-[#b9d9e5] bg-[#edf8fb] p-5">
-          <div className="absolute right-5 top-5 flex size-10 items-center justify-center rounded-lg bg-white/80 text-[#257a98]">
-            <FileSearch className="size-5" />
+      <Panel className="mb-7 overflow-hidden">
+        <PanelHeader
+          title="Review a new contract"
+          description="Pre-execution AI review stays outside both official registers."
+        />
+        <div className="bg-[#f8fafb] p-5">
+          <article className="relative overflow-hidden rounded-xl border border-[#b9d9e5] bg-[#edf8fb] p-5">
+            <div className="absolute right-5 top-5 flex size-10 items-center justify-center rounded-lg bg-white/80 text-[#257a98]">
+              <FileSearch className="size-5" />
+            </div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#43849a]">
+              Pre-execution intake
+            </p>
+            <h3 className="mt-2 text-lg font-semibold text-[#14364a]">
+              Upload and review a draft agreement
+            </h3>
+            <p className="mt-1 max-w-3xl text-[12px] leading-5 text-[#557280]">
+              Extract proposed terms and compare the draft to the demo
+              playbook. Only the proposed supplier name is retained; no
+              Contract or Supplier Register record is created.
+            </p>
+            <Button
+              onClick={() => onOpen('draft')}
+              className="mt-5 h-9 bg-[#1d718f] hover:bg-[#185f78]"
+            >
+              <Upload /> Upload draft <ArrowRight />
+            </Button>
+          </article>
+        </div>
+      </Panel>
+
+      <Panel className="mb-7 overflow-hidden">
+        <PanelHeader
+          title="AI review queue"
+          description="Draft analyses waiting for human confirmation, correction, or follow-up."
+          action={
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onNavigate('New Contract Review')}
+              className="text-[#2e7188]"
+            >
+              View all reviews <ArrowRight />
+            </Button>
+          }
+        />
+        <IntakeTable intakes={reviewRecords} />
+      </Panel>
+
+      <Panel className="mb-7 overflow-hidden">
+        <PanelHeader
+          title="Register an executed contract"
+          description="Post-execution intake writes verified values to the official registers and monitoring schedule."
+        />
+        <div className="bg-[#f8fafb] p-5">
+          <article className="relative overflow-hidden rounded-xl border border-[#b9d9e5] bg-[#edf8fb] p-5">
+            <div className="absolute right-5 top-5 flex size-10 items-center justify-center rounded-lg bg-white/80 text-[#257a98]">
+              <FileCheck2 className="size-5" />
+            </div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#43849a]">
+              Post-execution intake
+            </p>
+            <h3 className="mt-2 text-lg font-semibold text-[#1b2e3a]">
+              Upload the signed source of truth
+            </h3>
+            <p className="mt-1 max-w-3xl text-[12px] leading-5 text-[#557280]">
+              Verify the signed source, update the official Contract Register,
+              link or create its supplier, and activate obligation and renewal
+              monitoring.
+            </p>
+            <Button
+              onClick={() => onOpen('executed')}
+              className="mt-5 h-9 bg-[#1d718f] hover:bg-[#185f78]"
+            >
+              <Upload /> Upload executed copy <ArrowRight />
+            </Button>
+          </article>
+        </div>
+      </Panel>
+
+      <Panel className="mb-7 overflow-hidden">
+        <div className="border-b border-[#e3e9ed] px-5 py-4">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#43849a]">
+              Official records
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-[#1b2e3a]">
+              Registers
+            </h2>
+            <p className="mt-1 text-[11px] text-slate-500">
+              Executed contracts and lifecycle supplier records are maintained
+              separately but linked by supplier.
+            </p>
           </div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#43849a]">
-            Pre-execution
-          </p>
-          <h2 className="mt-2 text-lg font-semibold text-[#14364a]">
-            Review a new contract
-          </h2>
-          <p className="mt-1 max-w-[440px] text-[12px] leading-5 text-[#557280]">
-            Extract proposed terms, compare the draft to the demo playbook, and
-            create a pending supplier. Draft values stay outside the official
-            register.
-          </p>
-          <Button
-            onClick={() => onOpen('draft')}
-            className="mt-5 h-9 bg-[#1d718f] hover:bg-[#185f78]"
-          >
-            <Upload />
-            Upload draft
-            <ArrowRight />
-          </Button>
-        </article>
-        <article className="relative overflow-hidden rounded-xl border border-[#cbd8dc] bg-white p-5">
-          <div className="absolute right-5 top-5 flex size-10 items-center justify-center rounded-lg bg-[#eef3f5] text-[#274b5c]">
-            <FileCheck2 className="size-5" />
-          </div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-            Post-execution
-          </p>
-          <h2 className="mt-2 text-lg font-semibold text-[#1b2e3a]">
-            Register an executed contract
-          </h2>
-          <p className="mt-1 max-w-[440px] text-[12px] leading-5 text-slate-500">
-            Verify the signed version, update both official registers, and
-            activate renewal and key-date monitoring.
-          </p>
-          <Button
-            onClick={() => onOpen('executed')}
-            variant="outline"
-            className="mt-5 h-9 border-[#bfcdd3] bg-white text-[#244757]"
-          >
-            <Upload />
-            Upload executed copy
-            <ArrowRight />
-          </Button>
-        </article>
-      </section>
+        </div>
+        <div className="grid gap-4 bg-[#f8fafb] p-5 xl:grid-cols-2">
+          <article className="flex min-h-[300px] flex-col overflow-hidden rounded-xl border border-[#c8dbe2] bg-white shadow-[0_1px_2px_rgb(15_23_42/3%)]">
+            <div className="flex items-start justify-between gap-4 border-b border-[#e3e9ed] bg-[#f7fbfc] px-5 py-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#43849a]">
+                  Executed agreements only
+                </p>
+                <h3 className="mt-1 text-base font-semibold text-[#173344]">
+                  Contract Register
+                </h3>
+              </div>
+              <span className="flex size-10 items-center justify-center rounded-lg bg-sky-50 text-sky-700">
+                <FolderKanban className="size-5" />
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 border-b border-[#edf1f3] px-5 py-4">
+              <div>
+                <p className="text-[10px] text-slate-500">Total records</p>
+                <p className="mt-1 text-2xl font-semibold text-[#1b2e3a]">
+                  {contractRecords.length}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500">Current value</p>
+                <p className="mt-1 text-2xl font-semibold text-[#1b2e3a]">
+                  {workspace
+                    ? moneyFromCents(
+                        workspace.metrics.current_value_cents,
+                        true,
+                      )
+                    : '—'}
+                </p>
+              </div>
+            </div>
+            <div className="flex-1 divide-y divide-[#edf1f3] px-5">
+              {contractRecords.slice(0, 3).map((item) => (
+                <div
+                  key={String(item.id)}
+                  className="flex items-center justify-between gap-3 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-[11px] font-medium text-[#294454]">
+                      {valueText(item.title)}
+                    </p>
+                    <p className="mt-0.5 truncate text-[9px] text-slate-500">
+                      {valueText(item.contract_number)} ·{' '}
+                      {valueText(item.supplier_name)}
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-medium text-slate-600">
+                    {moneyFromCents(item.current_value_cents)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-[#e3e9ed] px-5 py-4">
+              <Button
+                onClick={() => onNavigate('Contract Register')}
+                className="w-full justify-between bg-[#1d718f] hover:bg-[#185f78]"
+              >
+                Open Contract Register <ArrowRight />
+              </Button>
+            </div>
+          </article>
+
+          <article className="flex min-h-[300px] flex-col overflow-hidden rounded-xl border border-[#c8dbe2] bg-white shadow-[0_1px_2px_rgb(15_23_42/3%)]">
+            <div className="flex items-start justify-between gap-4 border-b border-[#e3e9ed] bg-[#f7fbfc] px-5 py-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#43849a]">
+                  Supplier lifecycle master
+                </p>
+                <h3 className="mt-1 text-base font-semibold text-[#173344]">
+                  Supplier Register
+                </h3>
+              </div>
+              <span className="flex size-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+                <Users className="size-5" />
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 border-b border-[#edf1f3] px-5 py-4">
+              <div>
+                <p className="text-[10px] text-slate-500">Total suppliers</p>
+                <p className="mt-1 text-2xl font-semibold text-[#1b2e3a]">
+                  {supplierRecords.length}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500">
+                  Documentation follow-up
+                </p>
+                <p className="mt-1 text-2xl font-semibold text-[#1b2e3a]">
+                  {supplierFollowUpCount}
+                </p>
+              </div>
+            </div>
+            <div className="flex-1 divide-y divide-[#edf1f3] px-5">
+              {supplierRecords.slice(0, 3).map((item) => (
+                <div
+                  key={String(item.id)}
+                  className="flex items-center justify-between gap-3 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-[11px] font-medium text-[#294454]">
+                      {valueText(item.legal_name)}
+                    </p>
+                    <p className="mt-0.5 truncate text-[9px] text-slate-500">
+                      {valueText(item.vendor_number)} ·{' '}
+                      {valueText(item.category)}
+                    </p>
+                  </div>
+                  <StatusBadge tone={toneForStatus(item.qualification_status)}>
+                    {titleCase(item.qualification_status)}
+                  </StatusBadge>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-[#e3e9ed] px-5 py-4">
+              <Button
+                onClick={() => onNavigate('Supplier Register')}
+                className="w-full justify-between bg-[#1d718f] hover:bg-[#185f78]"
+              >
+                Open Supplier Register <ArrowRight />
+              </Button>
+            </div>
+          </article>
+        </div>
+      </Panel>
+
+      <Panel className="mb-7 overflow-hidden">
+        <PanelHeader
+          title="Priority alerts"
+          description="Contract obligations and supplier-document exceptions are separated for faster follow-up."
+          action={
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onNavigate('Alerts & Exports')}
+              className="text-[#2e7188]"
+            >
+              Open alerts <ArrowRight />
+            </Button>
+          }
+        />
+        <div className="grid xl:grid-cols-2">
+          <section className="border-b border-[#e3e9ed] xl:border-b-0 xl:border-r">
+            <div className="flex items-center justify-between border-b border-[#edf1f3] bg-[#f8fafb] px-5 py-3">
+              <div>
+                <p className="text-[11px] font-semibold text-[#294454]">
+                  Contract obligations
+                </p>
+                <p className="mt-0.5 text-[9px] text-slate-500">
+                  Renewal, notice, and performance dates
+                </p>
+              </div>
+              <StatusBadge tone={contractAlerts.length ? 'amber' : 'green'}>
+                {contractAlerts.length} shown
+              </StatusBadge>
+            </div>
+            <KeyDateList items={contractAlerts} />
+          </section>
+          <section>
+            <div className="flex items-center justify-between border-b border-[#edf1f3] bg-[#f8fafb] px-5 py-3">
+              <div>
+                <p className="text-[11px] font-semibold text-[#294454]">
+                  Supplier documentation
+                </p>
+                <p className="mt-0.5 text-[9px] text-slate-500">
+                  Missing and expiring supplier records
+                </p>
+              </div>
+              <StatusBadge tone={supplierAlerts.length ? 'rose' : 'green'}>
+                {supplierAlerts.length} shown
+              </StatusBadge>
+            </div>
+            {supplierAlerts.length ? (
+              <div className="divide-y divide-[#e8edef] px-5">
+                {supplierAlerts.map((item) => (
+                  <div
+                    key={String(item.alert_id)}
+                    className="flex items-start gap-3 py-4"
+                  >
+                    <span className="mt-1 size-2 shrink-0 rounded-full bg-rose-500" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12px] font-medium text-[#263c49]">
+                        {valueText(item.supplier_name)}
+                      </p>
+                      <p className="mt-1 truncate text-[11px] text-slate-500">
+                        {supplierDocumentLabel(item.item_type)} ·{' '}
+                        {valueText(item.title)}
+                      </p>
+                    </div>
+                    <span className="text-right text-[10px] font-medium text-slate-600">
+                      {item.due_date ? usDateText(item.due_date) : 'Follow up'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                title="No supplier-document alerts"
+                description="Missing and expiring supplier records will appear here."
+              />
+            )}
+          </section>
+        </div>
+        <div className="flex items-center gap-2 border-t border-[#e3e9ed] bg-emerald-50 px-5 py-3 text-[11px] text-emerald-800">
+          <CircleCheck className="size-4" />
+          Official records and alerts use verified values only.
+        </div>
+      </Panel>
+
       <DemoTransactionComparison
         comparison={workspace?.transactionComparisons[0]}
       />
-      <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]">
-        <Panel className="overflow-hidden">
-          <PanelHeader
-            title="AI review queue"
-            description="Human confirmation is required before official records change."
-            action={
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onNavigate('New Contract Review')}
-                className="text-[#2e7188]"
-              >
-                View all
-              </Button>
-            }
-          />
-          <IntakeTable intakes={workspace?.intakes.slice(0, 4) ?? []} />
-        </Panel>
-        <Panel>
-          <PanelHeader
-            title="Priority alerts"
-            description="Renewal, supplier, and data quality"
-            action={<Clock3 className="size-4 text-slate-400" />}
-          />
-          <KeyDateList
-            items={
-              workspace?.keyDates
-                .filter((item) => item.status !== 'completed')
-                .slice(0, 4) ?? []
-            }
-          />
-          <div className="mx-5 mb-5 flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2.5 text-[11px] text-emerald-800">
-            <CircleCheck className="size-4" />
-            Official records use verified values only
-          </div>
-        </Panel>
-      </div>
     </>
   );
 }
@@ -2469,9 +2692,10 @@ function NewContractReviewView({
         <ShieldCheck />
         <AlertTitle>Pre-execution boundary and supplier linkage</AlertTitle>
         <AlertDescription>
-          Draft review creates or links a pre-contract supplier, but proposed
-          value never enters the official contract register. Supplier tax and
-          qualification fields still require their own source documents.
+          Draft review records a proposed supplier name but does not create a
+          Supplier Register record. Supplier master data is created only from
+          supplier files or an executed contract, and proposed value never
+          enters the official Contract Register.
         </AlertDescription>
       </Alert>
       <Panel className="overflow-hidden">
@@ -2688,6 +2912,98 @@ function FilterSelect({
   );
 }
 
+function USDateInput({
+  value,
+  onChange,
+  ariaLabel,
+  className = '',
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  ariaLabel: string;
+  className?: string;
+}) {
+  const [displayValue, setDisplayValue] = useState(
+    value ? usDateText(value) : '',
+  );
+  const [calendarOpen, setCalendarOpen] = useState(false);
+
+  const parseUSDate = (input: string) => {
+    const match = input.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!match) return null;
+    const month = Number(match[1]);
+    const day = Number(match[2]);
+    const year = Number(match[3]);
+    const candidate = new Date(Date.UTC(year, month - 1, day));
+    if (
+      candidate.getUTCFullYear() !== year ||
+      candidate.getUTCMonth() !== month - 1 ||
+      candidate.getUTCDate() !== day
+    )
+      return null;
+    return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  };
+
+  const selectedDate = (() => {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return undefined;
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  })();
+
+  return (
+    <div className="flex min-w-0 flex-1">
+      <Input
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        placeholder="MM/DD/YYYY"
+        value={displayValue}
+        onChange={(event) => {
+          const nextValue = event.target.value
+            .replace(/[^0-9/]/g, '')
+            .slice(0, 10);
+          setDisplayValue(nextValue);
+          if (!nextValue) onChange('');
+          const parsed = parseUSDate(nextValue);
+          if (parsed) onChange(parsed);
+        }}
+        onBlur={() => {
+          if (!parseUSDate(displayValue))
+            setDisplayValue(value ? usDateText(value) : '');
+        }}
+        aria-label={ariaLabel}
+        className={`${className} rounded-r-none border-r-0`}
+      />
+      <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+        <PopoverTrigger
+          type="button"
+          aria-label={`Open ${ariaLabel} calendar`}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-r-md border border-input bg-white text-slate-500 transition hover:bg-[#edf6f8] hover:text-[#1d718f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6aa9bd]"
+        >
+          <CalendarDays className="size-4" />
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-auto p-0">
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            defaultMonth={selectedDate}
+            onSelect={(nextDate) => {
+              if (!nextDate) return;
+              const nextValue = `${String(nextDate.getFullYear()).padStart(4, '0')}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
+              setDisplayValue(usDateText(nextValue));
+              onChange(nextValue);
+              setCalendarOpen(false);
+            }}
+            captionLayout="dropdown"
+            startMonth={new Date(1990, 0, 1)}
+            endMonth={new Date(2100, 11, 31)}
+          />
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
 function DateFilter({
   label,
   condition,
@@ -2702,8 +3018,8 @@ function DateFilter({
   onDateChange: (value: string) => void;
 }) {
   return (
-    <label className="text-[11px] font-medium text-slate-600">
-      {label}
+    <div className="text-[11px] font-medium text-slate-600">
+      <span>{label}</span>
       <div className="mt-1 flex">
         <select
           value={condition}
@@ -2714,15 +3030,15 @@ function DateFilter({
           <option value="on_or_before">On or before</option>
           <option value="on_or_after">On or after</option>
         </select>
-        <Input
-          type="date"
+        <USDateInput
+          key={date || 'empty-date'}
           value={date}
-          onChange={(event) => onDateChange(event.target.value)}
-          aria-label={`${label} filter date`}
-          className="h-9 rounded-l-none bg-white text-xs"
+          onChange={onDateChange}
+          ariaLabel={`${label} filter date in month/day/year format`}
+          className="h-9 rounded-none bg-white text-xs"
         />
       </div>
-    </label>
+    </div>
   );
 }
 
@@ -2839,6 +3155,88 @@ function FloatingTableScrollbar({
   );
 }
 
+function TablePagination({
+  label,
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  onPageSizeChange,
+  floating,
+}: {
+  label: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
+  floating?: {
+    visible: boolean;
+    left: number;
+    width: number;
+  };
+}) {
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const firstRecord = total ? (page - 1) * pageSize + 1 : 0;
+  const lastRecord = Math.min(page * pageSize, total);
+  const floatingVisible = Boolean(floating?.visible);
+
+  return (
+    <nav
+      aria-label={label}
+      className={`${floatingVisible ? 'fixed bottom-5 z-40 shadow-[0_-3px_10px_rgb(15_23_42/10%)] backdrop-blur' : 'border-t border-[#e3e9ed]'} flex min-h-11 flex-wrap items-center justify-end gap-x-4 gap-y-2 bg-white/95 px-4 py-2 text-[11px] text-slate-600`}
+      style={
+        floatingVisible
+          ? { left: floating?.left, width: floating?.width }
+          : undefined
+      }
+    >
+      <label className="flex items-center gap-2 whitespace-nowrap">
+        Rows per page
+        <select
+          value={pageSize}
+          onChange={(event) => onPageSizeChange(Number(event.target.value))}
+          className="h-7 rounded-md border border-input bg-white px-2 text-[11px]"
+        >
+          {[10, 20, 50].map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </label>
+      <span className="whitespace-nowrap">
+        {firstRecord}–{lastRecord} of {total}
+      </span>
+      <span className="whitespace-nowrap font-medium text-[#294958]">
+        Page {page} of {pageCount}
+      </span>
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => onPageChange(page - 1)}
+          disabled={page <= 1}
+          className="bg-white"
+        >
+          Previous
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => onPageChange(page + 1)}
+          disabled={page >= pageCount || total === 0}
+          className="bg-white"
+        >
+          Next
+        </Button>
+      </div>
+    </nav>
+  );
+}
+
 function ContractRegisterView({
   contracts,
   allContracts,
@@ -2868,6 +3266,8 @@ function ContractRegisterView({
 }) {
   const contractTableScroll = useFloatingTableScrollbar();
   const [insightsOpen, setInsightsOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [typeFilter, setTypeFilter] = useState('all');
   const [supplierFilter, setSupplierFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
@@ -2924,6 +3324,29 @@ function ContractRegisterView({
       matchesDate(item.expiration_date, expirationCondition, expirationDate)
     );
   });
+  const pageCount = Math.max(1, Math.ceil(visibleContracts.length / pageSize));
+  const activePage = Math.min(currentPage, pageCount);
+  const pageStart = (activePage - 1) * pageSize;
+  const paginatedContracts = visibleContracts.slice(
+    pageStart,
+    pageStart + pageSize,
+  );
+  useEffect(() => {
+    const timer = window.setTimeout(() => setCurrentPage(1), 0);
+    return () => window.clearTimeout(timer);
+  }, [
+    amountComparison,
+    amountValue,
+    departmentFilter,
+    effectiveCondition,
+    effectiveDate,
+    expirationCondition,
+    expirationDate,
+    search,
+    statusFilter,
+    supplierFilter,
+    typeFilter,
+  ]);
   const clearFilters = () => {
     setTypeFilter('all');
     setSupplierFilter('all');
@@ -2935,6 +3358,7 @@ function ContractRegisterView({
     setEffectiveDate('');
     setExpirationCondition('all');
     setExpirationDate('');
+    setCurrentPage(1);
   };
   return (
     <>
@@ -2951,7 +3375,10 @@ function ContractRegisterView({
               <Upload />
               Register executed contract
             </Button>
-            <Button variant="outline" onClick={onExport}>
+            <Button
+              onClick={onExport}
+              className="bg-[#1d718f] hover:bg-[#185f78]"
+            >
               {exporting ? (
                 <LoaderCircle className="animate-spin" />
               ) : (
@@ -2999,7 +3426,7 @@ function ContractRegisterView({
       <Panel className="overflow-hidden">
         <PanelHeader
           title="Current contract register"
-          description={`${visibleContracts.length} of ${contracts.length} verified records shown`}
+          description={`${visibleContracts.length} of ${contracts.length} verified records match the current view`}
           action={
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -3090,13 +3517,13 @@ function ContractRegisterView({
           </div>
           <p className="mt-3 text-[10px] text-slate-500">
             Amounts use current contract value in USD. Date filters are
-            inclusive; for example, “on or before 2026-08-30” includes August
-            30.
+            inclusive and use U.S. English order; for example, “on or before
+            08/30/2026” includes August 30, 2026.
           </p>
         </div>
         <div>
           <Table
-            className="min-w-[2000px]"
+            className="min-w-[2160px]"
             containerRef={contractTableScroll.tableScrollerRef}
             onContainerScroll={contractTableScroll.syncTableToFloating}
           >
@@ -3115,6 +3542,7 @@ function ContractRegisterView({
                 <TableHead>Expiration date</TableHead>
                 <TableHead>Renewal terms</TableHead>
                 <TableHead>Notice deadline</TableHead>
+                <TableHead>Next obligation</TableHead>
                 <TableHead>Payment terms</TableHead>
                 <TableHead>Governing law</TableHead>
                 <TableHead>Status</TableHead>
@@ -3122,10 +3550,10 @@ function ContractRegisterView({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visibleContracts.map((item, index) => (
+              {paginatedContracts.map((item, index) => (
                 <TableRow key={String(item.id)}>
                   <TableCell className="px-4 py-3.5 text-center text-xs font-medium text-slate-500">
-                    {index + 1}
+                    {pageStart + index + 1}
                   </TableCell>
                   <TableCell className="py-3.5">
                     <button
@@ -3176,6 +3604,12 @@ function ContractRegisterView({
                     {valueText(item.notice_deadline)}
                   </TableCell>
                   <TableCell className="text-xs">
+                    <div>{valueText(item.next_obligation_date)}</div>
+                    <div className="mt-1 text-[10px] text-slate-500">
+                      {valueText(item.open_obligation_count)} open
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-xs">
                     {valueText(item.payment_terms)}
                   </TableCell>
                   <TableCell className="text-xs">
@@ -3191,8 +3625,30 @@ function ContractRegisterView({
                   </TableCell>
                 </TableRow>
               ))}
+              {!paginatedContracts.length ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={18}
+                    className="h-36 text-center text-xs text-slate-500"
+                  >
+                    No contracts match the current search and filters.
+                  </TableCell>
+                </TableRow>
+              ) : null}
             </TableBody>
           </Table>
+          <TablePagination
+            label="Contract register pagination"
+            page={activePage}
+            pageSize={pageSize}
+            total={visibleContracts.length}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(nextPageSize) => {
+              setPageSize(nextPageSize);
+              setCurrentPage(1);
+            }}
+            floating={contractTableScroll.floating}
+          />
           <FloatingTableScrollbar
             label="Contract register horizontal scrollbar"
             floating={contractTableScroll.floating}
@@ -3655,17 +4111,17 @@ function SupplierOnboardingDialog({
             Independent supplier onboarding
           </div>
           <DialogTitle className="text-xl text-[#183040]">
-            Create supplier from qualification files
+            Create supplier from documentation
           </DialogTitle>
           <DialogDescription className="max-w-3xl text-xs leading-5">
             Upload the supplier&apos;s W-9, business license, insurance
-            certificate, or other qualification evidence. AI consolidates the
+            certificate, or other supplier evidence. AI consolidates the
             files into a proposed supplier master for human verification before
             the database changes.
           </DialogDescription>
           <div className="mt-3 grid gap-2 sm:grid-cols-3">
             {[
-              ['01', 'Upload files', 'Qualification evidence first'],
+              ['01', 'Upload files', 'Supplier evidence first'],
               ['02', 'AI builds profile', 'Merge supported supplier fields'],
               ['03', 'Verify & create', 'Human-confirmed register update'],
             ].map(([number, title, description]) => (
@@ -3697,7 +4153,7 @@ function SupplierOnboardingDialog({
                 <p className="mt-1 text-[11px] text-slate-500">
                   {profileGenerated
                     ? `${extractedProfileCount} fields were supported by uploaded files. Review or correct the proposed record.`
-                    : 'The register preview remains locked until the qualification package is analyzed.'}
+                    : 'The register preview remains locked until the supplier documentation package is analyzed.'}
                 </p>
               </div>
               <StatusBadge tone={profileGenerated ? 'green' : 'amber'}>
@@ -3709,8 +4165,8 @@ function SupplierOnboardingDialog({
             {profileGenerated ? (
               <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-[10px] leading-4 text-sky-900">
                 AI values remain editable because uploaded files may be
-                incomplete or inconsistent. Vendor number, Pending status, In
-                Review qualification status, and the initial medium risk tier
+                incomplete or inconsistent. Vendor number, relationship
+                status, documentation status, and the initial medium risk tier
                 are applied by system rules—not invented from the documents.
               </div>
             ) : (
@@ -4237,6 +4693,8 @@ function SupplierRegisterView({
 }) {
   const supplierTableScroll = useFloatingTableScrollbar();
   const [insightsOpen, setInsightsOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [relationshipFilter, setRelationshipFilter] = useState('all');
   const [supplierStatusFilter, setSupplierStatusFilter] = useState('all');
   const [qualificationFilter, setQualificationFilter] = useState('all');
@@ -4300,6 +4758,28 @@ function SupplierRegisterView({
       return !nextExpiry && !hasExpiredCompliance;
     return true;
   });
+  const pageCount = Math.max(1, Math.ceil(visibleSuppliers.length / pageSize));
+  const activePage = Math.min(currentPage, pageCount);
+  const pageStart = (activePage - 1) * pageSize;
+  const paginatedSuppliers = visibleSuppliers.slice(
+    pageStart,
+    pageStart + pageSize,
+  );
+  useEffect(() => {
+    const timer = window.setTimeout(() => setCurrentPage(1), 0);
+    return () => window.clearTimeout(timer);
+  }, [
+    categoryFilter,
+    documentExpiryFilter,
+    insuranceFilter,
+    qualificationFilter,
+    relationshipFilter,
+    riskFilter,
+    search,
+    stateFilter,
+    supplierStatusFilter,
+    w9Filter,
+  ]);
   const clearFilters = () => {
     setRelationshipFilter('all');
     setSupplierStatusFilter('all');
@@ -4310,6 +4790,7 @@ function SupplierRegisterView({
     setW9Filter('all');
     setInsuranceFilter('all');
     setDocumentExpiryFilter('all');
+    setCurrentPage(1);
   };
 
   return (
@@ -4317,7 +4798,7 @@ function SupplierRegisterView({
       <PageHeading
         eyebrow="Lifecycle supplier master"
         title="Supplier register"
-        description="Every supplier relationship is retained from onboarding through pre-contract review and executed work. A supplier does not need an active contract to appear here."
+        description="Supplier records originate from uploaded supplier files or executed contracts. A supplier does not need an active contract to remain in this lifecycle master."
         action={
           <div className="flex flex-wrap gap-2">
             <Button onClick={onAdd} className="bg-[#1d718f] hover:bg-[#185f78]">
@@ -4325,9 +4806,9 @@ function SupplierRegisterView({
               Create supplier from files
             </Button>
             <Button
-              variant="outline"
               onClick={onExport}
               disabled={exporting || !allSuppliers.length}
+              className="bg-[#1d718f] hover:bg-[#185f78]"
             >
               {exporting ? (
                 <LoaderCircle className="animate-spin" />
@@ -4351,7 +4832,7 @@ function SupplierRegisterView({
       <Panel className="overflow-hidden">
         <PanelHeader
           title="Supplier master data"
-          description={`${visibleSuppliers.length} of ${suppliers.length} supplier record${suppliers.length === 1 ? '' : 's'} shown`}
+          description={`${visibleSuppliers.length} of ${suppliers.length} supplier record${suppliers.length === 1 ? '' : 's'} match the current view`}
           action={
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -4381,7 +4862,7 @@ function SupplierRegisterView({
               titleCaseOptions
             />
             <FilterSelect
-              label="Qualification status"
+              label="Documentation status"
               value={qualificationFilter}
               onChange={setQualificationFilter}
               options={options('qualification_status')}
@@ -4421,7 +4902,7 @@ function SupplierRegisterView({
               titleCaseOptions
             />
             <FilterSelect
-              label="Qualification / insurance expiry"
+              label="Supplier file / insurance expiry"
               value={documentExpiryFilter}
               onChange={setDocumentExpiryFilter}
               options={['expiring_90_days', 'expired', 'no_expiration']}
@@ -4441,8 +4922,8 @@ function SupplierRegisterView({
           </div>
           <p className="mt-3 text-[10px] text-slate-500">
             Filters can be combined with keyword search. “Expiring 90 days” uses
-            the earliest dated qualification or insurance record on each
-            supplier.
+            the earliest dated supplier or insurance record on each
+            supplier. Dates are displayed in U.S. English format (MM/DD/YYYY).
           </p>
         </div>
         <div>
@@ -4458,7 +4939,7 @@ function SupplierRegisterView({
                 <TableHead>Vendor number</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Tax classification</TableHead>
-                <TableHead>Risk / qualification</TableHead>
+                <TableHead>Risk / documentation</TableHead>
                 <TableHead>Business address</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Primary contact</TableHead>
@@ -4467,15 +4948,15 @@ function SupplierRegisterView({
                 <TableHead>W-9</TableHead>
                 <TableHead>Insurance status</TableHead>
                 <TableHead>Insurance expiration</TableHead>
-                <TableHead>Qualification files</TableHead>
+                <TableHead>Supplier files</TableHead>
                 <TableHead>Last updated</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visibleSuppliers.map((item, index) => (
+              {paginatedSuppliers.map((item, index) => (
                 <TableRow key={String(item.id)}>
                   <TableCell className="px-4 py-3.5 text-center text-xs font-medium text-slate-500">
-                    {index + 1}
+                    {pageStart + index + 1}
                   </TableCell>
                   <TableCell className="py-3.5">
                     <button
@@ -4515,7 +4996,7 @@ function SupplierRegisterView({
                       </StatusBadge>
                     </div>
                     <div className="mt-1 text-[10px] text-slate-500">
-                      Review date {valueText(item.qualification_review_date)}
+                      Review date {usDateText(item.qualification_review_date)}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs">
@@ -4606,14 +5087,14 @@ function SupplierRegisterView({
                     </StatusBadge>
                   </TableCell>
                   <TableCell className="text-xs">
-                    {valueText(item.insurance_expiration)}
+                    {usDateText(item.insurance_expiration)}
                   </TableCell>
                   <TableCell className="text-xs">
                     <div className="font-medium">
                       {valueText(item.qualification_document_count)} files
                     </div>
                     <div className="mt-1 text-[10px] text-slate-500">
-                      Next expiry {valueText(item.next_compliance_expiration)}
+                      Next expiry {usDateText(item.next_compliance_expiration)}
                     </div>
                     {Number(item.expired_qualification_document_count ?? 0) >
                     0 ? (
@@ -4624,11 +5105,11 @@ function SupplierRegisterView({
                     ) : null}
                   </TableCell>
                   <TableCell className="text-xs">
-                    {valueText(item.updated_at)}
+                    {usDateText(item.updated_at)}
                   </TableCell>
                 </TableRow>
               ))}
-              {!visibleSuppliers.length ? (
+              {!paginatedSuppliers.length ? (
                 <TableRow>
                   <TableCell
                     colSpan={16}
@@ -4640,6 +5121,18 @@ function SupplierRegisterView({
               ) : null}
             </TableBody>
           </Table>
+          <TablePagination
+            label="Supplier register pagination"
+            page={activePage}
+            pageSize={pageSize}
+            total={visibleSuppliers.length}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(nextPageSize) => {
+              setPageSize(nextPageSize);
+              setCurrentPage(1);
+            }}
+            floating={supplierTableScroll.floating}
+          />
           <FloatingTableScrollbar
             label="Supplier register horizontal scrollbar"
             floating={supplierTableScroll.floating}
@@ -5514,8 +6007,8 @@ function AlertsExportsView({
 
         <Panel>
           <PanelHeader
-            title="Supplier qualification risk alerts"
-            description="Expiring qualification evidence and missing core supplier records"
+            title="Supplier documentation risk alerts"
+            description="Expiring supplier evidence and missing core records"
             action={
               <div className="flex gap-2">
                 <StatusBadge tone="blue">
@@ -6129,11 +6622,11 @@ function IntakeReviewDialog({
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <h3 className="text-sm font-semibold text-[#203845]">
-                        Supplier impact
+                        Supplier handling
                       </h3>
                       <p className="mt-1 text-[10px] text-slate-500">
-                        Draft review links a pre-contract supplier;
-                        qualification evidence remains separate.
+                        Draft review records the proposed supplier name only.
+                        It does not create or update the Supplier Register.
                       </p>
                     </div>
                     {supplier ? (
@@ -6149,12 +6642,20 @@ function IntakeReviewDialog({
                   </div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     {[
-                      ['Supplier', supplier?.legal_name],
-                      ['Register status', supplier?.status],
-                      ['W-9', supplier?.w9_status],
-                      ['Insurance', supplier?.insurance_status],
-                      ['Qualification', supplier?.qualification_status],
-                      ['Vendor number', supplier?.vendor_number],
+                      [
+                        'Proposed supplier',
+                        details.intake.proposed_supplier_name,
+                      ],
+                      [
+                        'Supplier register link',
+                        supplier?.legal_name ?? 'Not created from draft',
+                      ],
+                      [
+                        'Link timing',
+                        supplier
+                          ? 'Linked after executed contract registration'
+                          : 'Available after executed contract registration',
+                      ],
                     ].map(([label, value]) => (
                       <div
                         key={String(label)}
@@ -6164,7 +6665,9 @@ function IntakeReviewDialog({
                           {label}
                         </div>
                         <div className="mt-1 text-[11px] font-medium text-[#294354]">
-                          {label === 'Supplier'
+                          {label === 'Proposed supplier' ||
+                          label === 'Supplier register link' ||
+                          label === 'Link timing'
                             ? valueText(value)
                             : titleCase(value)}
                         </div>
@@ -6450,7 +6953,7 @@ function KeyDateList({ items }: { items: Workspace['keyDates'] }) {
           </div>
           <div className="text-right">
             <span className="text-[10px] font-medium text-slate-600">
-              {valueText(item.due_date)}
+              {usDateText(item.due_date)}
             </span>
             {item.source_page ? (
               <p className="mt-1 text-[9px] text-slate-400">
@@ -6934,7 +7437,7 @@ function SupplierDocumentUpload({
       const body = (await response.json()) as { error?: string };
       if (!response.ok)
         throw new Error(body.error || 'Unable to upload the document.');
-      setMessage('Document saved to the supplier record.');
+      setMessage('Document archived; supplier data and status updated.');
       setFile(null);
       setAiResult(null);
       setIssuer('');
@@ -6959,14 +7462,15 @@ function SupplierDocumentUpload({
       <div className="flex items-center gap-2">
         <Upload className="size-4 text-[#287693]" />
         <h3 className="text-sm font-semibold text-[#203845]">
-          Add supplier qualification document
+          Add supplier documentation
         </h3>
       </div>
       <p className="mt-1 text-[11px] text-slate-500">
         Store tax, insurance, business registration, licensing, risk, safety,
-        diversity, and other qualification evidence. AI can extract the
-        metadata, but upload still creates a pending human-review record and
-        never approves the supplier automatically.
+        diversity, and other supplier evidence. AI extracts metadata, updates
+        blank supplier fields, archives the file, and flags missing, expired,
+        or inconsistent information for follow-up. It does not approve or
+        reject the supplier.
       </p>
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <select
@@ -7051,7 +7555,7 @@ function SupplierDocumentUpload({
       ) : null}
       {message ? (
         <p
-          className={`mt-2 text-[11px] ${message.startsWith('Document saved') || message.startsWith('AI suggestions') ? 'text-emerald-700' : 'text-rose-600'}`}
+          className={`mt-2 text-[11px] ${message.startsWith('Document archived') || message.startsWith('AI suggestions') ? 'text-emerald-700' : 'text-rose-600'}`}
         >
           {message}
         </p>

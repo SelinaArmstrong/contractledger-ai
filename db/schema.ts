@@ -18,7 +18,7 @@ export const suppliers = sqliteTable(
     vendorNumber: text('vendor_number'),
     category: text('category').notNull(),
     status: text('status', {
-      enum: ['pending', 'active', 'inactive', 'rejected', 'archived'],
+      enum: ['pending', 'active', 'inactive', 'suspended', 'archived'],
     })
       .notNull()
       .default('pending'),
@@ -35,7 +35,13 @@ export const suppliers = sqliteTable(
     taxClassification: text('tax_classification'),
     riskTier: text('risk_tier', { enum: ['low', 'medium', 'high'] }),
     qualificationStatus: text('qualification_status', {
-      enum: ['pending', 'in_review', 'approved', 'expired'],
+      enum: [
+        'complete',
+        'incomplete',
+        'needs_follow_up',
+        'expired',
+        'under_review',
+      ],
     }),
     qualificationReviewDate: text('qualification_review_date'),
     w9Status: text('w9_status', {

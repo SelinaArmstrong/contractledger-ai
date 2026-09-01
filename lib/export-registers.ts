@@ -34,6 +34,8 @@ export async function exportCurrentRegisters(
     { header: 'Expiration Date', key: 'expirationDate', width: 16 },
     { header: 'Renewal Type', key: 'renewalType', width: 16 },
     { header: 'Notice Deadline', key: 'noticeDeadline', width: 18 },
+    { header: 'Next Obligation Date', key: 'nextObligationDate', width: 20 },
+    { header: 'Open Obligations', key: 'openObligations', width: 18 },
     { header: 'Payment Terms', key: 'paymentTerms', width: 18 },
     { header: 'Governing Law', key: 'governingLaw', width: 20 },
     { header: 'Status', key: 'status', width: 14 },
@@ -54,6 +56,8 @@ export async function exportCurrentRegisters(
       expirationDate: contract.expiration_date,
       renewalType: contract.renewal_type,
       noticeDeadline: contract.notice_deadline,
+      nextObligationDate: contract.next_obligation_date,
+      openObligations: contract.open_obligation_count,
       paymentTerms: contract.payment_terms,
       governingLaw: contract.governing_law,
       status: contract.status,
@@ -79,9 +83,9 @@ export async function exportCurrentRegisters(
     { header: 'Tax Classification', key: 'taxClassification', width: 22 },
     { header: 'Risk Tier', key: 'riskTier', width: 14 },
     { header: 'Relationship Stage', key: 'relationshipStage', width: 20 },
-    { header: 'Qualification Status', key: 'qualificationStatus', width: 22 },
+    { header: 'Documentation Status', key: 'qualificationStatus', width: 22 },
     {
-      header: 'Qualification Review Date',
+      header: 'Documentation Review Date',
       key: 'qualificationReviewDate',
       width: 24,
     },
@@ -92,9 +96,9 @@ export async function exportCurrentRegisters(
     { header: 'W-9 Status', key: 'w9', width: 16 },
     { header: 'Insurance Status', key: 'insurance', width: 18 },
     { header: 'Insurance Expiration', key: 'insuranceExpiration', width: 22 },
-    { header: 'Qualification Files', key: 'qualificationFiles', width: 20 },
+    { header: 'Supplier Files', key: 'qualificationFiles', width: 20 },
     {
-      header: 'Expired Qualification Files',
+      header: 'Expired Supplier Files',
       key: 'expiredQualificationFiles',
       width: 24,
     },
@@ -152,6 +156,40 @@ export async function exportCurrentRegisters(
     }),
   );
 
+  const supplierDocumentSheet = workbook.addWorksheet('Supplier Documents', {
+    views: [{ state: 'frozen', ySplit: 1 }],
+  });
+  supplierDocumentSheet.columns = [
+    { header: 'Supplier', key: 'supplier', width: 36 },
+    { header: 'Vendor Number', key: 'vendorNumber', width: 18 },
+    { header: 'File Type', key: 'fileType', width: 30 },
+    { header: 'File Name', key: 'fileName', width: 46 },
+    { header: 'Issuer', key: 'issuer', width: 34 },
+    { header: 'Document Number', key: 'documentNumber', width: 24 },
+    { header: 'Effective Date', key: 'effectiveDate', width: 18 },
+    { header: 'Expiration Date', key: 'expirationDate', width: 18 },
+    { header: 'Documentation Status', key: 'reviewStatus', width: 22 },
+    { header: 'AI Processing Status', key: 'aiStatus', width: 20 },
+    { header: 'Coverage / Qualification Summary', key: 'summary', width: 54 },
+    { header: 'Uploaded At', key: 'uploadedAt', width: 24 },
+  ];
+  workspace.supplierDocuments.forEach((document) =>
+    supplierDocumentSheet.addRow({
+      supplier: document.supplier_name,
+      vendorNumber: document.vendor_number,
+      fileType: document.file_type,
+      fileName: document.file_name,
+      issuer: document.issuer,
+      documentNumber: document.document_number,
+      effectiveDate: document.effective_date,
+      expirationDate: document.expiration_date,
+      reviewStatus: document.review_status,
+      aiStatus: document.ai_status,
+      summary: document.coverage_summary,
+      uploadedAt: document.uploaded_at,
+    }),
+  );
+
   const exceptionSheet = workbook.addWorksheet('Data Quality Exceptions', {
     views: [{ state: 'frozen', ySplit: 1 }],
   });
@@ -205,7 +243,8 @@ export async function exportCurrentRegisters(
     }),
   );
 
-  [contractSheet, supplierSheet, exceptionSheet].forEach((sheet) => {
+  [contractSheet, supplierSheet, supplierDocumentSheet, exceptionSheet].forEach(
+    (sheet) => {
     const header = sheet.getRow(1);
     header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     header.fill = {
@@ -233,7 +272,8 @@ export async function exportCurrentRegisters(
         };
       });
     });
-  });
+    },
+  );
 
   ['G', 'H', 'I'].forEach((column) => {
     contractSheet.getColumn(column).numFmt = '$#,##0.00';

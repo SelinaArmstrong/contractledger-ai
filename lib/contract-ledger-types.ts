@@ -124,6 +124,7 @@ export type Workspace = {
   intakes: Array<Record<string, string | number | null>>;
   keyDates: Array<Record<string, string | number | null>>;
   supplierAlerts: Array<Record<string, string | number | null>>;
+  supplierDocuments: Array<Record<string, string | number | null>>;
   transactionComparisons: AITransactionComparison[];
   evaluationRuns: Array<Record<string, string | number | null>>;
 };

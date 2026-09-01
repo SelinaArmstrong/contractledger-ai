@@ -339,7 +339,7 @@ function resultRecord(
       openTarget: { type: 'supplier', id: String(record.id) },
       details: [
         {
-          label: 'Qualification',
+          label: 'Documentation status',
           value: stringValue(record.qualification_status),
         },
         { label: 'W-9', value: stringValue(record.w9_status) },

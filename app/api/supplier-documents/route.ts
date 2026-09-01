@@ -6,6 +6,7 @@ import { getWorkspace } from '@/app/api/workspace/route';
 import {
   ALLOWED_SUPPLIER_DOCUMENT_MIME_TYPES,
   MAX_SUPPLIER_DOCUMENT_BYTES,
+  normalizeSupplierName,
   safeSupplierFileName,
   SUPPLIER_DOCUMENT_TYPES,
 } from '@/lib/supplier-qualification';
@@ -122,6 +123,38 @@ export async function POST(request: Request) {
       fields.expirationDate && fields.expirationDate < now.slice(0, 10)
         ? 'expired'
         : 'current';
+    const analyzedResult = analysisRun
+      ? (JSON.parse(analysisRun.original_result_json) as Record<
+          string,
+          unknown
+        >)
+      : null;
+    const extractedText = (fieldName: string) => {
+      const field = analyzedResult?.[fieldName];
+      if (!field || typeof field !== 'object' || Array.isArray(field)) return '';
+      const value = (field as { value?: unknown }).value;
+      return typeof value === 'string' ? value.trim() : '';
+    };
+    const extractedSupplierName = extractedText('supplierLegalName');
+    const supplierNameMatches =
+      !extractedSupplierName ||
+      normalizeSupplierName(extractedSupplierName) ===
+        normalizeSupplierName(supplier.legal_name);
+    const analysisHasIssues = Boolean(
+      analyzedResult &&
+        ((Array.isArray(analyzedResult.findings) &&
+          analyzedResult.findings.length) ||
+          (Array.isArray(analyzedResult.warnings) &&
+            analyzedResult.warnings.length)),
+    );
+    const documentReviewStatus =
+      fields.expirationDate && fields.expirationDate < now.slice(0, 10)
+        ? 'expired'
+        : !analysisRun
+          ? 'under_review'
+          : !supplierNameMatches || analysisHasIssues
+            ? 'needs_follow_up'
+            : 'current';
     if (!analysisRun) {
       await env.FILES.put(storageKey, await file.arrayBuffer(), {
         httpMetadata: { contentType: file.type },
@@ -150,18 +183,73 @@ export async function POST(request: Request) {
           : env.DB.prepare(
               'UPDATE suppliers SET updated_at = ? WHERE id = ?',
             ).bind(now, fields.supplierId);
-    const qualificationUpdate = env.DB.prepare(`UPDATE suppliers SET
-      qualification_status = CASE WHEN qualification_status IS NULL OR qualification_status = 'pending' THEN 'in_review' ELSE qualification_status END,
+    const profileUpdate = supplierNameMatches
+      ? env.DB.prepare(`UPDATE suppliers SET
+          dba_name = COALESCE(NULLIF(dba_name, ''), NULLIF(?, '')),
+          category = CASE WHEN category = 'Pending classification'
+            THEN COALESCE(NULLIF(?, ''), category) ELSE category END,
+          primary_contact = COALESCE(NULLIF(primary_contact, ''), NULLIF(?, '')),
+          email = COALESCE(NULLIF(email, ''), NULLIF(?, '')),
+          phone = COALESCE(NULLIF(phone, ''), NULLIF(?, '')),
+          website = COALESCE(NULLIF(website, ''), NULLIF(?, '')),
+          address_line1 = COALESCE(NULLIF(address_line1, ''), NULLIF(?, '')),
+          address_line2 = COALESCE(NULLIF(address_line2, ''), NULLIF(?, '')),
+          city = COALESCE(NULLIF(city, ''), NULLIF(?, '')),
+          state = COALESCE(NULLIF(state, ''), NULLIF(?, '')),
+          postal_code = COALESCE(NULLIF(postal_code, ''), NULLIF(?, '')),
+          country = COALESCE(NULLIF(country, ''), NULLIF(?, '')),
+          tax_classification = COALESCE(NULLIF(tax_classification, ''), NULLIF(?, '')),
+          updated_at = ? WHERE id = ?`).bind(
+          extractedText('dbaName'),
+          extractedText('supplierCategory'),
+          extractedText('primaryContact'),
+          extractedText('email'),
+          extractedText('phone'),
+          extractedText('website'),
+          extractedText('addressLine1'),
+          extractedText('addressLine2'),
+          extractedText('city'),
+          extractedText('state'),
+          extractedText('postalCode'),
+          extractedText('country'),
+          extractedText('taxClassification'),
+          now,
+          fields.supplierId,
+        )
+      : env.DB.prepare('UPDATE suppliers SET updated_at = ? WHERE id = ?').bind(
+          now,
+          fields.supplierId,
+        );
+    const documentationStatusUpdate = env.DB.prepare(`UPDATE suppliers SET
+      qualification_status = CASE
+        WHEN insurance_status = 'expired' OR EXISTS (
+          SELECT 1 FROM documents d WHERE d.supplier_id = suppliers.id
+            AND d.lifecycle_stage = 'supplier_record'
+            AND (d.review_status = 'expired' OR d.expiration_date < date('now'))
+        ) THEN 'expired'
+        WHEN EXISTS (
+          SELECT 1 FROM documents d WHERE d.supplier_id = suppliers.id
+            AND d.lifecycle_stage = 'supplier_record'
+            AND d.review_status = 'needs_follow_up'
+        ) THEN 'needs_follow_up'
+        WHEN w9_status = 'missing' OR insurance_status = 'missing' THEN 'incomplete'
+        WHEN EXISTS (
+          SELECT 1 FROM documents d WHERE d.supplier_id = suppliers.id
+            AND d.lifecycle_stage = 'supplier_record'
+            AND d.review_status = 'under_review'
+        ) THEN 'under_review'
+        ELSE 'complete'
+      END,
       qualification_review_date = ?, updated_at = ? WHERE id = ?`).bind(
-      now.slice(0, 10),
-      now,
-      fields.supplierId,
-    );
+        now.slice(0, 10),
+        now,
+        fields.supplierId,
+      );
 
     const aiReviewStatements = [];
     let correctionCount = 0;
     if (analysisRun) {
-      const original = JSON.parse(analysisRun.original_result_json) as Record<
+      const original = analyzedResult as Record<
         string,
         {
           value: string | number | null;
@@ -232,7 +320,7 @@ export async function POST(request: Request) {
         (id, supplier_id, file_name, file_type, lifecycle_stage, storage_key,
          mime_type, issuer, document_number, effective_date, expiration_date,
          coverage_summary, review_status, ai_status, uploaded_at)
-        VALUES (?, ?, ?, ?, 'supplier_record', ?, ?, ?, ?, ?, ?, ?, 'pending', 'verified', ?)`).bind(
+        VALUES (?, ?, ?, ?, 'supplier_record', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
         documentId,
         fields.supplierId,
         file.name,
@@ -244,11 +332,14 @@ export async function POST(request: Request) {
         fields.effectiveDate || null,
         fields.expirationDate || null,
         fields.coverageSummary || null,
+        documentReviewStatus,
+        analysisRun ? 'verified' : 'needs_review',
         now,
       ),
       documentStatusUpdate,
-      qualificationUpdate,
+      profileUpdate,
       ...aiReviewStatements,
+      documentationStatusUpdate,
       env.DB.prepare(`INSERT INTO audit_logs (id, entity_type, entity_id, action, actor, details, created_at)
         VALUES (?, 'supplier', ?, 'supplier_document_uploaded', ?, ?, ?)`).bind(
         `audit-${crypto.randomUUID()}`,
@@ -258,6 +349,8 @@ export async function POST(request: Request) {
           documentId,
           documentType: fields.documentType,
           fileName: file.name,
+          documentReviewStatus,
+          supplierProfileUpdated: supplierNameMatches && Boolean(analysisRun),
           analysisRunId: analysisRun?.id ?? null,
           model: analysisRun?.model ?? null,
           correctionCount,

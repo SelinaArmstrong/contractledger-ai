@@ -448,13 +448,13 @@ function buildSupplierReport(input: BuildReportInput): ManagementReport {
       issue: textValue(alert.title),
       reason: isMissing
         ? hasActiveExposure
-          ? 'The qualification record is missing while the supplier has active contract exposure.'
-          : 'A standard qualification record is not on file.'
+          ? 'The supplier document is missing while the supplier has active contract exposure.'
+          : 'A standard supplier document is not on file.'
         : isExpired
-          ? `The qualification record expired on ${dueDate}.`
+          ? `The supplier document expired on ${dueDate}.`
           : dueDate
-            ? `The qualification record expires in ${days} days.`
-            : 'The qualification record requires review.',
+            ? `The supplier document expires in ${days} days.`
+            : 'The supplier document requires follow-up.',
       priority,
       dueDate: dueDate || null,
       valueCents,
@@ -464,25 +464,30 @@ function buildSupplierReport(input: BuildReportInput): ManagementReport {
   for (const supplier of suppliers) {
     const supplierId = String(supplier.id);
     const activeExposure = numberValue(supplier.active_contract_count) > 0;
-    const qualification = textValue(supplier.qualification_status);
+    const documentationStatus = textValue(supplier.qualification_status);
     if (
       activeExposure &&
-      ['pending', 'in_review', 'expired'].includes(qualification) &&
+      [
+        'incomplete',
+        'needs_follow_up',
+        'expired',
+        'under_review',
+      ].includes(documentationStatus) &&
       !attention.some(
         (item) =>
           item.entityId === supplierId &&
-          item.issue.toLowerCase().includes('qualification status'),
+          item.issue.toLowerCase().includes('documentation status'),
       )
     ) {
       attention.push({
-        id: `qualification:${supplierId}`,
+        id: `documentation:${supplierId}`,
         entityId: supplierId,
         entityType: 'supplier',
         reference: textValue(supplier.vendor_number),
         label: textValue(supplier.legal_name),
-        issue: 'Qualification status requires review',
-        reason: `The supplier has active contract exposure while qualification status is ${qualification || 'not recorded'}.`,
-        priority: qualification === 'expired' ? 'high' : 'medium',
+        issue: 'Documentation status requires follow-up',
+        reason: `The supplier has active contract exposure while documentation status is ${documentationStatus || 'not recorded'}.`,
+        priority: documentationStatus === 'expired' ? 'high' : 'medium',
         dueDate: textValue(supplier.qualification_review_date) || null,
         valueCents: numberValue(supplier.total_contract_value_cents),
       });
@@ -530,8 +535,8 @@ function buildSupplierReport(input: BuildReportInput): ManagementReport {
       .filter((item) => textValue(item.review_status) === 'missing')
       .map((item) => String(item.supplier_id)),
   );
-  const qualifiedCount = suppliers.filter(
-    (item) => textValue(item.qualification_status) === 'approved',
+  const completeDocumentationCount = suppliers.filter(
+    (item) => textValue(item.qualification_status) === 'complete',
   ).length;
   const totalExposure = suppliers.reduce(
     (sum, item) => sum + numberValue(item.total_contract_value_cents),
@@ -548,10 +553,10 @@ function buildSupplierReport(input: BuildReportInput): ManagementReport {
     totalExposure,
   );
   const sortedAttention = sortAttention(attention);
-  const qualificationCounts = new Map<string, number>();
+  const documentationCounts = new Map<string, number>();
   for (const supplier of suppliers) {
     const label = textValue(supplier.qualification_status) || 'Not recorded';
-    qualificationCounts.set(label, (qualificationCounts.get(label) ?? 0) + 1);
+    documentationCounts.set(label, (documentationCounts.get(label) ?? 0) + 1);
   }
 
   return {
@@ -566,9 +571,9 @@ function buildSupplierReport(input: BuildReportInput): ManagementReport {
         format: 'number',
       },
       {
-        key: 'qualified',
-        label: 'Qualified suppliers',
-        value: qualifiedCount,
+        key: 'completeDocumentation',
+        label: 'Complete documentation',
+        value: completeDocumentationCount,
         format: 'number',
       },
       {
@@ -598,11 +603,11 @@ function buildSupplierReport(input: BuildReportInput): ManagementReport {
     ],
     charts: [
       {
-        key: 'qualificationStatus',
-        title: 'Qualification status',
-        description: 'Supplier qualification status in the selected scope.',
+        key: 'documentationStatus',
+        title: 'Documentation status',
+        description: 'Supplier file status in the selected scope.',
         valueFormat: 'number',
-        data: [...qualificationCounts.entries()].map(([label, value]) => ({
+        data: [...documentationCounts.entries()].map(([label, value]) => ({
           label,
           value,
         })),
@@ -619,7 +624,7 @@ function buildSupplierReport(input: BuildReportInput): ManagementReport {
     attentionItems: sortedAttention,
     attentionCount: sortedAttention.length,
     deterministicFindings: [
-      `${missingSuppliers.size} suppliers have required qualification records missing and ${expiredSuppliers.size} have expired records.`,
+      `${missingSuppliers.size} suppliers have required documents missing and ${expiredSuppliers.size} have expired documents.`,
       `${expiringWithin(30).length} supplier documents expire within 30 days, ${expiringWithin(60).length} within 60 days, and ${expiringWithin(90).length} within 90 days.`,
       `The largest supplier represents ${topSupplierPercent}% of selected active contract exposure.`,
     ],
@@ -627,7 +632,7 @@ function buildSupplierReport(input: BuildReportInput): ManagementReport {
       id: String(item.id),
       reference: textValue(item.vendor_number),
       label: textValue(item.legal_name),
-      context: `${textValue(item.qualification_status) || 'qualification not recorded'} · ${numberValue(item.active_contract_count)} active contracts · ${(numberValue(item.total_contract_value_cents) / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} exposure · next compliance expiry ${textValue(item.next_compliance_expiration) || 'not recorded'}`,
+      context: `${textValue(item.qualification_status) || 'documentation status not recorded'} · ${numberValue(item.active_contract_count)} active contracts · ${(numberValue(item.total_contract_value_cents) / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} exposure · next supplier-file expiry ${textValue(item.next_compliance_expiration) || 'not recorded'}`,
     })),
   };
 }
