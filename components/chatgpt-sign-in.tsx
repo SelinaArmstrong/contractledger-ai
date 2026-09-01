@@ -1,5 +1,6 @@
 import {
   ArrowRight,
+  AlertCircle,
   FileCheck2,
   LockKeyhole,
   ShieldCheck,
@@ -7,9 +8,29 @@ import {
 } from 'lucide-react';
 
 import { buttonVariants } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
-export function ChatGPTSignIn({ signInPath }: { signInPath: string }) {
+const errorMessages: Record<string, string> = {
+  invalid: 'The username or password is incorrect.',
+  rate_limit:
+    'Too many sign-in attempts. Please wait 15 minutes and try again.',
+  unavailable: 'Demo sign-in has not been configured on this deployment.',
+};
+
+export function ChatGPTSignIn({
+  signInPath,
+  demoEnabled,
+  configurationError,
+  error,
+}: {
+  signInPath: string;
+  demoEnabled: boolean;
+  configurationError: string;
+  error?: string;
+}) {
+  const errorMessage =
+    configurationError || (error ? errorMessages[error] : '');
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#edf3f6] text-[#17212b]">
       <div className="absolute inset-x-0 top-0 h-72 bg-[#0d2638]" />
@@ -72,25 +93,82 @@ export function ChatGPTSignIn({ signInPath }: { signInPath: string }) {
               Sign in to continue
             </h2>
             <p className="mt-3 text-sm leading-6 text-slate-500">
-              Use your ChatGPT account to access this ContractLedger workspace.
-              No separate password is stored by this application.
+              {demoEnabled
+                ? 'Use the temporary demo credentials configured for this ContractLedger workspace.'
+                : 'Use your ChatGPT account to access this ContractLedger workspace.'}
             </p>
 
-            <a
-              href={signInPath}
-              target="_top"
-              className={cn(
-                buttonVariants({ size: 'lg' }),
-                'mt-7 h-11 w-full bg-[#1d718f] px-4 text-white hover:bg-[#185f78]',
-              )}
-            >
-              Sign in with ChatGPT
-              <ArrowRight data-icon="inline-end" />
-            </a>
+            {errorMessage ? (
+              <div
+                role="alert"
+                className="mt-5 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs leading-5 text-rose-700"
+              >
+                <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                {errorMessage}
+              </div>
+            ) : null}
+
+            {demoEnabled ? (
+              <form
+                action="/api/auth/login"
+                method="post"
+                className="mt-6 space-y-4"
+              >
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-[#294454]">
+                    Username
+                  </span>
+                  <Input
+                    name="username"
+                    type="text"
+                    autoComplete="username"
+                    required
+                    maxLength={100}
+                    className="h-10 bg-white"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-medium text-[#294454]">
+                    Password
+                  </span>
+                  <Input
+                    name="password"
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    maxLength={300}
+                    className="h-10 bg-white"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className={cn(
+                    buttonVariants({ size: 'lg' }),
+                    'h-11 w-full bg-[#1d718f] px-4 text-white hover:bg-[#185f78]',
+                  )}
+                >
+                  Sign in to demo
+                  <ArrowRight data-icon="inline-end" />
+                </button>
+              </form>
+            ) : (
+              <a
+                href={signInPath}
+                target="_top"
+                className={cn(
+                  buttonVariants({ size: 'lg' }),
+                  'mt-7 h-11 w-full bg-[#1d718f] px-4 text-white hover:bg-[#185f78]',
+                )}
+              >
+                Sign in with ChatGPT
+                <ArrowRight data-icon="inline-end" />
+              </a>
+            )}
 
             <p className="mt-5 text-center text-[10px] leading-4 text-slate-400">
-              Authentication is handled by OpenAI Sites. ContractLedger receives
-              only the identity details needed for access and audit attribution.
+              {demoEnabled
+                ? 'The password stays in server-side environment secrets. The browser receives only a secure, time-limited session cookie.'
+                : 'Authentication is handled by OpenAI Sites. ContractLedger receives only the identity details needed for access and audit attribution.'}
             </p>
           </div>
         </section>

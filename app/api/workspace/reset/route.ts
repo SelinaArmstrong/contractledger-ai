@@ -3,7 +3,10 @@ import { getWorkspace } from '@/app/api/workspace/route';
 import { authorizeApiRequest } from '@/lib/server/request-security';
 
 export async function POST(request: Request) {
-  const access = authorizeApiRequest(request, { write: true, admin: true });
+  const access = await authorizeApiRequest(request, {
+    write: true,
+    admin: true,
+  });
   if (!access.ok) return access.response;
 
   try {

@@ -10,7 +10,7 @@ const querySchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const access = authorizeApiRequest(request);
+  const access = await authorizeApiRequest(request);
   if (!access.ok) return access.response;
 
   try {

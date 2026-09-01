@@ -439,7 +439,12 @@ export function ContractLedgerApp({
   currentUser,
   signOutPath,
 }: {
-  currentUser: { displayName: string; email: string; local: boolean };
+  currentUser: {
+    displayName: string;
+    email: string;
+    local: boolean;
+    demo: boolean;
+  };
   signOutPath: string | null;
 }) {
   const [activeView, setActiveView] = useState<ViewName>('Dashboard');
@@ -963,20 +968,23 @@ export function ContractLedgerApp({
                   <span className="block text-[10px] text-slate-500">
                     {currentUser.local
                       ? 'Local demo session'
-                      : 'Signed in with ChatGPT'}
+                      : currentUser.demo
+                        ? 'Temporary demo account'
+                        : 'Signed in with ChatGPT'}
                   </span>
                 </span>
               </div>
               {signOutPath ? (
-                <a
-                  href={signOutPath}
-                  target="_top"
-                  aria-label={`Sign out ${currentUser.email}`}
-                  className="flex h-9 items-center gap-1.5 rounded-lg border border-[#dce3e8] bg-white px-2.5 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50 hover:text-[#1d718f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6aa9bd]"
-                >
-                  <LogOut className="size-3.5" />
-                  <span className="hidden xl:inline">Sign out</span>
-                </a>
+                <form action={signOutPath} method="post" target="_top">
+                  <button
+                    type="submit"
+                    aria-label={`Sign out ${currentUser.email}`}
+                    className="flex h-9 items-center gap-1.5 rounded-lg border border-[#dce3e8] bg-white px-2.5 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50 hover:text-[#1d718f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6aa9bd]"
+                  >
+                    <LogOut className="size-3.5" />
+                    <span className="hidden xl:inline">Sign out</span>
+                  </button>
+                </form>
               ) : null}
             </div>
           </div>

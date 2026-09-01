@@ -1,21 +1,41 @@
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 
 import {
   chatGPTSignInPath,
-  chatGPTSignOutPath,
   getChatGPTUser,
   type ChatGPTUser,
 } from '@/app/chatgpt-auth';
 import { ChatGPTSignIn } from '@/components/chatgpt-sign-in';
 import { ContractLedgerApp } from '@/components/contract-ledger-app';
+import {
+  DEMO_SESSION_COOKIE,
+  demoAuthConfigurationError,
+  getDemoAuthConfig,
+  verifyDemoSessionToken,
+} from '@/lib/demo-auth';
 
 export const dynamic = 'force-dynamic';
 
 async function currentUser(): Promise<
-  (ChatGPTUser & { local: boolean }) | null
+  (ChatGPTUser & { local: boolean; demo: boolean }) | null
 > {
   const user = await getChatGPTUser();
-  if (user) return { ...user, local: false };
+  if (user) return { ...user, local: false, demo: false };
+
+  const cookieStore = await cookies();
+  const demoSession = await verifyDemoSessionToken(
+    cookieStore.get(DEMO_SESSION_COOKIE)?.value,
+  );
+  if (demoSession) {
+    return {
+      userId: `demo:${demoSession.username}`,
+      displayName: demoSession.displayName,
+      email: demoSession.email,
+      fullName: demoSession.displayName,
+      local: false,
+      demo: true,
+    };
+  }
 
   const requestHeaders = await headers();
   const host = requestHeaders.get('host')?.toLowerCase() ?? '';
@@ -30,12 +50,29 @@ async function currentUser(): Promise<
     email: 'local-demo@contractledger.invalid',
     fullName: 'Selina Armstrong',
     local: true,
+    demo: false,
   };
 }
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ auth_error?: string | string[] }>;
+}) {
   const user = await currentUser();
-  if (!user) return <ChatGPTSignIn signInPath={chatGPTSignInPath('/')} />;
+  if (!user) {
+    const params = await searchParams;
+    return (
+      <ChatGPTSignIn
+        signInPath={chatGPTSignInPath('/')}
+        demoEnabled={Boolean(getDemoAuthConfig())}
+        configurationError={demoAuthConfigurationError()}
+        error={
+          typeof params.auth_error === 'string' ? params.auth_error : undefined
+        }
+      />
+    );
+  }
 
   return (
     <ContractLedgerApp
@@ -43,8 +80,9 @@ export default async function Home() {
         displayName: user.displayName,
         email: user.email,
         local: user.local,
+        demo: user.demo,
       }}
-      signOutPath={user.local ? null : chatGPTSignOutPath('/')}
+      signOutPath={user.local ? null : '/api/auth/logout'}
     />
   );
 }

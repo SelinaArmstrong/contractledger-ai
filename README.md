@@ -46,6 +46,17 @@ Open `http://localhost:3000`.
 
 On macOS, double-click `Start ContractLedger AI.command` for an interview-ready local launch. Keep the terminal window open while demonstrating the app and press Control-C when finished.
 
+For a temporary single-user login on a public demo deployment, configure all four server-side variables below and redeploy. Do not expose them with a `NEXT_PUBLIC_` prefix or commit their real values.
+
+```bash
+DEMO_AUTH_USERNAME=your_demo_username
+DEMO_AUTH_PASSWORD=use_a_strong_password
+DEMO_AUTH_DISPLAY_NAME="Demo User"
+DEMO_AUTH_SESSION_SECRET=use_a_random_secret_of_at_least_32_characters
+```
+
+This mode issues a signed, HttpOnly, same-site session cookie that expires after 12 hours. It is intended for a controlled trial or portfolio demonstration, not as a replacement for managed multi-user identity.
+
 Useful checks:
 
 ```bash
@@ -65,7 +76,7 @@ npm run build
 
 The API key is server-side only. Uploaded document text is treated as untrusted input, bounded by file size/page/text limits, and never allowed to override system instructions. File signatures are checked before parsing. The app stores a document reference and extracted records; reviewers remain responsible for verifying every material field.
 
-Hosted API requests require the authenticated Sites user headers. Audit events use that real user identity, state-changing requests are same-origin only, and AI endpoints have per-user D1-backed rate limits. Localhost uses a clearly identified local demo actor so the interview workflow remains self-contained. Hosted data reset is restricted to the user IDs listed in `DEMO_ADMIN_USER_IDS`.
+Hosted API requests require either authenticated Sites user headers or a valid temporary demo session. Audit events use that identity, state-changing requests are same-origin only, and AI endpoints have per-user D1-backed rate limits. Demo login attempts are limited to five per client address in a 15-minute window. Localhost uses a clearly identified local demo actor so the interview workflow remains self-contained. Hosted data reset is restricted to configured Sites administrators or the single demo account.
 
 D1 bootstrap is versioned with `PRAGMA user_version`: schema upgrades and fictional seed synchronization run only when the stored version is behind, rather than writing during every request. The workspace endpoint returns register summaries; document metadata and AI review history load only when a specific record is opened. Charting and workbook generation are lazy-loaded to keep them off the initial application path.
 
@@ -77,6 +88,7 @@ AI Accuracy & Validation is server-controlled. The server loads the three fixed 
 - `app/api/analyze-supplier-document/route.ts` — supplier PDF/image extraction and qualification review
 - `app/api/evaluations/route.ts` and `lib/ai-evaluation.ts` — locked ground truth and persisted AI evaluation evidence
 - `app/api/workspace/route.ts` — stage-aware save workflow
+- `app/api/auth/` and `lib/demo-auth.ts` — temporary server-side demo login and signed sessions
 - `app/api/record-details/route.ts` — on-demand document metadata and AI review history
 - `db/schema.ts` and `db/bootstrap.ts` — D1 schema and fictional seed data
 - `components/contract-ledger-app.tsx` — interview-ready application interface

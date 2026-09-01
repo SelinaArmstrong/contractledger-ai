@@ -1,10 +1,16 @@
 import { env } from 'cloudflare:workers';
 
+import {
+  demoSessionFromCookieHeader,
+  verifyDemoSessionToken,
+} from '@/lib/demo-auth';
+
 export type RequestActor = {
   id: string;
   email: string;
   name: string;
   local: boolean;
+  demo: boolean;
 };
 
 type AuthorizationOptions = {
@@ -17,7 +23,9 @@ type AuthorizationResult =
   | { ok: false; response: Response };
 
 function isLoopback(hostname: string) {
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+  return (
+    hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
+  );
 }
 
 function decodedDisplayName(headers: Headers) {
@@ -56,16 +64,23 @@ function hostedAdminIds() {
   );
 }
 
-export function authorizeApiRequest(
+export async function authorizeApiRequest(
   request: Request,
   options: AuthorizationOptions = {},
-): AuthorizationResult {
+): Promise<AuthorizationResult> {
   const url = new URL(request.url);
   const local = isLoopback(url.hostname);
   const id = request.headers.get('oai-authenticated-user-id')?.trim() ?? '';
-  const email = request.headers.get('oai-authenticated-user-email')?.trim() ?? '';
+  const email =
+    request.headers.get('oai-authenticated-user-email')?.trim() ?? '';
+  const demoSession =
+    !local && !id
+      ? await verifyDemoSessionToken(
+          demoSessionFromCookieHeader(request.headers.get('cookie')),
+        )
+      : null;
 
-  if (!local && !id) {
+  if (!local && !id && !demoSession) {
     return {
       ok: false,
       response: Response.json(
@@ -91,19 +106,39 @@ export function authorizeApiRequest(
         email: 'local-demo@contractledger.invalid',
         name: 'Selina Armstrong',
         local: true,
+        demo: false,
       }
-    : {
-        id,
-        email,
-        name: decodedDisplayName(request.headers) || email || 'Authenticated user',
-        local: false,
-      };
+    : demoSession
+      ? {
+          id: `demo:${demoSession.username}`,
+          email: demoSession.email,
+          name: demoSession.displayName,
+          local: false,
+          demo: true,
+        }
+      : {
+          id,
+          email,
+          name:
+            decodedDisplayName(request.headers) ||
+            email ||
+            'Authenticated user',
+          local: false,
+          demo: false,
+        };
 
-  if (options.admin && !actor.local && !hostedAdminIds().has(actor.id)) {
+  if (
+    options.admin &&
+    !actor.local &&
+    !actor.demo &&
+    !hostedAdminIds().has(actor.id)
+  ) {
     return {
       ok: false,
       response: Response.json(
-        { error: 'Workspace reset is restricted to configured administrators.' },
+        {
+          error: 'Workspace reset is restricted to configured administrators.',
+        },
         { status: 403 },
       ),
     };

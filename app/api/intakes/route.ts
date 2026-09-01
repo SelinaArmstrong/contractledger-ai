@@ -124,7 +124,7 @@ async function getIntakeDetails(id: string) {
 }
 
 export async function GET(request: Request) {
-  const access = authorizeApiRequest(request);
+  const access = await authorizeApiRequest(request);
   if (!access.ok) return access.response;
   try {
     await ensureWorkspaceDatabase();
@@ -151,7 +151,7 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const access = authorizeApiRequest(request, { write: true });
+  const access = await authorizeApiRequest(request, { write: true });
   if (!access.ok) return access.response;
   try {
     await ensureWorkspaceDatabase();
