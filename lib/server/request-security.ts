@@ -11,11 +11,83 @@ export type RequestActor = {
   name: string;
   local: boolean;
   demo: boolean;
+  role: WorkspaceRole;
+};
+
+export const workspaceRoles = [
+  'requester',
+  'contract_administrator',
+  'legal_reviewer',
+  'procurement_compliance_reviewer',
+  'approver',
+  'read_only_auditor',
+  'administrator',
+] as const;
+
+export type WorkspaceRole = (typeof workspaceRoles)[number];
+
+export const workspacePermissions = [
+  'view_workspace',
+  'view_documents',
+  'submit_documents',
+  'edit_verified_fields',
+  'edit_supplier_records',
+  'approve_exceptions',
+  'apply_amendments',
+  'complete_obligations',
+  'manage_imports',
+  'run_ai_assistant',
+  'manage_ai_governance',
+  'export_data',
+  'reset_workspace',
+] as const;
+
+export type WorkspacePermission = (typeof workspacePermissions)[number];
+
+const permissionPolicy: Record<
+  WorkspaceRole,
+  ReadonlySet<WorkspacePermission>
+> = {
+  requester: new Set(['view_workspace', 'view_documents', 'submit_documents']),
+  contract_administrator: new Set([
+    'view_workspace',
+    'view_documents',
+    'submit_documents',
+    'edit_verified_fields',
+    'edit_supplier_records',
+    'apply_amendments',
+    'complete_obligations',
+    'manage_imports',
+    'run_ai_assistant',
+    'manage_ai_governance',
+    'export_data',
+  ]),
+  legal_reviewer: new Set([
+    'view_workspace',
+    'view_documents',
+    'approve_exceptions',
+    'run_ai_assistant',
+  ]),
+  procurement_compliance_reviewer: new Set([
+    'view_workspace',
+    'view_documents',
+    'submit_documents',
+    'edit_supplier_records',
+    'approve_exceptions',
+    'complete_obligations',
+    'run_ai_assistant',
+  ]),
+  approver: new Set(['view_workspace', 'view_documents', 'approve_exceptions']),
+  read_only_auditor: new Set([
+    'view_workspace',
+    'view_documents',
+    'export_data',
+  ]),
+  administrator: new Set(workspacePermissions),
 };
 
 type AuthorizationOptions = {
-  write?: boolean;
-  admin?: boolean;
+  permission?: WorkspacePermission;
 };
 
 type AuthorizationResult =
@@ -64,6 +136,49 @@ function hostedAdminIds() {
   );
 }
 
+function configuredRoleAssignments() {
+  const raw = process.env.WORKSPACE_ROLE_ASSIGNMENTS?.trim();
+  if (!raw) return new Map<string, WorkspaceRole>();
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return new Map(
+      Object.entries(parsed).flatMap(([identity, role]) =>
+        typeof role === 'string' &&
+        workspaceRoles.includes(role as WorkspaceRole)
+          ? [[identity.trim().toLowerCase(), role as WorkspaceRole]]
+          : [],
+      ),
+    );
+  } catch {
+    return new Map<string, WorkspaceRole>();
+  }
+}
+
+export function resolveWorkspaceRole(actor: {
+  id: string;
+  email: string;
+  local: boolean;
+  demo: boolean;
+}): WorkspaceRole {
+  if (actor.local || actor.demo || hostedAdminIds().has(actor.id)) {
+    return 'administrator';
+  }
+  const assignments = configuredRoleAssignments();
+  return (
+    assignments.get(actor.id.toLowerCase()) ??
+    assignments.get(actor.email.toLowerCase()) ??
+    'read_only_auditor'
+  );
+}
+
+export function roleCan(role: WorkspaceRole, permission: WorkspacePermission) {
+  return permissionPolicy[role].has(permission);
+}
+
+export function permissionsForRole(role: WorkspaceRole) {
+  return workspacePermissions.filter((permission) => roleCan(role, permission));
+}
+
 export async function authorizeApiRequest(
   request: Request,
   options: AuthorizationOptions = {},
@@ -90,7 +205,10 @@ export async function authorizeApiRequest(
     };
   }
 
-  if (options.write && !sameOrigin(request)) {
+  const write = options.permission
+    ? !['view_workspace', 'view_documents'].includes(options.permission)
+    : false;
+  if (write && !sameOrigin(request)) {
     return {
       ok: false,
       response: Response.json(
@@ -100,7 +218,7 @@ export async function authorizeApiRequest(
     };
   }
 
-  const actor: RequestActor = local
+  const actorWithoutRole = local
     ? {
         id: 'local-demo-user',
         email: 'local-demo@contractledger.invalid',
@@ -127,17 +245,17 @@ export async function authorizeApiRequest(
           demo: false,
         };
 
-  if (
-    options.admin &&
-    !actor.local &&
-    !actor.demo &&
-    !hostedAdminIds().has(actor.id)
-  ) {
+  const actor: RequestActor = {
+    ...actorWithoutRole,
+    role: resolveWorkspaceRole(actorWithoutRole),
+  };
+
+  if (options.permission && !roleCan(actor.role, options.permission)) {
     return {
       ok: false,
       response: Response.json(
         {
-          error: 'Workspace reset is restricted to configured administrators.',
+          error: `The ${actor.role.replaceAll('_', ' ')} role is not permitted to ${options.permission.replaceAll('_', ' ')}.`,
         },
         { status: 403 },
       ),

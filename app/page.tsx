@@ -13,21 +13,45 @@ import {
   getDemoAuthConfig,
   verifyDemoSessionToken,
 } from '@/lib/demo-auth';
+import {
+  permissionsForRole,
+  resolveWorkspaceRole,
+} from '@/lib/server/request-security';
 
 export const dynamic = 'force-dynamic';
 
 async function currentUser(): Promise<
-  (ChatGPTUser & { local: boolean; demo: boolean }) | null
+  | (ChatGPTUser & {
+      local: boolean;
+      demo: boolean;
+      role: ReturnType<typeof resolveWorkspaceRole>;
+      permissions: ReturnType<typeof permissionsForRole>;
+    })
+  | null
 > {
   const user = await getChatGPTUser();
-  if (user) return { ...user, local: false, demo: false };
+  if (user) {
+    const role = resolveWorkspaceRole({
+      id: user.userId,
+      email: user.email,
+      local: false,
+      demo: false,
+    });
+    return {
+      ...user,
+      local: false,
+      demo: false,
+      role,
+      permissions: permissionsForRole(role),
+    };
+  }
 
   const cookieStore = await cookies();
   const demoSession = await verifyDemoSessionToken(
     cookieStore.get(DEMO_SESSION_COOKIE)?.value,
   );
   if (demoSession) {
-    return {
+    const identity = {
       userId: `demo:${demoSession.username}`,
       displayName: demoSession.displayName,
       email: demoSession.email,
@@ -35,6 +59,13 @@ async function currentUser(): Promise<
       local: false,
       demo: true,
     };
+    const role = resolveWorkspaceRole({
+      id: identity.userId,
+      email: identity.email,
+      local: identity.local,
+      demo: identity.demo,
+    });
+    return { ...identity, role, permissions: permissionsForRole(role) };
   }
 
   const requestHeaders = await headers();
@@ -44,7 +75,7 @@ async function currentUser(): Promise<
     : host.split(':', 1)[0];
   if (!['localhost', '127.0.0.1', '::1'].includes(hostname ?? '')) return null;
 
-  return {
+  const identity = {
     userId: 'local-demo-user',
     displayName: 'Selina Armstrong',
     email: 'local-demo@contractledger.invalid',
@@ -52,6 +83,13 @@ async function currentUser(): Promise<
     local: true,
     demo: false,
   };
+  const role = resolveWorkspaceRole({
+    id: identity.userId,
+    email: identity.email,
+    local: identity.local,
+    demo: identity.demo,
+  });
+  return { ...identity, role, permissions: permissionsForRole(role) };
 }
 
 export default async function Home({
@@ -81,6 +119,8 @@ export default async function Home({
         email: user.email,
         local: user.local,
         demo: user.demo,
+        role: user.role,
+        permissions: user.permissions,
       }}
       signOutPath={user.local ? null : '/api/auth/logout'}
     />

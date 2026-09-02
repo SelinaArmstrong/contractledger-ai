@@ -1,9 +1,14 @@
-import { extractText, getDocumentProxy } from 'unpdf';
 import { z } from 'zod';
 import { env } from 'cloudflare:workers';
 
 import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import { assertContractFileSignature } from '@/lib/server/file-validation';
+import {
+  DocumentQualityError,
+  preflightPdf,
+  preflightText,
+  qualityWarnings,
+} from '@/lib/document-quality';
 import {
   authorizeApiRequest,
   enforceRateLimit,
@@ -12,7 +17,7 @@ import {
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_PAGES = 40;
 const MAX_TEXT_CHARS = 80_000;
-const PROMPT_VERSION = 'us-contract-playbook-2026.1';
+export const CONTRACT_PROMPT_VERSION = 'us-contract-playbook-2026.1';
 
 const extractedFieldSchema = z.object({
   value: z.union([z.string(), z.number(), z.null()]),
@@ -80,10 +85,13 @@ async function extractDocumentText(file: File) {
     throw new Error('The demo accepts files up to 8 MB.');
   }
 
-  if (file.type === 'text/plain' || file.name.toLowerCase().endsWith('.txt')) {
+  const fileFormat = await assertContractFileSignature(file);
+  if (fileFormat === 'text') {
+    const result = preflightText(file, await file.text());
     return {
       totalPages: 1,
-      text: `=== PAGE 1 ===\n${(await file.text()).slice(0, MAX_TEXT_CHARS)}`,
+      text: `=== PAGE 1 ===\n${result.pages[0].slice(0, MAX_TEXT_CHARS)}`,
+      qualityReport: result.report,
     };
   }
 
@@ -94,39 +102,21 @@ async function extractDocumentText(file: File) {
     throw new Error('Upload a text-based PDF or TXT file for this demo.');
   }
 
-  await assertContractFileSignature(file);
-
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const pdf = await withTimeout(
-    getDocumentProxy(bytes, { maxImageSize: 16_777_216 }),
-    12_000,
-    'PDF parsing',
-  );
-
-  if (pdf.numPages > MAX_PAGES) {
-    throw new Error(`The demo accepts PDF files up to ${MAX_PAGES} pages.`);
-  }
-
-  const extracted = await withTimeout(
-    extractText(pdf, { mergePages: false }),
-    18_000,
-    'PDF text extraction',
-  );
-  const pages = Array.isArray(extracted.text)
-    ? extracted.text
-    : [extracted.text];
+  const preflight = await preflightPdf(file, {
+    maximumPages: MAX_PAGES,
+    timeout: withTimeout,
+  });
+  const pages = preflight.pages;
   const text = pages
     .map((page, index) => `=== PAGE ${index + 1} ===\n${page}`)
     .join('\n\n')
     .slice(0, MAX_TEXT_CHARS);
 
-  if (text.replace(/=== PAGE \d+ ===/g, '').trim().length < 80) {
-    throw new Error(
-      'No usable text layer was found. Please use a text-based PDF for this demo.',
-    );
-  }
-
-  return { totalPages: extracted.totalPages, text };
+  return {
+    totalPages: preflight.report.totalPages,
+    text,
+    qualityReport: preflight.report,
+  };
 }
 
 function buildPrompt(stage: 'draft' | 'executed', text: string) {
@@ -266,14 +256,23 @@ export async function analyzeContractFile(
   }
 
   return {
-    analysis,
+    analysis: {
+      ...analysis,
+      warnings: [
+        ...qualityWarnings(extracted.qualityReport),
+        ...analysis.warnings,
+      ],
+    },
     totalPages: extracted.totalPages,
+    qualityReport: extracted.qualityReport,
     model: result.model ?? 'deepseek-v4-flash',
   };
 }
 
 export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, { write: true });
+  const access = await authorizeApiRequest(request, {
+    permission: 'submit_documents',
+  });
   if (!access.ok) return access.response;
 
   try {
@@ -321,16 +320,17 @@ export async function POST(request: Request) {
     try {
       await env.DB.prepare(`INSERT INTO ai_analysis_runs
         (id, stage, file_name, storage_key, model, prompt_version,
-         original_result_json, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_review', ?)`)
+         original_result_json, quality_report_json, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', ?)`)
         .bind(
           analysisRunId,
           stage,
           file.name,
           storageKey,
           model,
-          PROMPT_VERSION,
+          CONTRACT_PROMPT_VERSION,
           JSON.stringify(validated),
+          JSON.stringify(result.qualityReport),
           new Date().toISOString(),
         )
         .run();
@@ -348,9 +348,16 @@ export async function POST(request: Request) {
         storageKey,
         mimeType: file.type || 'application/octet-stream',
       },
+      qualityReport: result.qualityReport,
       model,
     });
   } catch (error) {
+    if (error instanceof DocumentQualityError) {
+      return Response.json(
+        { error: error.message, qualityReport: error.report },
+        { status: 422 },
+      );
+    }
     const message =
       error instanceof z.ZodError
         ? 'DeepSeek returned an incomplete extraction. Please try the analysis again.'

@@ -1,0 +1,102 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('cloudflare:workers', () => ({ env: {} }));
+
+import {
+  authorizeApiRequest,
+  permissionsForRole,
+  resolveWorkspaceRole,
+  roleCan,
+} from './request-security';
+
+const originalAssignments = process.env.WORKSPACE_ROLE_ASSIGNMENTS;
+const originalAdmins = process.env.DEMO_ADMIN_USER_IDS;
+
+afterEach(() => {
+  if (originalAssignments === undefined)
+    delete process.env.WORKSPACE_ROLE_ASSIGNMENTS;
+  else process.env.WORKSPACE_ROLE_ASSIGNMENTS = originalAssignments;
+  if (originalAdmins === undefined) delete process.env.DEMO_ADMIN_USER_IDS;
+  else process.env.DEMO_ADMIN_USER_IDS = originalAdmins;
+});
+
+describe('workspace role authorization', () => {
+  it('denies every material write to a read-only auditor', () => {
+    const writes = [
+      'submit_documents',
+      'edit_verified_fields',
+      'edit_supplier_records',
+      'approve_exceptions',
+      'apply_amendments',
+      'complete_obligations',
+      'manage_imports',
+      'run_ai_assistant',
+      'manage_ai_governance',
+      'reset_workspace',
+    ] as const;
+
+    expect(roleCan('read_only_auditor', 'view_documents')).toBe(true);
+    expect(roleCan('read_only_auditor', 'export_data')).toBe(true);
+    for (const permission of writes) {
+      expect(roleCan('read_only_auditor', permission)).toBe(false);
+    }
+  });
+
+  it('returns 403 from the server guard for every denied auditor write', async () => {
+    delete process.env.WORKSPACE_ROLE_ASSIGNMENTS;
+    delete process.env.DEMO_ADMIN_USER_IDS;
+    const writes = [
+      'submit_documents',
+      'edit_verified_fields',
+      'edit_supplier_records',
+      'approve_exceptions',
+      'apply_amendments',
+      'complete_obligations',
+      'manage_imports',
+      'run_ai_assistant',
+      'manage_ai_governance',
+      'reset_workspace',
+    ] as const;
+    for (const permission of writes) {
+      const result = await authorizeApiRequest(
+        new Request('https://contractledger.example/api/test', {
+          method: 'POST',
+          headers: {
+            origin: 'https://contractledger.example',
+            'oai-authenticated-user-id': 'auditor-1',
+            'oai-authenticated-user-email': 'auditor@example.com',
+          },
+        }),
+        { permission },
+      );
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.response.status).toBe(403);
+    }
+  });
+
+  it('separates verified-field editing from exception approval', () => {
+    expect(roleCan('contract_administrator', 'edit_verified_fields')).toBe(
+      true,
+    );
+    expect(roleCan('contract_administrator', 'approve_exceptions')).toBe(false);
+    expect(roleCan('approver', 'approve_exceptions')).toBe(true);
+    expect(roleCan('approver', 'edit_verified_fields')).toBe(false);
+  });
+
+  it('uses configured identities and defaults hosted users to auditor', () => {
+    process.env.WORKSPACE_ROLE_ASSIGNMENTS = JSON.stringify({
+      'legal@example.com': 'legal_reviewer',
+    });
+    const base = { id: 'user-1', local: false, demo: false };
+    expect(resolveWorkspaceRole({ ...base, email: 'legal@example.com' })).toBe(
+      'legal_reviewer',
+    );
+    expect(
+      resolveWorkspaceRole({ ...base, email: 'unknown@example.com' }),
+    ).toBe('read_only_auditor');
+  });
+
+  it('grants administrators the complete permission catalog', () => {
+    expect(permissionsForRole('administrator')).toHaveLength(13);
+  });
+});

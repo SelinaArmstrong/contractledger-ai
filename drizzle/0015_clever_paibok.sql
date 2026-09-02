@@ -1,0 +1,1 @@
+ALTER TABLE `ai_analysis_runs` ADD `quality_report_json` text;

@@ -23,6 +23,8 @@ export async function exportCurrentRegisters(
   contractSheet.columns = [
     { header: 'Contract Number', key: 'number', width: 20 },
     { header: 'Contract Title', key: 'title', width: 38 },
+    { header: 'Current Version', key: 'currentVersion', width: 16 },
+    { header: 'Amendment Count', key: 'amendmentCount', width: 18 },
     { header: 'Supplier', key: 'supplier', width: 34 },
     { header: 'Contract Type', key: 'type', width: 30 },
     { header: 'Department', key: 'department', width: 20 },
@@ -45,6 +47,8 @@ export async function exportCurrentRegisters(
     contractSheet.addRow({
       number: contract.contract_number,
       title: contract.title,
+      currentVersion: contract.current_version ?? 1,
+      amendmentCount: contract.amendment_count ?? 0,
       supplier: contract.supplier_name,
       type: contract.contract_type,
       department: contract.department,
@@ -243,8 +247,120 @@ export async function exportCurrentRegisters(
     }),
   );
 
-  [contractSheet, supplierSheet, supplierDocumentSheet, exceptionSheet].forEach(
-    (sheet) => {
+  const obligationSheet = workbook.addWorksheet('Obligations & Evidence', {
+    views: [{ state: 'frozen', ySplit: 1 }],
+  });
+  obligationSheet.columns = [
+    { header: 'Obligation', key: 'title', width: 42 },
+    { header: 'Contract Number', key: 'contractNumber', width: 20 },
+    { header: 'Supplier', key: 'supplier', width: 34 },
+    { header: 'Type', key: 'type', width: 26 },
+    { header: 'Priority', key: 'priority', width: 14 },
+    { header: 'Workflow Status', key: 'status', width: 20 },
+    { header: 'Calculated Status', key: 'effectiveStatus', width: 20 },
+    { header: 'Due Date', key: 'dueDate', width: 16 },
+    { header: 'Internal Review Date', key: 'reviewDate', width: 22 },
+    { header: 'Owner', key: 'owner', width: 24 },
+    { header: 'Backup Owner', key: 'backupOwner', width: 24 },
+    { header: 'Renewal Decision', key: 'decision', width: 22 },
+    { header: 'Source File', key: 'sourceFile', width: 44 },
+    { header: 'Source Page', key: 'sourcePage', width: 14 },
+    { header: 'Source Clause', key: 'sourceClause', width: 64 },
+    { header: 'Evidence File', key: 'evidenceFile', width: 44 },
+    { header: 'Evidence Reference', key: 'evidenceReference', width: 38 },
+    { header: 'Completed By', key: 'completedBy', width: 24 },
+    { header: 'Completed At', key: 'completedAt', width: 24 },
+    { header: 'Completion Note', key: 'completionNote', width: 64 },
+    { header: 'Escalation Level', key: 'escalationLevel', width: 18 },
+    { header: 'Last Escalated At', key: 'escalatedAt', width: 24 },
+  ];
+  workspace.keyDates.forEach((item) =>
+    obligationSheet.addRow({
+      title: item.title,
+      contractNumber: item.contract_number,
+      supplier: item.supplier_name,
+      type: item.type,
+      priority: item.priority,
+      status: item.status,
+      effectiveStatus: item.effective_status,
+      dueDate: item.due_date,
+      reviewDate: item.internal_review_date,
+      owner: item.owner,
+      backupOwner: item.backup_owner,
+      decision: item.decision,
+      sourceFile: item.source_file_name,
+      sourcePage: item.source_page,
+      sourceClause: item.source_clause,
+      evidenceFile: item.evidence_file_name,
+      evidenceReference: item.evidence_reference,
+      completedBy: item.completed_by,
+      completedAt: item.completed_at,
+      completionNote: item.completion_note,
+      escalationLevel: item.escalation_level,
+      escalatedAt: item.escalated_at,
+    }),
+  );
+
+  const approvalSheet = workbook.addWorksheet('Approval Queue', {
+    views: [{ state: 'frozen', ySplit: 1 }],
+  });
+  approvalSheet.columns = [
+    { header: 'Intake Number', key: 'intakeNumber', width: 20 },
+    { header: 'Intake Title', key: 'intakeTitle', width: 38 },
+    { header: 'Supplier', key: 'supplier', width: 34 },
+    { header: 'Rule Key', key: 'ruleKey', width: 30 },
+    { header: 'Rule Version', key: 'ruleVersion', width: 16 },
+    { header: 'Required Control', key: 'ruleName', width: 42 },
+    { header: 'Reason', key: 'reason', width: 64 },
+    { header: 'Mandatory', key: 'mandatory', width: 14 },
+    { header: 'Decision Owner', key: 'ownerRole', width: 28 },
+    { header: 'Assigned Reviewer', key: 'reviewer', width: 24 },
+    { header: 'Request Status', key: 'requestStatus', width: 20 },
+    { header: 'Step Status', key: 'stepStatus', width: 20 },
+    { header: 'Generated At', key: 'generatedAt', width: 24 },
+    { header: 'Due Date', key: 'dueAt', width: 18 },
+    { header: 'Age (Days)', key: 'ageDays', width: 14 },
+    { header: 'Overdue', key: 'overdue', width: 14 },
+    { header: 'Escalation Level', key: 'escalationLevel', width: 18 },
+    { header: 'Source File', key: 'sourceFile', width: 46 },
+    { header: 'Source Page', key: 'sourcePage', width: 14 },
+    { header: 'Source Quote', key: 'sourceQuote', width: 64 },
+    { header: 'Completed At', key: 'completedAt', width: 24 },
+  ];
+  workspace.approvalQueue.forEach((item) =>
+    approvalSheet.addRow({
+      intakeNumber: item.intake_number,
+      intakeTitle: item.intake_title,
+      supplier: item.proposed_supplier_name,
+      ruleKey: item.rule_key,
+      ruleVersion: item.rule_version,
+      ruleName: item.rule_name,
+      reason: item.reason,
+      mandatory: item.mandatory ? 'Yes' : 'No',
+      ownerRole: item.owner_role,
+      reviewer: item.assigned_reviewer,
+      requestStatus: item.request_status,
+      stepStatus: item.step_status,
+      generatedAt: item.generated_at,
+      dueAt: item.due_at,
+      ageDays: item.age_days,
+      overdue: item.overdue ? 'Yes' : 'No',
+      escalationLevel: item.escalation_level,
+      sourceFile: item.source_file_name,
+      sourcePage: item.source_page,
+      sourceQuote: item.source_quote,
+      completedAt: item.completed_at,
+    }),
+  );
+
+  [
+    contractSheet,
+    supplierSheet,
+    supplierDocumentSheet,
+    exceptionSheet,
+    obligationSheet,
+    approvalSheet,
+  ].forEach((sheet) => {
     const header = sheet.getRow(1);
     header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     header.fill = {
@@ -272,8 +388,7 @@ export async function exportCurrentRegisters(
         };
       });
     });
-    },
-  );
+  });
 
   ['G', 'H', 'I'].forEach((column) => {
     contractSheet.getColumn(column).numFmt = '$#,##0.00';
@@ -283,6 +398,8 @@ export async function exportCurrentRegisters(
   if (scope === 'suppliers') {
     workbook.removeWorksheet(contractSheet.id);
     workbook.removeWorksheet(exceptionSheet.id);
+    workbook.removeWorksheet(obligationSheet.id);
+    workbook.removeWorksheet(approvalSheet.id);
   }
 
   const buffer = await workbook.xlsx.writeBuffer();

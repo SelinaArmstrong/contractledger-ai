@@ -102,10 +102,58 @@ const workspace: Workspace = {
       current_value_cents: 25_000_000,
     },
   ],
+  obligationMetrics: {
+    open_obligations: 1,
+    overdue_obligations: 0,
+    average_overdue_age_days: 0,
+    on_time_completion_rate: 0,
+    completed_with_evidence_rate: 0,
+    median_assignment_hours: 0,
+    median_completion_hours: 0,
+  },
   supplierAlerts: [],
   supplierDocuments: [],
   transactionComparisons: [],
   evaluationRuns: [],
+  approvalMetrics: {
+    open_requests: 1,
+    overdue_requests: 1,
+    blocked_intakes: 1,
+    average_turnaround_hours: 0,
+    exception_approval_rate: 0,
+  },
+  approvalQueue: [
+    {
+      request_id: 'approval-1',
+      step_id: 'approval-step-1',
+      intake_id: 'intake-1',
+      intake_number: 'INT-001',
+      intake_title: 'Engineering support review',
+      proposed_supplier_name: 'Westline Engineering LLC',
+      proposed_value_cents: 58_500_000,
+      request_status: 'pending',
+      step_status: 'pending',
+      reason: 'Value exceeds the financial approval threshold.',
+      generated_at: '2026-08-20T00:00:00.000Z',
+      due_at: '2026-08-23',
+      completed_at: null,
+      rule_id: 'rule-1',
+      rule_key: 'financial_value_threshold',
+      rule_name: 'Financial approval above USD 500,000',
+      rule_version: 1,
+      owner_role: 'Finance / CFO',
+      mandatory: 1,
+      assigned_reviewer: null,
+      escalation_level: 0,
+      source_finding_id: null,
+      source_document_id: 'document-1',
+      source_page: 3,
+      source_quote: '$585,000',
+      source_file_name: 'draft.pdf',
+      age_days: 11,
+      overdue: 1,
+    },
+  ],
 };
 
 function plan(overrides: Partial<AssistantQueryPlan>): AssistantQueryPlan {
@@ -257,6 +305,29 @@ describe('AI assistant deterministic query execution', () => {
 
     expect(result.matchedCount).toBe(1);
     expect(result.records[0].title).toBe('Certificate of Insurance expires');
+  });
+
+  it('queries the deterministic approval aging queue', () => {
+    const result = executeAssistantQuery(
+      workspace,
+      plan({
+        entity: 'approvals',
+        filters: [
+          {
+            field: 'overdue',
+            operator: 'equals',
+            value: 1,
+            label: 'Overdue approvals',
+          },
+        ],
+      }),
+    );
+
+    expect(result.matchedCount).toBe(1);
+    expect(result.records[0]).toMatchObject({
+      id: 'approval-1',
+      openTarget: { type: 'intake', id: 'intake-1' },
+    });
   });
 
   it('rejects model-proposed fields outside the allowlist', () => {

@@ -14,6 +14,7 @@ import {
 import { authorizeApiRequest } from '@/lib/server/request-security';
 import { assertSupplierFileSignature } from '@/lib/server/file-validation';
 import { isoDateSchema } from '@/lib/validation';
+import { validatedOverrideReason } from '@/lib/ai-governance';
 
 const optionalText = (maximum: number) =>
   z.string().trim().max(maximum).optional().or(z.literal(''));
@@ -47,13 +48,16 @@ const documentMetadataSchema = z
       effectiveDate: isoDateSchema.optional().or(z.literal('')),
       expirationDate: isoDateSchema.optional().or(z.literal('')),
       coverageSummary: optionalText(1000),
+      overrideReason: optionalText(500),
     }),
   )
   .min(1)
   .max(10);
 
 export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, { write: true });
+  const access = await authorizeApiRequest(request, {
+    permission: 'edit_supplier_records',
+  });
   if (!access.ok) return access.response;
 
   const storedKeys: string[] = [];
@@ -181,8 +185,8 @@ export async function POST(request: Request) {
         : null;
       const hasIssues = Boolean(
         analysis &&
-          ((Array.isArray(analysis.findings) && analysis.findings.length) ||
-            (Array.isArray(analysis.warnings) && analysis.warnings.length)),
+        ((Array.isArray(analysis.findings) && analysis.findings.length) ||
+          (Array.isArray(analysis.warnings) && analysis.warnings.length)),
       );
       const reviewStatus =
         document.expirationDate && document.expirationDate < today
@@ -271,14 +275,19 @@ export async function POST(request: Request) {
         };
         const corrected =
           JSON.stringify(originalField.value) !== JSON.stringify(verifiedValue);
+        const overrideReason = validatedOverrideReason(
+          fieldName,
+          { ...originalField, value: verifiedValue },
+          document.overrideReason,
+        );
         if (corrected) correctionCount += 1;
         verifiedResult[fieldName] = { ...originalField, value: verifiedValue };
         aiReviewStatements.push(
           env.DB.prepare(`INSERT INTO ai_field_reviews
             (id, analysis_run_id, field_name, original_value_json,
              verified_value_json, confidence, source_page, source_quote,
-             review_status, reviewed_by, reviewed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+             override_reason, review_status, reviewed_by, reviewed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
             `aifield-${crypto.randomUUID()}`,
             document.analysisRun.id,
             fieldName,
@@ -287,6 +296,7 @@ export async function POST(request: Request) {
             originalField.confidence,
             originalField.sourcePage,
             originalField.sourceQuote,
+            overrideReason,
             corrected ? 'corrected' : 'accepted',
             access.actor.name,
             now,

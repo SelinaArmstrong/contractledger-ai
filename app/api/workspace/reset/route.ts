@@ -4,8 +4,7 @@ import { authorizeApiRequest } from '@/lib/server/request-security';
 
 export async function POST(request: Request) {
   const access = await authorizeApiRequest(request, {
-    write: true,
-    admin: true,
+    permission: 'reset_workspace',
   });
   if (!access.ok) return access.response;
 

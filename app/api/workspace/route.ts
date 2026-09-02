@@ -2,8 +2,23 @@ import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 
 import { ensureWorkspaceDatabase } from '@/db/bootstrap';
+import {
+  addApprovalDueDays,
+  approvalGate,
+  generateApprovalRequirements,
+  type ApprovalContext,
+  type ApprovalRequestStatus,
+  type ApprovalRuleDefinition,
+  type ApprovalTriggerType,
+} from '@/lib/approval-workflow';
 import { normalizeSupplierName } from '@/lib/supplier-qualification';
+import { validatedOverrideReason } from '@/lib/ai-governance';
+import {
+  calculateObligationMetrics,
+  type ObligationMetricRecord,
+} from '@/lib/obligation-workflow';
 import { authorizeApiRequest } from '@/lib/server/request-security';
+import { calculateSupplierRiskProfile } from '@/lib/supplier-risk';
 import { isIsoDate } from '@/lib/validation';
 
 const fieldSchema = z.object({
@@ -77,6 +92,7 @@ const saveSchema = z.object({
       z.object({
         fieldName: z.enum(reviewFieldNames),
         status: z.enum(['accepted', 'corrected']),
+        overrideReason: z.string().max(500).optional(),
       }),
     ),
   }),
@@ -107,6 +123,44 @@ function addDays(dateValue: string, days: number) {
   const date = new Date(`${dateValue}T12:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+async function loadActiveApprovalRules(db: D1Database) {
+  const rows = await db
+    .prepare(`SELECT id, rule_key, version, name, description, trigger_type,
+      trigger_config_json, owner_role, due_days, mandatory, active
+      FROM approval_rules WHERE active = 1 ORDER BY rule_key, version`)
+    .all<{
+      id: string;
+      rule_key: string;
+      version: number;
+      name: string;
+      description: string;
+      trigger_type: string;
+      trigger_config_json: string;
+      owner_role: string;
+      due_days: number;
+      mandatory: number;
+      active: number;
+    }>();
+  return rows.results.map(
+    (row): ApprovalRuleDefinition => ({
+      id: row.id,
+      ruleKey: row.rule_key,
+      version: row.version,
+      name: row.name,
+      description: row.description,
+      triggerType: row.trigger_type as ApprovalTriggerType,
+      triggerConfig: JSON.parse(row.trigger_config_json) as Record<
+        string,
+        unknown
+      >,
+      ownerRole: row.owner_role,
+      dueDays: row.due_days,
+      mandatory: Boolean(row.mandatory),
+      active: Boolean(row.active),
+    }),
+  );
 }
 
 type VerifiedAnalysisRun = {
@@ -216,6 +270,11 @@ export async function getWorkspace() {
     supplierDocumentRows,
     aiComparisonRows,
     evaluationRows,
+    aiGovernanceMetricRow,
+    aiCorrectionRows,
+    approvalMetricRow,
+    approvalQueueRows,
+    integrationMetricRow,
   ] = await Promise.all([
     db
       .prepare(`SELECT
@@ -230,7 +289,11 @@ export async function getWorkspace() {
       (SELECT COUNT(*) FROM key_dates k
         WHERE k.contract_id = c.id AND k.status != 'completed') AS open_obligation_count,
       (SELECT MIN(k.due_date) FROM key_dates k
-        WHERE k.contract_id = c.id AND k.status != 'completed') AS next_obligation_date
+        WHERE k.contract_id = c.id AND k.status != 'completed') AS next_obligation_date,
+      (SELECT COUNT(*) FROM amendments a
+        WHERE a.contract_id = c.id) AS amendment_count,
+      COALESCE((SELECT MAX(a.version_number) FROM amendments a
+        WHERE a.contract_id = c.id), 1) AS current_version
       FROM contracts c JOIN suppliers s ON s.id = c.supplier_id
       ORDER BY c.last_updated DESC`)
       .all(),
@@ -255,7 +318,24 @@ export async function getWorkspace() {
       ) candidate WHERE candidate.expiration_date >= date('now')) AS next_compliance_expiration,
       CASE WHEN s.insurance_expiration < date('now') OR EXISTS (
         SELECT 1 FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND d.expiration_date < date('now') AND COALESCE(d.review_status, '') != 'not_applicable'
-      ) THEN 1 ELSE 0 END AS has_expired_compliance
+      ) THEN 1 ELSE 0 END AS has_expired_compliance,
+      (SELECT COUNT(*) FROM review_findings f
+        JOIN contract_intakes i3 ON i3.id = f.intake_id
+        WHERE i3.supplier_id = s.id AND f.status = 'open' AND f.severity = 'high')
+        AS open_high_risk_findings,
+      (SELECT COUNT(*) FROM key_dates k
+        WHERE k.supplier_id = s.id AND k.status != 'completed'
+          AND k.due_date < date('now')) AS overdue_obligations,
+      CASE WHEN EXISTS (SELECT 1 FROM documents d WHERE d.supplier_id = s.id
+        AND d.lifecycle_stage = 'supplier_record' AND d.file_type = 'cybersecurity_assessment')
+        THEN 1 ELSE 0 END AS has_cybersecurity_record,
+      CASE WHEN EXISTS (SELECT 1 FROM documents d WHERE d.supplier_id = s.id
+        AND d.lifecycle_stage = 'supplier_record' AND d.file_type = 'exclusion_screening')
+        THEN 1 ELSE 0 END AS has_exclusion_screening,
+      CASE WHEN EXISTS (SELECT 1 FROM documents d WHERE d.supplier_id = s.id
+        AND d.lifecycle_stage = 'supplier_record'
+        AND d.file_type IN ('business_license', 'professional_license', 'good_standing'))
+        THEN 1 ELSE 0 END AS has_license_or_good_standing
       FROM suppliers s LEFT JOIN contracts c ON c.supplier_id = s.id
       GROUP BY s.id ORDER BY s.legal_name`)
       .all(),
@@ -270,22 +350,42 @@ export async function getWorkspace() {
         WHEN EXISTS (SELECT 1 FROM review_findings f WHERE f.intake_id = i.id AND f.status = 'open' AND f.severity = 'medium') THEN 'medium'
         ELSE 'low'
       END AS risk_level,
-      CASE WHEN COALESCE(i.proposed_value_cents, 0) > 50000000
-        THEN 'CFO approval' ELSE 'No additional approval' END AS required_approval
+      (SELECT COUNT(*) FROM approval_requests arq
+        JOIN approval_rules arr ON arr.id = arq.rule_id
+        WHERE arq.intake_id = i.id AND arr.mandatory = 1) AS approval_request_count,
+      (SELECT COUNT(*) FROM approval_requests arq
+        JOIN approval_rules arr ON arr.id = arq.rule_id
+        WHERE arq.intake_id = i.id AND arr.mandatory = 1
+          AND arq.status != 'approved') AS open_approval_count,
+      COALESCE((SELECT GROUP_CONCAT(arr.name, '; ')
+        FROM approval_requests arq
+        JOIN approval_rules arr ON arr.id = arq.rule_id
+        WHERE arq.intake_id = i.id AND arq.status != 'cancelled'),
+        'No additional approval') AS required_approval
       FROM contract_intakes i
       LEFT JOIN suppliers s ON s.id = i.supplier_id
       ORDER BY i.received_at DESC`)
       .all(),
     db
-      .prepare(`SELECT k.*, c.contract_number, c.title AS contract_title,
+      .prepare(`SELECT k.*,
+      CASE WHEN k.status != 'completed' AND k.due_date < date('now')
+        THEN 'overdue' ELSE k.status END AS effective_status,
+      CASE WHEN k.status != 'completed' AND k.due_date < date('now')
+        THEN CAST(julianday(date('now')) - julianday(k.due_date) AS INTEGER)
+        ELSE 0 END AS overdue_days,
+      c.contract_number, c.title AS contract_title,
       c.current_value_cents,
       c.expiration_date AS contract_expiration_date, c.status AS contract_status,
-      s.legal_name AS supplier_name
+      s.legal_name AS supplier_name,
+      evidence.file_name AS evidence_file_name,
+      source.file_name AS source_file_name
       FROM key_dates k
       LEFT JOIN contracts c ON c.id = k.contract_id
       LEFT JOIN suppliers s ON s.id = k.supplier_id
+      LEFT JOIN documents evidence ON evidence.id = k.evidence_document_id
+      LEFT JOIN documents source ON source.id = k.source_document_id
       ORDER BY CASE WHEN k.status = 'completed' THEN 1 ELSE 0 END, k.due_date`)
-      .all(),
+      .all<ObligationMetricRecord & Record<string, string | number | null>>(),
     db
       .prepare(`SELECT * FROM (
         SELECT 'document:' || d.id AS alert_id, 'document' AS source_type,
@@ -366,25 +466,171 @@ export async function getWorkspace() {
       .prepare(`SELECT * FROM ai_evaluation_runs
         ORDER BY created_at DESC LIMIT 20`)
       .all(),
+    db
+      .prepare(`SELECT
+        COUNT(*) AS reviewed_fields,
+        SUM(CASE WHEN f.review_status = 'corrected' THEN 1 ELSE 0 END) AS corrected_fields,
+        COALESCE(ROUND(100.0 * SUM(CASE WHEN f.review_status = 'corrected' THEN 1 ELSE 0 END) /
+          NULLIF(COUNT(*), 0), 1), 0) AS correction_rate_percent,
+        SUM(CASE WHEN f.field_name IN (
+          'supplierLegalName', 'contractNumber', 'contractValue',
+          'effectiveDate', 'expirationDate', 'renewalType', 'noticeDays',
+          'referencedContractNumber', 'signedDate', 'valueChange',
+          'resultingContractValue', 'newExpirationDate', 'documentType'
+        ) THEN 1 ELSE 0 END) AS critical_reviewed_fields,
+        SUM(CASE WHEN f.field_name IN (
+          'supplierLegalName', 'contractNumber', 'contractValue',
+          'effectiveDate', 'expirationDate', 'renewalType', 'noticeDays',
+          'referencedContractNumber', 'signedDate', 'valueChange',
+          'resultingContractValue', 'newExpirationDate', 'documentType'
+        ) AND ((f.source_page IS NOT NULL AND TRIM(COALESCE(f.source_quote, '')) != '')
+          OR TRIM(COALESCE(f.override_reason, '')) != '') THEN 1 ELSE 0 END)
+          AS critical_supported_or_overridden_fields,
+        COALESCE(ROUND(100.0 * SUM(CASE WHEN f.field_name IN (
+          'supplierLegalName', 'contractNumber', 'contractValue',
+          'effectiveDate', 'expirationDate', 'renewalType', 'noticeDays',
+          'referencedContractNumber', 'signedDate', 'valueChange',
+          'resultingContractValue', 'newExpirationDate', 'documentType'
+        ) AND ((f.source_page IS NOT NULL AND TRIM(COALESCE(f.source_quote, '')) != '')
+          OR TRIM(COALESCE(f.override_reason, '')) != '') THEN 1 ELSE 0 END) /
+          NULLIF(SUM(CASE WHEN f.field_name IN (
+            'supplierLegalName', 'contractNumber', 'contractValue',
+            'effectiveDate', 'expirationDate', 'renewalType', 'noticeDays',
+            'referencedContractNumber', 'signedDate', 'valueChange',
+            'resultingContractValue', 'newExpirationDate', 'documentType'
+          ) THEN 1 ELSE 0 END), 0), 1), 100)
+          AS critical_source_control_percent
+        FROM ai_field_reviews f`)
+      .first(),
+    db
+      .prepare(`SELECT f.field_name, r.stage, r.model, r.prompt_version,
+        COUNT(*) AS reviewed_fields,
+        SUM(CASE WHEN f.review_status = 'corrected' THEN 1 ELSE 0 END) AS corrected_fields,
+        ROUND(100.0 * SUM(CASE WHEN f.review_status = 'corrected' THEN 1 ELSE 0 END) /
+          NULLIF(COUNT(*), 0), 1) AS correction_rate_percent
+        FROM ai_field_reviews f
+        JOIN ai_analysis_runs r ON r.id = f.analysis_run_id
+        GROUP BY f.field_name, r.stage, r.model, r.prompt_version
+        ORDER BY correction_rate_percent DESC, reviewed_fields DESC, f.field_name`)
+      .all(),
+    db
+      .prepare(`SELECT
+        (SELECT COUNT(*) FROM approval_requests
+          WHERE status IN ('pending', 'in_review', 'revision_requested')) AS open_requests,
+        (SELECT COUNT(*) FROM approval_requests
+          WHERE status IN ('pending', 'in_review', 'revision_requested')
+            AND due_at < date('now')) AS overdue_requests,
+        (SELECT COUNT(DISTINCT ar.intake_id)
+          FROM approval_requests ar
+          JOIN approval_rules r ON r.id = ar.rule_id
+          WHERE r.mandatory = 1 AND ar.status != 'approved') AS blocked_intakes,
+        COALESCE((SELECT ROUND(AVG((julianday(completed_at) - julianday(generated_at)) * 24), 1)
+          FROM approval_requests WHERE completed_at IS NOT NULL), 0) AS average_turnaround_hours,
+        COALESCE((SELECT ROUND(100.0 * SUM(CASE WHEN action = 'approve_exception' THEN 1 ELSE 0 END) /
+          NULLIF(SUM(CASE WHEN action IN ('approve', 'approve_exception', 'decline') THEN 1 ELSE 0 END), 0), 1)
+          FROM approval_decision_history), 0) AS exception_approval_rate`)
+      .first(),
+    db
+      .prepare(`SELECT
+        ar.id AS request_id, ast.id AS step_id, ar.intake_id,
+        i.intake_number, i.title AS intake_title, i.proposed_supplier_name,
+        i.proposed_value_cents, ar.status AS request_status,
+        ast.status AS step_status, ar.reason, ar.generated_at, ar.due_at,
+        ar.completed_at, r.id AS rule_id, r.rule_key, r.name AS rule_name,
+        r.version AS rule_version, r.owner_role, r.mandatory,
+        ast.assigned_reviewer, ast.escalation_level,
+        ar.source_finding_id, ar.source_document_id,
+        ast.source_page, ast.source_quote, d.file_name AS source_file_name,
+        CAST(MAX(0, julianday(date('now')) - julianday(date(ar.generated_at))) AS INTEGER) AS age_days,
+        CASE WHEN ar.status IN ('pending', 'in_review', 'revision_requested')
+          AND ar.due_at < date('now') THEN 1 ELSE 0 END AS overdue
+      FROM approval_requests ar
+      JOIN approval_rules r ON r.id = ar.rule_id
+      JOIN approval_steps ast ON ast.request_id = ar.id
+      JOIN contract_intakes i ON i.id = ar.intake_id
+      LEFT JOIN documents d ON d.id = ar.source_document_id
+      ORDER BY CASE WHEN ar.status IN ('pending', 'in_review', 'revision_requested') THEN 0 ELSE 1 END,
+        overdue DESC, ar.due_at, r.name
+      LIMIT 500`)
+      .all(),
+    db
+      .prepare(`SELECT COUNT(*) AS total_events,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_events,
+        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_events,
+        MAX(occurred_at) AS last_event_at
+        FROM integration_outbox`)
+      .first(),
   ]);
+
+  const asOfDate = new Date().toISOString().slice(0, 10);
+  const portfolioValueCents = Number(metricRow?.current_value_cents ?? 0);
+  const supplierRiskProfiles = Object.fromEntries(
+    supplierRows.results.map((supplier) => [
+      String(supplier.id),
+      calculateSupplierRiskProfile({
+        declaredRiskTier:
+          typeof supplier.risk_tier === 'string' ? supplier.risk_tier : null,
+        w9Status:
+          typeof supplier.w9_status === 'string'
+            ? supplier.w9_status
+            : 'missing',
+        insuranceStatus:
+          typeof supplier.insurance_status === 'string'
+            ? supplier.insurance_status
+            : 'missing',
+        insuranceExpiration:
+          typeof supplier.insurance_expiration === 'string'
+            ? supplier.insurance_expiration
+            : null,
+        qualificationStatus:
+          typeof supplier.qualification_status === 'string'
+            ? supplier.qualification_status
+            : null,
+        qualificationDocumentCount: Number(
+          supplier.qualification_document_count ?? 0,
+        ),
+        hasCybersecurityRecord: Boolean(supplier.has_cybersecurity_record),
+        hasExclusionScreening: Boolean(supplier.has_exclusion_screening),
+        hasLicenseOrGoodStanding: Boolean(
+          supplier.has_license_or_good_standing,
+        ),
+        openHighRiskFindings: Number(supplier.open_high_risk_findings ?? 0),
+        overdueObligations: Number(supplier.overdue_obligations ?? 0),
+        activeContractValueCents: Number(
+          supplier.total_contract_value_cents ?? 0,
+        ),
+        portfolioValueCents,
+        asOfDate,
+      }),
+    ]),
+  );
 
   return {
     metrics: metricRow,
     contracts: contractRows.results,
     suppliers: supplierRows.results,
+    supplierRiskProfiles,
     intakes: intakeRows.results,
     keyDates: keyDateRows.results,
+    obligationMetrics: calculateObligationMetrics(keyDateRows.results),
     supplierAlerts: supplierAlertRows.results,
     supplierDocuments: supplierDocumentRows.results,
     transactionComparisons: buildTransactionComparisons(
       aiComparisonRows.results,
     ),
     evaluationRuns: evaluationRows.results,
+    aiGovernanceMetrics: aiGovernanceMetricRow,
+    aiCorrectionByField: aiCorrectionRows.results,
+    approvalMetrics: approvalMetricRow,
+    approvalQueue: approvalQueueRows.results,
+    integrationMetrics: integrationMetricRow,
   };
 }
 
 export async function GET(request: Request) {
-  const access = await authorizeApiRequest(request);
+  const access = await authorizeApiRequest(request, {
+    permission: 'view_workspace',
+  });
   if (!access.ok) return access.response;
 
   try {
@@ -404,7 +650,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, { write: true });
+  const access = await authorizeApiRequest(request, {
+    permission: 'edit_verified_fields',
+  });
   if (!access.ok) return access.response;
 
   try {
@@ -464,6 +712,22 @@ export async function POST(request: Request) {
     const originalAnalysis = saveSchema.shape.analysis.parse(
       JSON.parse(analysisRun.original_result_json),
     );
+    const reviewByField = new Map(
+      input.review.fields.map((item) => [item.fieldName, item]),
+    );
+    const overrideReasons = Object.fromEntries(
+      reviewFieldNames.map((fieldName) => [
+        fieldName,
+        validatedOverrideReason(
+          fieldName,
+          {
+            ...originalAnalysis[fieldName],
+            value: input.analysis[fieldName].value,
+          },
+          reviewByField.get(fieldName)?.overrideReason,
+        ),
+      ]),
+    );
     const correctionCount = reviewFieldNames.filter(
       (fieldName) =>
         JSON.stringify(originalAnalysis[fieldName].value) !==
@@ -477,38 +741,66 @@ export async function POST(request: Request) {
     );
     const normalizedName =
       normalizeSupplierName(supplierName) || `pending-${crypto.randomUUID()}`;
-    let supplier: { id: string; status: string } | null = null;
-    if (input.stage === 'executed') {
-      supplier = await db
-        .prepare(
-          'SELECT id, status FROM suppliers WHERE normalized_name = ? LIMIT 1',
-        )
-        .bind(normalizedName)
-        .first<{ id: string; status: string }>();
-
-      if (!supplier) {
-        const supplierId = `sup-${crypto.randomUUID()}`;
-        await db
-          .prepare(`INSERT INTO suppliers
-            (id, legal_name, normalized_name, category, status,
-             qualification_status, w9_status, insurance_status, created_at, updated_at)
-            VALUES (?, ?, ?, 'Pending classification', 'active',
-              'incomplete', 'missing', 'missing', ?, ?)`)
-          .bind(supplierId, supplierName, normalizedName, now, now)
-          .run();
-        supplier = { id: supplierId, status: 'active' };
-      } else if (supplier.status !== 'active') {
-        await db
-          .prepare(
-            "UPDATE suppliers SET status = 'active', updated_at = ? WHERE id = ?",
-          )
-          .bind(now, supplier.id)
-          .run();
-      }
-    }
+    const title = stringValue(
+      input.analysis.documentTitle,
+      input.document.fileName.replace(/\.[^.]+$/, ''),
+    );
+    const contractType = stringValue(input.analysis.contractType, 'Contract');
+    const valueCents = Math.round(
+      numberValue(input.analysis.contractValue) * 100,
+    );
+    const documentId = `doc-${crypto.randomUUID()}`;
+    const supplierRecord = await db
+      .prepare(`SELECT id, status, risk_tier, insurance_status
+        FROM suppliers WHERE normalized_name = ? LIMIT 1`)
+      .bind(normalizedName)
+      .first<{
+        id: string;
+        status: string;
+        risk_tier: string | null;
+        insurance_status: string | null;
+      }>();
+    const findingRecords = input.analysis.findings.map((finding) => ({
+      ...finding,
+      id: `finding-${crypto.randomUUID()}`,
+      field: finding.rule.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+    }));
+    const approvalContext: ApprovalContext = {
+      proposedValueCents: valueCents,
+      governingLaw: stringValue(input.analysis.governingLaw) || null,
+      renewalType: stringValue(input.analysis.renewalType) || null,
+      insuranceStatus: supplierRecord?.insurance_status ?? 'missing',
+      supplierRiskTier: supplierRecord?.risk_tier ?? null,
+      findings: findingRecords.map((finding) => ({
+        id: finding.id,
+        field: finding.field,
+        ruleName: finding.rule,
+        sourcePage: finding.sourcePage,
+        observedText: finding.observed,
+      })),
+      fieldSources: {
+        contractValue: {
+          sourcePage: input.analysis.contractValue.sourcePage,
+          sourceQuote: input.analysis.contractValue.sourceQuote,
+        },
+        governingLaw: {
+          sourcePage: input.analysis.governingLaw.sourcePage,
+          sourceQuote: input.analysis.governingLaw.sourceQuote,
+        },
+        renewalType: {
+          sourcePage: input.analysis.renewalType.sourcePage,
+          sourceQuote: input.analysis.renewalType.sourceQuote,
+        },
+      },
+    };
+    const activeApprovalRules = await loadActiveApprovalRules(db);
+    const approvalRequirements = generateApprovalRequirements(
+      approvalContext,
+      activeApprovalRules,
+    );
 
     let linkedIntakeId: string | null = null;
-    if (input.stage === 'executed' && supplier) {
+    if (input.stage === 'executed') {
       const candidates = await db
         .prepare(`SELECT i.id, i.supplier_id, i.proposed_supplier_name
           FROM contract_intakes i
@@ -524,24 +816,84 @@ export async function POST(request: Request) {
         }>();
       const matchingCandidates = candidates.results.filter(
         (candidate) =>
-          candidate.supplier_id === supplier?.id ||
+          (supplierRecord && candidate.supplier_id === supplierRecord.id) ||
           normalizeSupplierName(candidate.proposed_supplier_name) ===
             normalizedName,
       );
       if (matchingCandidates.length === 1) {
         linkedIntakeId = matchingCandidates[0].id;
       }
+      if (linkedIntakeId) {
+        const existingApprovals = await db
+          .prepare(`SELECT ar.rule_id, ar.status, r.mandatory
+            FROM approval_requests ar
+            JOIN approval_rules r ON r.id = ar.rule_id
+            WHERE ar.intake_id = ? AND r.mandatory = 1`)
+          .bind(linkedIntakeId)
+          .all<{
+            rule_id: string;
+            status: ApprovalRequestStatus;
+            mandatory: number;
+          }>();
+        const existingRuleIds = new Set(
+          existingApprovals.results.map((approval) => approval.rule_id),
+        );
+        const gate = approvalGate([
+          ...existingApprovals.results.map((approval) => ({
+            mandatory: Boolean(approval.mandatory),
+            status: approval.status,
+          })),
+          ...approvalRequirements
+            .filter(
+              (requirement) =>
+                requirement.rule.mandatory &&
+                !existingRuleIds.has(requirement.rule.id),
+            )
+            .map(() => ({
+              mandatory: true,
+              status: 'pending' as const,
+            })),
+        ]);
+        if (!gate.allowed) {
+          throw new Error(
+            `Executed registration is blocked by ${gate.blockingCount} incomplete mandatory approval${gate.blockingCount === 1 ? '' : 's'}. Complete the approval queue before retrying this verified analysis.`,
+          );
+        }
+      } else {
+        const mandatoryRequirements = approvalRequirements.filter(
+          (requirement) => requirement.rule.mandatory,
+        );
+        if (mandatoryRequirements.length) {
+          throw new Error(
+            `Executed registration requires a linked review intake with ${mandatoryRequirements.length} completed mandatory approval${mandatoryRequirements.length === 1 ? '' : 's'}. Save the agreement as a draft review first.`,
+          );
+        }
+      }
     }
 
-    const title = stringValue(
-      input.analysis.documentTitle,
-      input.document.fileName.replace(/\.[^.]+$/, ''),
-    );
-    const contractType = stringValue(input.analysis.contractType, 'Contract');
-    const valueCents = Math.round(
-      numberValue(input.analysis.contractValue) * 100,
-    );
-    const documentId = `doc-${crypto.randomUUID()}`;
+    let supplier: { id: string; status: string } | null = null;
+    let supplierMutation: D1PreparedStatement | null = null;
+    if (input.stage === 'executed') {
+      if (supplierRecord) {
+        supplier = { id: supplierRecord.id, status: supplierRecord.status };
+        if (supplierRecord.status !== 'active') {
+          supplierMutation = db
+            .prepare(
+              "UPDATE suppliers SET status = 'active', updated_at = ? WHERE id = ?",
+            )
+            .bind(now, supplierRecord.id);
+        }
+      } else {
+        supplier = { id: `sup-${crypto.randomUUID()}`, status: 'active' };
+        supplierMutation = db
+          .prepare(`INSERT INTO suppliers
+            (id, legal_name, normalized_name, category, status,
+             qualification_status, w9_status, insurance_status, created_at, updated_at)
+            VALUES (?, ?, ?, 'Pending classification', 'active',
+              'incomplete', 'missing', 'missing', ?, ?)`)
+          .bind(supplier.id, supplierName, normalizedName, now, now);
+      }
+    }
     const aiReviewStatements = ({
       intakeId,
       contractId,
@@ -579,8 +931,8 @@ export async function POST(request: Request) {
           .prepare(`INSERT INTO ai_field_reviews
             (id, analysis_run_id, field_name, original_value_json,
              verified_value_json, confidence, source_page, source_quote,
-             review_status, reviewed_by, reviewed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+             override_reason, review_status, reviewed_by, reviewed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
           .bind(
             `aifield-${crypto.randomUUID()}`,
             input.analysisRunId,
@@ -590,12 +942,64 @@ export async function POST(request: Request) {
             originalField.confidence,
             originalField.sourcePage,
             originalField.sourceQuote,
+            overrideReasons[fieldName],
             reviewStatus,
             access.actor.name,
             now,
           );
       }),
     ];
+    const approvalStatements = (intakeId: string) =>
+      approvalRequirements.flatMap((requirement) => {
+        const requestId = `approval-${crypto.randomUUID()}`;
+        const stepId = `approval-step-${crypto.randomUUID()}`;
+        const dueAt = addApprovalDueDays(now, requirement.rule.dueDays);
+        return [
+          db
+            .prepare(`INSERT INTO approval_requests
+              (id, intake_id, rule_id, source_finding_id, source_document_id,
+               status, reason, rule_snapshot_json, generated_at, due_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)`)
+            .bind(
+              requestId,
+              intakeId,
+              requirement.rule.id,
+              requirement.sourceFindingId,
+              documentId,
+              requirement.reason,
+              JSON.stringify(requirement.rule),
+              now,
+              dueAt,
+              now,
+            ),
+          db
+            .prepare(`INSERT INTO approval_steps
+              (id, request_id, sequence, owner_role, status, due_at,
+               source_page, source_quote)
+              VALUES (?, ?, 1, ?, 'pending', ?, ?, ?)`)
+            .bind(
+              stepId,
+              requestId,
+              requirement.rule.ownerRole,
+              dueAt,
+              requirement.sourcePage,
+              requirement.sourceQuote,
+            ),
+          db
+            .prepare(`INSERT INTO approval_decision_history
+              (id, request_id, step_id, action, from_status, to_status,
+               actor, actor_role, reason, created_at)
+              VALUES (?, ?, ?, 'generated', 'pending', 'pending',
+                'Rules engine', 'System', ?, ?)`)
+            .bind(
+              `approval-history-${crypto.randomUUID()}`,
+              requestId,
+              stepId,
+              requirement.reason,
+              now,
+            ),
+        ];
+      });
 
     if (input.stage === 'draft') {
       const id = `int-${crypto.randomUUID()}`;
@@ -617,7 +1021,7 @@ export async function POST(request: Request) {
             valueCents || null,
             access.actor.name,
             addDays(now.slice(0, 10), 5),
-            valueCents > 50_000_000 ? 'pending' : 'not_required',
+            approvalRequirements.length ? 'pending' : 'not_required',
             now.slice(0, 10),
             now,
           ),
@@ -648,6 +1052,7 @@ export async function POST(request: Request) {
               model: analysisRun.model,
               analysisRunId: input.analysisRunId,
               correctionCount,
+              approvalRequirementCount: approvalRequirements.length,
             }),
             now,
           ),
@@ -656,16 +1061,16 @@ export async function POST(request: Request) {
           contractId: null,
           supplierId: null,
         }),
-        ...input.analysis.findings.map((finding) =>
+        ...findingRecords.map((finding) =>
           db
             .prepare(`INSERT INTO review_findings
               (id, intake_id, field, rule_name, standard_text, observed_text,
                suggested_revision, severity, source_page, status)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`)
             .bind(
-              `finding-${crypto.randomUUID()}`,
+              finding.id,
               id,
-              finding.rule.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+              finding.field,
               finding.rule,
               finding.standard,
               finding.observed,
@@ -674,6 +1079,7 @@ export async function POST(request: Request) {
               finding.sourcePage,
             ),
         ),
+        ...approvalStatements(id),
       ]);
     } else {
       if (!supplier) throw new Error('The executed supplier was not resolved.');
@@ -712,6 +1118,7 @@ export async function POST(request: Request) {
       }
 
       await db.batch([
+        ...(supplierMutation ? [supplierMutation] : []),
         db
           .prepare(`INSERT INTO contracts
           (id, contract_number, intake_id, supplier_id, title, contract_type, department, owner, original_value_cents, amendment_value_cents, current_value_cents, effective_date, expiration_date, renewal_type, notice_days, notice_deadline, payment_terms, governing_law, status, last_updated)
@@ -785,8 +1192,10 @@ export async function POST(request: Request) {
         ...extractedDates.map((item) =>
           db
             .prepare(`INSERT INTO key_dates
-              (id, contract_id, supplier_id, type, title, due_date, status, owner, decision, source_clause, source_page)
-              VALUES (?, ?, ?, ?, ?, ?, 'upcoming', ?, ?, ?, ?)`)
+              (id, contract_id, supplier_id, type, title, due_date, status,
+               owner, priority, assigned_at, decision, source_document_id,
+               source_clause, source_page, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, 'upcoming', ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
             .bind(
               `date-${crypto.randomUUID()}`,
               id,
@@ -795,9 +1204,14 @@ export async function POST(request: Request) {
               item.title,
               item.dueDate,
               access.actor.name,
+              item.type === 'non_renewal_notice' ? 'high' : 'medium',
+              now,
               item.type === 'non_renewal_notice' ? 'under_review' : null,
+              documentId,
               item.sourceQuote,
               item.sourcePage,
+              now,
+              now,
             ),
         ),
       ]);

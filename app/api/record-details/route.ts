@@ -10,7 +10,9 @@ const querySchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const access = await authorizeApiRequest(request);
+  const access = await authorizeApiRequest(request, {
+    permission: 'view_documents',
+  });
   if (!access.ok) return access.response;
 
   try {
@@ -39,7 +41,8 @@ export async function GET(request: Request) {
     const aiReviews = documentIds.length
       ? await env.DB.prepare(`SELECT f.*, r.stage, r.intake_id, r.contract_id,
           r.supplier_id, r.document_id, r.file_name, r.model,
-          r.prompt_version, r.correction_count, r.status AS analysis_status,
+          r.prompt_version, r.quality_report_json, r.correction_count,
+          r.status AS analysis_status,
           r.reviewed_by, r.reviewed_at
         FROM ai_field_reviews f
         JOIN ai_analysis_runs r ON r.id = f.analysis_run_id
@@ -49,10 +52,66 @@ export async function GET(request: Request) {
           .bind(...documentIds)
           .all()
       : { results: [] };
+    const amendments =
+      input.type === 'contract'
+        ? await env.DB.prepare(`SELECT a.*, d.file_name, d.mime_type,
+            r.model, r.prompt_version, r.quality_report_json,
+            r.correction_count,
+            r.reviewed_by, r.reviewed_at
+          FROM amendments a
+          LEFT JOIN documents d ON d.id = a.document_id
+          LEFT JOIN ai_analysis_runs r ON r.document_id = a.document_id
+          WHERE a.contract_id = ?
+          ORDER BY a.version_number DESC
+          LIMIT 100`)
+            .bind(input.id)
+            .all()
+        : { results: [] };
+    const auditLogs =
+      input.type === 'contract'
+        ? await env.DB.prepare(`SELECT * FROM audit_logs
+          WHERE entity_type = 'contract' AND entity_id = ?
+          ORDER BY created_at DESC LIMIT 100`)
+            .bind(input.id)
+            .all()
+        : { results: [] };
+    const approvalRequests =
+      input.type === 'contract'
+        ? await env.DB.prepare(`SELECT ar.id AS request_id,
+            ar.status AS request_status, ar.reason, ar.generated_at,
+            ar.due_at, ar.completed_at, r.rule_key,
+            r.version AS rule_version, r.name AS rule_name,
+            r.owner_role, r.mandatory, ast.status AS step_status,
+            ast.assigned_reviewer, ast.decision_reason,
+            ast.source_page, ast.source_quote
+          FROM contracts c
+          JOIN approval_requests ar ON ar.intake_id = c.intake_id
+          JOIN approval_rules r ON r.id = ar.rule_id
+          JOIN approval_steps ast ON ast.request_id = ar.id
+          WHERE c.id = ? ORDER BY ar.generated_at, r.name`)
+            .bind(input.id)
+            .all()
+        : { results: [] };
+    const approvalHistory =
+      input.type === 'contract'
+        ? await env.DB.prepare(`SELECT h.*, r.name AS rule_name,
+            r.version AS rule_version
+          FROM contracts c
+          JOIN approval_requests ar ON ar.intake_id = c.intake_id
+          JOIN approval_rules r ON r.id = ar.rule_id
+          JOIN approval_decision_history h ON h.request_id = ar.id
+          WHERE c.id = ? ORDER BY h.created_at DESC LIMIT 500`)
+            .bind(input.id)
+            .all()
+        : { results: [] };
 
     return Response.json({
       documents: documents.results,
       aiReviews: aiReviews.results,
+      amendments: amendments.results,
+      auditLogs: auditLogs.results,
+      approvalRequests: approvalRequests.results,
+      approvalHistory: approvalHistory.results,
     });
   } catch (error) {
     const validationError = error instanceof z.ZodError;

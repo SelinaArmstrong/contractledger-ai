@@ -27,7 +27,6 @@ const updateSchema = z.object({
     .string()
     .refine((value) => !value || isIsoDate(value), 'Use a valid target date.'),
   internalNotes: z.string().max(5_000),
-  approvalStatus: z.enum(['not_required', 'pending', 'approved', 'declined']),
   findings: z
     .array(
       z.object({
@@ -40,8 +39,18 @@ const updateSchema = z.object({
 
 async function getIntakeDetails(id: string) {
   const intake = await env.DB.prepare(`SELECT i.*,
-      CASE WHEN COALESCE(i.proposed_value_cents, 0) > 50000000
-        THEN 'CFO approval' ELSE 'No additional approval' END AS required_approval,
+      COALESCE((SELECT GROUP_CONCAT(r.name, '; ')
+        FROM approval_requests ar
+        JOIN approval_rules r ON r.id = ar.rule_id
+        WHERE ar.intake_id = i.id AND ar.status != 'cancelled'),
+        'No additional approval') AS required_approval,
+      (SELECT COUNT(*) FROM approval_requests ar
+        JOIN approval_rules r ON r.id = ar.rule_id
+        WHERE ar.intake_id = i.id AND r.mandatory = 1) AS approval_request_count,
+      (SELECT COUNT(*) FROM approval_requests ar
+        JOIN approval_rules r ON r.id = ar.rule_id
+        WHERE ar.intake_id = i.id AND r.mandatory = 1
+          AND ar.status != 'approved') AS open_approval_count,
       CASE
         WHEN EXISTS (SELECT 1 FROM review_findings f WHERE f.intake_id = i.id AND f.status = 'open' AND f.severity = 'high') THEN 'high'
         WHEN EXISTS (SELECT 1 FROM review_findings f WHERE f.intake_id = i.id AND f.status = 'open' AND f.severity = 'medium') THEN 'medium'
@@ -52,38 +61,66 @@ async function getIntakeDetails(id: string) {
     .first<Record<string, string | number | null>>();
   if (!intake) return null;
 
-  const [supplier, documents, findings, analysisRun, auditLogs] =
-    await Promise.all([
-      intake.supplier_id
-        ? env.DB.prepare(`SELECT * FROM suppliers WHERE id = ? LIMIT 1`)
-            .bind(intake.supplier_id)
-            .first<Record<string, string | number | null>>()
-        : Promise.resolve(null),
-      env.DB.prepare(`SELECT id, supplier_id, intake_id, contract_id,
+  const [
+    supplier,
+    documents,
+    findings,
+    analysisRun,
+    auditLogs,
+    approvalRequests,
+    approvalHistory,
+  ] = await Promise.all([
+    intake.supplier_id
+      ? env.DB.prepare(`SELECT * FROM suppliers WHERE id = ? LIMIT 1`)
+          .bind(intake.supplier_id)
+          .first<Record<string, string | number | null>>()
+      : Promise.resolve(null),
+    env.DB.prepare(`SELECT id, supplier_id, intake_id, contract_id,
           parent_document_id, file_name, file_type, lifecycle_stage, mime_type,
           page_count, review_status, ai_status, uploaded_at
         FROM documents WHERE intake_id = ? ORDER BY uploaded_at DESC LIMIT 100`)
-        .bind(id)
-        .all<Record<string, string | number | null>>(),
-      env.DB.prepare(`SELECT * FROM review_findings
+      .bind(id)
+      .all<Record<string, string | number | null>>(),
+    env.DB.prepare(`SELECT * FROM review_findings
         WHERE intake_id = ? ORDER BY
           CASE severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 WHEN 'low' THEN 2 ELSE 3 END,
           source_page, rule_name`)
-        .bind(id)
-        .all<Record<string, string | number | null>>(),
-      env.DB.prepare(`SELECT id, model, prompt_version, verified_result_json,
+      .bind(id)
+      .all<Record<string, string | number | null>>(),
+    env.DB.prepare(`SELECT id, model, prompt_version, quality_report_json,
+          verified_result_json,
           correction_count, reviewed_by, reviewed_at, file_name, document_id
         FROM ai_analysis_runs
         WHERE intake_id = ? AND stage = 'draft' AND status = 'verified'
         ORDER BY reviewed_at DESC LIMIT 1`)
-        .bind(id)
-        .first<Record<string, string | number | null>>(),
-      env.DB.prepare(`SELECT id, action, actor, details, created_at
+      .bind(id)
+      .first<Record<string, string | number | null>>(),
+    env.DB.prepare(`SELECT id, action, actor, details, created_at
         FROM audit_logs WHERE entity_type = 'contract_intake' AND entity_id = ?
         ORDER BY created_at DESC LIMIT 50`)
-        .bind(id)
-        .all<Record<string, string | number | null>>(),
-    ]);
+      .bind(id)
+      .all<Record<string, string | number | null>>(),
+    env.DB.prepare(`SELECT ar.id AS request_id, ar.status AS request_status,
+          ar.reason, ar.generated_at, ar.due_at, ar.completed_at,
+          r.rule_key, r.version AS rule_version, r.name AS rule_name,
+          r.owner_role, r.mandatory, ast.id AS step_id,
+          ast.status AS step_status, ast.assigned_reviewer,
+          ast.escalation_level, ar.source_finding_id,
+          ast.source_page, ast.source_quote
+        FROM approval_requests ar
+        JOIN approval_rules r ON r.id = ar.rule_id
+        JOIN approval_steps ast ON ast.request_id = ar.id
+        WHERE ar.intake_id = ? ORDER BY ar.due_at, r.name`)
+      .bind(id)
+      .all<Record<string, string | number | null>>(),
+    env.DB.prepare(`SELECT h.*, r.name AS rule_name
+        FROM approval_decision_history h
+        JOIN approval_requests ar ON ar.id = h.request_id
+        JOIN approval_rules r ON r.id = ar.rule_id
+        WHERE ar.intake_id = ? ORDER BY h.created_at DESC LIMIT 200`)
+      .bind(id)
+      .all<Record<string, string | number | null>>(),
+  ]);
 
   const fieldReviews = analysisRun
     ? await env.DB.prepare(`SELECT * FROM ai_field_reviews
@@ -111,6 +148,7 @@ async function getIntakeDetails(id: string) {
           id: analysisRun.id,
           model: analysisRun.model,
           prompt_version: analysisRun.prompt_version,
+          quality_report_json: analysisRun.quality_report_json,
           correction_count: analysisRun.correction_count,
           reviewed_by: analysisRun.reviewed_by,
           reviewed_at: analysisRun.reviewed_at,
@@ -120,11 +158,15 @@ async function getIntakeDetails(id: string) {
       : null,
     fieldReviews: fieldReviews.results,
     auditLogs: auditLogs.results,
+    approvalRequests: approvalRequests.results,
+    approvalHistory: approvalHistory.results,
   };
 }
 
 export async function GET(request: Request) {
-  const access = await authorizeApiRequest(request);
+  const access = await authorizeApiRequest(request, {
+    permission: 'view_workspace',
+  });
   if (!access.ok) return access.response;
   try {
     await ensureWorkspaceDatabase();
@@ -151,32 +193,37 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const access = await authorizeApiRequest(request, { write: true });
+  const access = await authorizeApiRequest(request, {
+    permission: 'edit_verified_fields',
+  });
   if (!access.ok) return access.response;
   try {
     await ensureWorkspaceDatabase();
     const input = updateSchema.parse(await request.json());
-    const existing = await env.DB.prepare(`SELECT id, proposed_value_cents
+    const existing = await env.DB.prepare(`SELECT id, approval_status
       FROM contract_intakes WHERE id = ? LIMIT 1`)
       .bind(input.id)
-      .first<{ id: string; proposed_value_cents: number | null }>();
+      .first<{ id: string; approval_status: string }>();
     if (!existing)
       return Response.json(
         { error: 'Review intake not found.' },
         { status: 404 },
       );
 
-    const cfoApprovalRequired =
-      Number(existing.proposed_value_cents ?? 0) > 50_000_000;
+    const blockingApproval = await env.DB.prepare(`SELECT COUNT(*) AS count
+      FROM approval_requests ar
+      JOIN approval_rules r ON r.id = ar.rule_id
+      WHERE ar.intake_id = ? AND r.mandatory = 1
+        AND ar.status != 'approved'`)
+      .bind(input.id)
+      .first<{ count: number }>();
     if (
       input.status === 'approved_for_signature' &&
-      cfoApprovalRequired &&
-      input.approvalStatus !== 'approved'
+      Number(blockingApproval?.count ?? 0) > 0
     ) {
       return Response.json(
         {
-          error:
-            'CFO approval must be recorded before this intake can be approved for signature.',
+          error: `${blockingApproval?.count ?? 0} mandatory approval${Number(blockingApproval?.count ?? 0) === 1 ? '' : 's'} must be completed before this intake can be approved for signature.`,
         },
         { status: 400 },
       );
@@ -194,13 +241,12 @@ export async function PATCH(request: Request) {
     await env.DB.batch([
       env.DB.prepare(`UPDATE contract_intakes SET status = ?, review_status = ?,
           owner = ?, target_review_date = ?, internal_notes = ?,
-          approval_status = ?, updated_at = ? WHERE id = ?`).bind(
+          updated_at = ? WHERE id = ?`).bind(
         input.status,
         reviewStatus,
         input.owner,
         input.targetReviewDate || null,
         input.internalNotes.trim() || null,
-        cfoApprovalRequired ? input.approvalStatus : 'not_required',
         now,
         input.id,
       ),
@@ -222,9 +268,7 @@ export async function PATCH(request: Request) {
           status: input.status,
           owner: input.owner,
           targetReviewDate: input.targetReviewDate || null,
-          approvalStatus: cfoApprovalRequired
-            ? input.approvalStatus
-            : 'not_required',
+          approvalStatus: existing.approval_status,
           findingStatuses: input.findings,
         }),
         now,

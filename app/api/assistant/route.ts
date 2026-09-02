@@ -156,13 +156,14 @@ CANONICAL DATABASE VALUES
 - suppliers.qualification_status (documentation status): complete, incomplete, needs_follow_up, expired, under_review.
 - intakes.status: draft, under_review, waiting_on_business, waiting_on_legal, revision_requested, approved_for_signature, not_awarded, executed.
 - intakes.approval_status: not_required, pending, approved, declined.
+- approvals.request_status and approvals.step_status: pending, in_review, approved, declined, revision_requested, cancelled. approvals.overdue and approvals.mandatory use 0 or 1.
 - obligations.status or review_status commonly uses upcoming, overdue, completed, pending, approved, current, missing, or expired.
 
 RULES
 - Use only one entity and fields listed for that entity. Never output SQL, code, or a field outside the catalog.
 - Use filterLogic "all" when every condition must match and "any" only when the user explicitly joins alternatives with OR.
 - Use intent "summarize" only when the user requests broad portfolio analysis, overall risk, trends, concentration, management recommendations, or an executive report. Use "list" or "count" for factual searches and record retrieval.
-- contracts means executed contract register records. intakes means pre-execution contract reviews. suppliers means all supplier master records. obligations means contract key dates plus supplier-document alerts.
+- contracts means executed contract register records. intakes means pre-execution contract reviews. approvals means approval and exception decision steps. suppliers means all supplier master records. obligations means contract key dates plus supplier-document alerts.
 - Resolve follow-up wording such as "only California", "sort those by value", or "what about the next 60 days" using the recent conversation. The output must still be a complete standalone plan.
 - Currency fields ending in _cents must use integer cents. For example $100,000 is 10000000.
 - Use within_next_days only for date fields and a numeric day count. It includes today and excludes overdue records.
@@ -234,6 +235,7 @@ function fallbackAnswer(
     suppliers: 'supplier',
     obligations: 'obligation or supplier-document alert',
     intakes: 'contract review intake',
+    approvals: 'approval or exception request',
   }[plan.entity];
   return {
     answer: `Found ${execution.matchedCount} matching ${entityLabel}${execution.matchedCount === 1 ? '' : 's'} in the current database.`,
@@ -260,8 +262,10 @@ function managementAnalysisRedirectAnswer(
       : plan.entity === 'suppliers'
         ? 'Supplier Management Insights'
         : plan.entity === 'obligations'
-          ? 'Alerts & Exports'
-          : 'New Contract Review';
+          ? 'Obligations & Evidence'
+          : plan.entity === 'approvals'
+            ? 'Approvals & Exceptions'
+            : 'New Contract Review';
   const answer = isChinese
     ? `当前数据库中找到 ${execution.matchedCount} 条匹配记录${amount ? `，匹配金额合计为 ${amount} 美元` : ''}。这是组合层面的分析请求；事实检索已完成，请在 ${destination} 中查看风险、趋势和后续建议。`
     : `Found ${execution.matchedCount} matching records in the current database${amount ? ` with a combined value of $${amount} USD` : ''}. This is a portfolio-level analysis request; factual retrieval is complete. Continue in ${destination} for risks, trends, and recommended actions.`;
@@ -273,7 +277,9 @@ function managementAnalysisRedirectAnswer(
 }
 
 export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, { write: true });
+  const access = await authorizeApiRequest(request, {
+    permission: 'run_ai_assistant',
+  });
   if (!access.ok) return access.response;
 
   try {
@@ -306,7 +312,7 @@ export async function POST(request: Request) {
       1_600,
     );
     const plan = planned.parsed as AssistantQueryPlan;
-    const workspace = (await getWorkspace()) as Workspace;
+    const workspace = (await getWorkspace()) as unknown as Workspace;
     const execution = executeAssistantQuery(workspace, plan, today);
 
     let answer =

@@ -4,7 +4,9 @@ import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import { authorizeApiRequest } from '@/lib/server/request-security';
 
 export async function GET(request: Request) {
-  const access = await authorizeApiRequest(request);
+  const access = await authorizeApiRequest(request, {
+    permission: 'view_documents',
+  });
   if (!access.ok) return access.response;
 
   try {

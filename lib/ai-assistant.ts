@@ -5,6 +5,7 @@ export const assistantEntities = [
   'suppliers',
   'obligations',
   'intakes',
+  'approvals',
 ] as const;
 
 export const assistantOperators = [
@@ -121,6 +122,10 @@ const allowedFields: Record<AssistantEntity, ReadonlySet<string>> = {
     'status',
     'review_status',
     'owner',
+    'backup_owner',
+    'priority',
+    'overdue_days',
+    'evidence_reference',
     'supplier_name',
     'contract_number',
   ]),
@@ -137,6 +142,23 @@ const allowedFields: Record<AssistantEntity, ReadonlySet<string>> = {
     'risk_level',
     'approval_status',
     'required_approval',
+  ]),
+  approvals: new Set([
+    'intake_number',
+    'intake_title',
+    'proposed_supplier_name',
+    'request_status',
+    'step_status',
+    'rule_key',
+    'rule_name',
+    'rule_version',
+    'owner_role',
+    'assigned_reviewer',
+    'due_at',
+    'age_days',
+    'overdue',
+    'mandatory',
+    'escalation_level',
   ]),
 };
 
@@ -262,6 +284,7 @@ function normalizeObligations(
     ...item,
     id: String(item.id),
     item_type: String(item.type ?? ''),
+    status: String(item.effective_status ?? item.status ?? ''),
     review_status: String(item.status ?? ''),
     record_kind: 'contract_obligation',
   }));
@@ -295,6 +318,8 @@ function sourceRecords(
   if (entity === 'contracts') return workspace.contracts;
   if (entity === 'suppliers') return workspace.suppliers;
   if (entity === 'intakes') return workspace.intakes;
+  if (entity === 'approvals')
+    return workspace.approvalQueue.map((item) => ({ ...item }));
   return normalizeObligations(workspace);
 }
 
@@ -374,6 +399,32 @@ function resultRecord(
       ],
     };
   }
+  if (entity === 'approvals') {
+    return {
+      id: String(record.request_id),
+      entityType: entity,
+      title: stringValue(record.rule_name) || 'Approval request',
+      subtitle: [record.intake_number, record.proposed_supplier_name]
+        .filter(Boolean)
+        .join(' · '),
+      status: stringValue(record.request_status),
+      amountCents: null,
+      date: stringValue(record.due_at) || null,
+      openTarget: {
+        type: 'intake',
+        id: String(record.intake_id),
+      },
+      details: [
+        { label: 'Owner role', value: stringValue(record.owner_role) },
+        {
+          label: 'Reviewer',
+          value: stringValue(record.assigned_reviewer),
+        },
+        { label: 'Age in days', value: stringValue(record.age_days) },
+        { label: 'Rule version', value: stringValue(record.rule_version) },
+      ],
+    };
+  }
 
   const contractId = stringValue(record.contract_id);
   const supplierId = stringValue(record.supplier_id);
@@ -401,6 +452,13 @@ function resultRecord(
       { label: 'Type', value: stringValue(record.type || record.item_type) },
       { label: 'Due date', value: stringValue(record.due_date) },
       { label: 'Owner', value: stringValue(record.owner) },
+      { label: 'Priority', value: stringValue(record.priority) },
+      {
+        label: 'Evidence',
+        value:
+          stringValue(record.evidence_file_name) ||
+          stringValue(record.evidence_reference),
+      },
     ],
   };
 }

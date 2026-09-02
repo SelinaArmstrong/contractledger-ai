@@ -126,7 +126,9 @@ function aiSafeReport(report: ManagementReport) {
 }
 
 export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, { write: true });
+  const access = await authorizeApiRequest(request, {
+    permission: 'run_ai_assistant',
+  });
   if (!access.ok) return access.response;
 
   try {

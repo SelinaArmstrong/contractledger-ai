@@ -51,6 +51,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -81,10 +82,16 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type {
+  AmendmentAnalysis,
+  AmendmentAnalysisResponse,
   AnalysisResponse,
   ContractAnalysis,
+  DocumentQualityReport,
   ExtractedField,
+  ApprovalRequestDetails,
+  ImportBatchDetails,
   IntakeDetails,
+  ObligationDetails,
   RecordDetails,
   SupplierDocumentAnalysisResponse,
   Workspace,
@@ -93,7 +100,11 @@ import type {
   AssistantResponse,
   AssistantResultRecord,
 } from '@/lib/ai-assistant';
-import { AI_EVALUATION_CASES } from '@/lib/ai-evaluation';
+import { needsSourceOverride } from '@/lib/ai-governance';
+import {
+  AI_EVALUATION_CASES,
+  AI_EVALUATION_DATASET_VERSION,
+} from '@/lib/ai-evaluation';
 import { exportCurrentRegisters } from '@/lib/export-registers';
 import type {
   ManagementInsightResponse,
@@ -117,9 +128,11 @@ const ManagementChartCard = lazy(() =>
 type ViewName =
   | 'Dashboard'
   | 'New Contract Review'
+  | 'Approvals & Exceptions'
+  | 'Bulk Import & Data Quality'
   | 'Contract Register'
   | 'Supplier Register'
-  | 'Alerts & Exports'
+  | 'Obligations & Evidence'
   | 'AI Accuracy & Validation';
 
 type IntakeStage = 'draft' | 'executed';
@@ -132,6 +145,7 @@ type SupplierOnboardingDocument = {
   effectiveDate: string;
   expirationDate: string;
   coverageSummary: string;
+  overrideReason: string;
   file: File | null;
   aiResult: SupplierDocumentAnalysisResponse | null;
   analyzing: boolean;
@@ -186,9 +200,11 @@ const navigationGroups: Array<{
     items: [
       { label: 'Dashboard', icon: LayoutDashboard },
       { label: 'New Contract Review', icon: FileSearch },
+      { label: 'Approvals & Exceptions', icon: ShieldCheck },
+      { label: 'Bulk Import & Data Quality', icon: FileSpreadsheet },
       { label: 'Contract Register', icon: FolderKanban },
       { label: 'Supplier Register', icon: Users },
-      { label: 'Alerts & Exports', icon: BellRing },
+      { label: 'Obligations & Evidence', icon: BellRing },
     ],
   },
   {
@@ -212,6 +228,24 @@ const extractionFields = [
   ['governingLaw', 'Governing law'],
   ['paymentTerms', 'Payment terms'],
 ] as const satisfies ReadonlyArray<readonly [keyof ContractAnalysis, string]>;
+
+const amendmentExtractionFields = [
+  ['amendmentTitle', 'Amendment title'],
+  ['amendmentNumber', 'Amendment number'],
+  ['amendmentType', 'Amendment type'],
+  ['referencedContractNumber', 'Referenced contract'],
+  ['signedDate', 'Signed date'],
+  ['effectiveDate', 'Effective date'],
+  ['valueChange', 'Value change (USD)'],
+  ['resultingContractValue', 'Resulting contract value (USD)'],
+  ['newExpirationDate', 'New expiration date'],
+  ['paymentTerms', 'New payment terms'],
+  ['renewalType', 'New renewal type'],
+  ['noticeDays', 'New notice period (days)'],
+  ['scopeSummary', 'Scope / change summary'],
+] as const satisfies ReadonlyArray<readonly [keyof AmendmentAnalysis, string]>;
+
+type AmendmentFieldKey = (typeof amendmentExtractionFields)[number][0];
 
 const demoPlaybookRules = [
   {
@@ -318,13 +352,16 @@ function toneForStatus(status: unknown) {
     normalized.includes('expired') ||
     normalized.includes('incomplete') ||
     normalized.includes('follow') ||
-    normalized.includes('high')
+    normalized.includes('high') ||
+    normalized.includes('declined') ||
+    normalized.includes('revision')
   )
     return 'rose';
   if (
     normalized.includes('active') ||
     normalized.includes('current') ||
-    normalized.includes('complete')
+    normalized.includes('complete') ||
+    normalized.includes('approved')
   )
     return 'green';
   if (
@@ -450,6 +487,42 @@ function FieldConfidence({ field }: { field: ExtractedField }) {
   return <StatusBadge tone={tone}>{percent}%</StatusBadge>;
 }
 
+function DocumentQualitySummary({ report }: { report: DocumentQualityReport }) {
+  const tone =
+    report.status === 'ready'
+      ? 'green'
+      : report.status === 'needs_review'
+        ? 'amber'
+        : 'rose';
+  return (
+    <div className="rounded-xl border border-[#d7e1e6] bg-[#f8fafb] p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+            Document preflight
+          </p>
+          <p className="mt-1 text-[11px] text-slate-600">
+            {report.inspectedPages}/{report.totalPages} pages inspected ·{' '}
+            {report.textCharacters.toLocaleString()} text characters
+          </p>
+        </div>
+        <StatusBadge tone={tone}>
+          {titleCase(report.status.replaceAll('_', ' '))}
+        </StatusBadge>
+      </div>
+      {report.issues.length ? (
+        <p className="mt-2 text-[10px] leading-4 text-amber-800">
+          {report.issues.join(' ')}
+        </p>
+      ) : (
+        <p className="mt-2 text-[10px] text-emerald-700">
+          Text layer and page orientation passed pre-analysis checks.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function ContractLedgerApp({
   currentUser,
   signOutPath,
@@ -459,6 +532,8 @@ export function ContractLedgerApp({
     email: string;
     local: boolean;
     demo: boolean;
+    role: string;
+    permissions: string[];
   };
   signOutPath: string | null;
 }) {
@@ -476,6 +551,9 @@ export function ContractLedgerApp({
     useState<ContractAnalysis | null>(null);
   const [fieldReviews, setFieldReviews] = useState<
     Partial<Record<ExtractionFieldKey, FieldReviewStatus>>
+  >({});
+  const [fieldOverrideReasons, setFieldOverrideReasons] = useState<
+    Partial<Record<ExtractionFieldKey, string>>
   >({});
   const [analysisStatus, setAnalysisStatus] = useState<
     'idle' | 'analyzing' | 'ready' | 'saving' | 'saved' | 'error'
@@ -499,6 +577,8 @@ export function ContractLedgerApp({
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join('');
+  const can = (permission: string) =>
+    currentUser.permissions.includes(permission);
 
   const selectContractFile = useCallback((file: File | null) => {
     if (selectedFilePreviewUrlRef.current)
@@ -555,6 +635,7 @@ export function ContractLedgerApp({
     setAnalysisResult(null);
     setOriginalAnalysis(null);
     setFieldReviews({});
+    setFieldOverrideReasons({});
     setAnalysisError('');
     setAnalysisStatus('idle');
     setDialogOpen(true);
@@ -571,6 +652,7 @@ export function ContractLedgerApp({
     setAnalysisResult(null);
     setOriginalAnalysis(null);
     setFieldReviews({});
+    setFieldOverrideReasons({});
     setAnalysisStatus('idle');
     setAnalysisError('');
   };
@@ -603,6 +685,7 @@ export function ContractLedgerApp({
           extractionFields.map(([key]) => [key, 'pending']),
         ) as Record<ExtractionFieldKey, FieldReviewStatus>,
       );
+      setFieldOverrideReasons({});
       setAnalysisStatus('ready');
     } catch (error) {
       setAnalysisError(
@@ -677,12 +760,29 @@ export function ContractLedgerApp({
     ([fieldName]) =>
       !fieldReviews[fieldName] || fieldReviews[fieldName] === 'pending',
   ).length;
+  const missingOverrideCount = analysisResult
+    ? extractionFields.filter(([fieldName]) => {
+        const originalField = (originalAnalysis?.[fieldName] ??
+          analysisResult.analysis[fieldName]) as ExtractedField;
+        const verifiedField = analysisResult.analysis[
+          fieldName
+        ] as ExtractedField;
+        return (
+          needsSourceOverride(fieldName, {
+            ...originalField,
+            value: verifiedField.value,
+          }) && (fieldOverrideReasons[fieldName]?.trim().length ?? 0) < 12
+        );
+      }).length
+    : 0;
 
   const saveVerifiedRecord = async () => {
     if (!analysisResult) return;
-    if (pendingReviewCount) {
+    if (pendingReviewCount || missingOverrideCount) {
       setAnalysisError(
-        `Confirm the remaining ${pendingReviewCount} extracted field${pendingReviewCount === 1 ? '' : 's'} before saving.`,
+        pendingReviewCount
+          ? `Confirm the remaining ${pendingReviewCount} extracted field${pendingReviewCount === 1 ? '' : 's'} before saving.`
+          : `Add a specific reviewer override reason for the remaining ${missingOverrideCount} critical field${missingOverrideCount === 1 ? '' : 's'} without source evidence.`,
       );
       setAnalysisStatus('error');
       return;
@@ -702,6 +802,7 @@ export function ContractLedgerApp({
             fields: extractionFields.map(([fieldName]) => ({
               fieldName,
               status: fieldReviews[fieldName],
+              overrideReason: fieldOverrideReasons[fieldName],
             })),
           },
         }),
@@ -739,7 +840,18 @@ export function ContractLedgerApp({
     if (!workspace) return;
     setExporting(true);
     try {
+      const authorization = await fetch('/api/exports/authorize', {
+        method: 'POST',
+      });
+      const result = (await authorization.json()) as { error?: string };
+      if (!authorization.ok)
+        throw new Error(result.error || 'Export is not permitted.');
       await exportCurrentRegisters(workspace);
+      setWorkspaceError('');
+    } catch (error) {
+      setWorkspaceError(
+        error instanceof Error ? error.message : 'Export is not permitted.',
+      );
     } finally {
       setExporting(false);
     }
@@ -749,7 +861,18 @@ export function ContractLedgerApp({
     if (!workspace) return;
     setExporting(true);
     try {
+      const authorization = await fetch('/api/exports/authorize', {
+        method: 'POST',
+      });
+      const result = (await authorization.json()) as { error?: string };
+      if (!authorization.ok)
+        throw new Error(result.error || 'Export is not permitted.');
       await exportCurrentRegisters(workspace, 'suppliers');
+      setWorkspaceError('');
+    } catch (error) {
+      setWorkspaceError(
+        error instanceof Error ? error.message : 'Export is not permitted.',
+      );
     } finally {
       setExporting(false);
     }
@@ -791,11 +914,13 @@ export function ContractLedgerApp({
     alerts:
       (workspace?.keyDates.filter((item) => item.status !== 'completed')
         .length ?? 0) + (workspace?.supplierAlerts.length ?? 0),
+    approvals: workspace?.approvalMetrics.open_requests ?? 0,
   };
 
   const navCount = (label: ViewName) => {
     if (label === 'New Contract Review') return counts.review;
-    if (label === 'Alerts & Exports') return counts.alerts;
+    if (label === 'Approvals & Exceptions') return counts.approvals;
+    if (label === 'Obligations & Evidence') return counts.alerts;
     return 0;
   };
 
@@ -960,7 +1085,7 @@ export function ContractLedgerApp({
           <div className="ml-auto flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setActiveView('Alerts & Exports')}
+              onClick={() => setActiveView('Obligations & Evidence')}
               aria-label="Notifications"
               className="relative flex size-9 items-center justify-center rounded-lg border border-[#dce3e8] bg-white text-slate-600"
             >
@@ -981,11 +1106,7 @@ export function ContractLedgerApp({
                     {currentUser.displayName}
                   </span>
                   <span className="block text-[10px] text-slate-500">
-                    {currentUser.local
-                      ? 'Local demo session'
-                      : currentUser.demo
-                        ? 'Temporary demo account'
-                        : 'Signed in with ChatGPT'}
+                    {titleCase(currentUser.role.replaceAll('_', ' '))}
                   </span>
                 </span>
               </div>
@@ -1034,6 +1155,7 @@ export function ContractLedgerApp({
               onNavigate={setActiveView}
               onReset={resetDemo}
               resetting={resetting}
+              canReset={can('reset_workspace')}
             />
           ) : null}
           {activeView === 'New Contract Review' ? (
@@ -1042,6 +1164,16 @@ export function ContractLedgerApp({
               onOpen={() => openIntake('draft')}
               onSelectIntake={setIntakeDetailId}
             />
+          ) : null}
+          {activeView === 'Approvals & Exceptions' ? (
+            <ApprovalQueueView
+              workspace={workspace}
+              onUpdated={setWorkspace}
+              onOpenIntake={setIntakeDetailId}
+            />
+          ) : null}
+          {activeView === 'Bulk Import & Data Quality' ? (
+            <BulkImportView onUpdated={setWorkspace} />
           ) : null}
           {activeView === 'Contract Register' ? (
             <ContractRegisterView
@@ -1054,7 +1186,7 @@ export function ContractLedgerApp({
               onExport={exportRegisters}
               exporting={exporting}
               onSelect={(id) => setDetail({ type: 'contract', id })}
-              onOpenAlerts={() => setActiveView('Alerts & Exports')}
+              onOpenAlerts={() => setActiveView('Obligations & Evidence')}
               openInsightsRequest={managementInsightsRequest === 'contracts'}
               onInsightsRequestHandled={() =>
                 setManagementInsightsRequest(null)
@@ -1065,20 +1197,21 @@ export function ContractLedgerApp({
             <SupplierRegisterView
               suppliers={filteredSuppliers}
               allSuppliers={workspace?.suppliers ?? []}
+              riskProfiles={workspace?.supplierRiskProfiles ?? {}}
               search={search}
               onSearch={setSearch}
               onSelect={(id) => setDetail({ type: 'supplier', id })}
               onAdd={() => setSupplierDialogOpen(true)}
               onExport={exportSuppliers}
               exporting={exporting}
-              onOpenAlerts={() => setActiveView('Alerts & Exports')}
+              onOpenAlerts={() => setActiveView('Obligations & Evidence')}
               openInsightsRequest={managementInsightsRequest === 'suppliers'}
               onInsightsRequestHandled={() =>
                 setManagementInsightsRequest(null)
               }
             />
           ) : null}
-          {activeView === 'Alerts & Exports' ? (
+          {activeView === 'Obligations & Evidence' ? (
             <AlertsExportsView
               workspace={workspace}
               onExport={exportRegisters}
@@ -1226,6 +1359,7 @@ export function ContractLedgerApp({
                           setAnalysisResult(null);
                           setOriginalAnalysis(null);
                           setFieldReviews({});
+                          setFieldOverrideReasons({});
                           setAnalysisStatus('idle');
                           setAnalysisError('');
                         }}
@@ -1342,6 +1476,13 @@ export function ContractLedgerApp({
                         originalAnalysis={originalAnalysis}
                         stage={stage}
                         fieldReviews={fieldReviews}
+                        fieldOverrideReasons={fieldOverrideReasons}
+                        onOverrideReasonChange={(fieldName, reason) =>
+                          setFieldOverrideReasons((current) => ({
+                            ...current,
+                            [fieldName]: reason,
+                          }))
+                        }
                         onFieldChange={updateReviewedField}
                         onConfirmField={confirmReviewedField}
                         onConfirmAll={confirmAllUnchangedFields}
@@ -1373,6 +1514,7 @@ export function ContractLedgerApp({
                         setAnalysisResult(null);
                         setOriginalAnalysis(null);
                         setFieldReviews({});
+                        setFieldOverrideReasons({});
                         setAnalysisStatus('idle');
                       }}
                     >
@@ -1381,7 +1523,9 @@ export function ContractLedgerApp({
                     <Button
                       onClick={saveVerifiedRecord}
                       disabled={
-                        analysisStatus === 'saving' || pendingReviewCount > 0
+                        analysisStatus === 'saving' ||
+                        pendingReviewCount > 0 ||
+                        missingOverrideCount > 0
                       }
                       className="bg-[#1d718f] hover:bg-[#185f78]"
                     >
@@ -1456,7 +1600,7 @@ const assistantExamples = [
   'Show active contracts over $100,000 that expire before December 31, 2026.',
   'Which supplier qualification documents expire in the next 90 days?',
   'Find all suppliers with a missing W-9.',
-  'Which new contract reviews are still waiting for CFO approval?',
+  'Which mandatory approvals are overdue or still pending?',
 ] as const;
 
 function AIAssistantDialog({
@@ -1975,12 +2119,8 @@ function PageHeading({
           <Sparkles className="size-3.5" />
           {eyebrow}
         </div>
-        <h1 className="app-page-title">
-          {title}
-        </h1>
-        <p className="app-body-copy mt-2 max-w-2xl">
-          {description}
-        </p>
+        <h1 className="app-page-title">{title}</h1>
+        <p className="app-body-copy mt-2 max-w-2xl">{description}</p>
       </div>
       {action}
     </section>
@@ -1993,12 +2133,14 @@ function DashboardView({
   onNavigate,
   onReset,
   resetting,
+  canReset,
 }: {
   workspace: Workspace | null;
   onOpen: (stage: IntakeStage) => void;
   onNavigate: (view: ViewName) => void;
   onReset: () => void;
   resetting: boolean;
+  canReset: boolean;
 }) {
   const metrics = [
     {
@@ -2056,20 +2198,22 @@ function DashboardView({
         title="Contract operations dashboard"
         description="Turn draft and executed agreements into verified contract and supplier records—without mixing proposed data into the official register."
         action={
-          <Button
-            variant="outline"
-            size="lg"
-            onClick={onReset}
-            disabled={resetting}
-            className="h-10 border-[#cdd9df] bg-white px-4 text-slate-600 shadow-sm"
-          >
-            {resetting ? (
-              <LoaderCircle className="animate-spin" />
-            ) : (
-              <RotateCcw />
-            )}
-            Reset demo
-          </Button>
+          canReset ? (
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={onReset}
+              disabled={resetting}
+              className="h-10 border-[#cdd9df] bg-white px-4 text-slate-600 shadow-sm"
+            >
+              {resetting ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <RotateCcw />
+              )}
+              Reset demo
+            </Button>
+          ) : null
         }
       />
       <section className="mb-7 grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
@@ -2117,9 +2261,9 @@ function DashboardView({
               Upload and review a draft agreement
             </h3>
             <p className="mt-1 max-w-3xl text-[12px] leading-5 text-[#557280]">
-              Extract proposed terms and compare the draft to the demo
-              playbook. Only the proposed supplier name is retained; no
-              Contract or Supplier Register record is created.
+              Extract proposed terms and compare the draft to the demo playbook.
+              Only the proposed supplier name is retained; no Contract or
+              Supplier Register record is created.
             </p>
             <Button
               onClick={() => onOpen('draft')}
@@ -2331,7 +2475,7 @@ function DashboardView({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => onNavigate('Alerts & Exports')}
+              onClick={() => onNavigate('Obligations & Evidence')}
               className="text-[#2e7188]"
             >
               Open alerts <ArrowRight />
@@ -3565,7 +3709,13 @@ function ContractRegisterView({
                         {valueText(item.title)}
                       </span>
                       <span className="mt-1 block text-[11px] text-slate-500">
-                        {valueText(item.contract_number)} · View source document
+                        {valueText(item.contract_number)} · V
+                        {valueText(item.current_version ?? 1)} ·{' '}
+                        {valueText(item.amendment_count ?? 0)} amendment
+                        {Number(item.amendment_count ?? 0) === 1
+                          ? ''
+                          : 's'} ·
+                        View lifecycle
                       </span>
                     </button>
                   </TableCell>
@@ -3721,6 +3871,7 @@ function newSupplierDocument(): SupplierOnboardingDocument {
     effectiveDate: '',
     expirationDate: '',
     coverageSummary: '',
+    overrideReason: '',
     file: null,
     aiResult: null,
     analyzing: false,
@@ -3758,6 +3909,43 @@ function SupplierOnboardingDialog({
   const [documents, setDocuments] = useState<SupplierOnboardingDocument[]>(
     () => [newSupplierDocument()],
   );
+
+  const sourceOverrideFields = (document: SupplierOnboardingDocument) => {
+    if (!document.aiResult) return [];
+    const candidates: Array<[string, ExtractedField]> = [
+      [
+        'supplierLegalName',
+        {
+          ...document.aiResult.analysis.supplierLegalName,
+          value: supplier.legalName,
+        },
+      ],
+      [
+        'documentType',
+        {
+          ...document.aiResult.analysis.documentType,
+          value: document.documentType,
+        },
+      ],
+      [
+        'effectiveDate',
+        {
+          ...document.aiResult.analysis.effectiveDate,
+          value: document.effectiveDate || null,
+        },
+      ],
+      [
+        'expirationDate',
+        {
+          ...document.aiResult.analysis.expirationDate,
+          value: document.expirationDate || null,
+        },
+      ],
+    ];
+    return candidates
+      .filter(([fieldName, field]) => needsSourceOverride(fieldName, field))
+      .map(([fieldName]) => fieldName);
+  };
   const [saving, setSaving] = useState(false);
   const [packageAnalyzing, setPackageAnalyzing] = useState(false);
   const [profileGenerated, setProfileGenerated] = useState(false);
@@ -4035,6 +4223,17 @@ function SupplierOnboardingDialog({
       setError('Choose a file for every qualification record.');
       return;
     }
+    const missingOverrides = documents.filter(
+      (item) =>
+        sourceOverrideFields(item).length > 0 &&
+        item.overrideReason.trim().length < 12,
+    );
+    if (missingOverrides.length) {
+      setError(
+        'Add a reviewer override reason of at least 12 characters for every document with unsupported critical fields.',
+      );
+      return;
+    }
     if (
       documents.some(
         (item) =>
@@ -4061,6 +4260,7 @@ function SupplierOnboardingDialog({
             effectiveDate: item.effectiveDate,
             expirationDate: item.expirationDate,
             coverageSummary: item.coverageSummary,
+            overrideReason: item.overrideReason,
           })),
         ),
       );
@@ -4115,9 +4315,9 @@ function SupplierOnboardingDialog({
           </DialogTitle>
           <DialogDescription className="max-w-3xl text-xs leading-5">
             Upload the supplier&apos;s W-9, business license, insurance
-            certificate, or other supplier evidence. AI consolidates the
-            files into a proposed supplier master for human verification before
-            the database changes.
+            certificate, or other supplier evidence. AI consolidates the files
+            into a proposed supplier master for human verification before the
+            database changes.
           </DialogDescription>
           <div className="mt-3 grid gap-2 sm:grid-cols-3">
             {[
@@ -4165,9 +4365,9 @@ function SupplierOnboardingDialog({
             {profileGenerated ? (
               <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-[10px] leading-4 text-sky-900">
                 AI values remain editable because uploaded files may be
-                incomplete or inconsistent. Vendor number, relationship
-                status, documentation status, and the initial medium risk tier
-                are applied by system rules—not invented from the documents.
+                incomplete or inconsistent. Vendor number, relationship status,
+                documentation status, and the initial medium risk tier are
+                applied by system rules—not invented from the documents.
               </div>
             ) : (
               <>
@@ -4484,6 +4684,7 @@ function SupplierOnboardingDialog({
                           file: event.target.files?.[0] ?? null,
                           aiResult: null,
                           aiError: '',
+                          overrideReason: '',
                         });
                         setSupplier(initialSupplier);
                         setProfileGenerated(false);
@@ -4577,6 +4778,33 @@ function SupplierOnboardingDialog({
                         aria-label={`Qualification file ${index + 1} coverage or qualification summary`}
                         className="bg-white text-xs md:col-span-2 xl:col-span-4"
                       />
+                      {sourceOverrideFields(document).length ? (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 md:col-span-2 xl:col-span-4">
+                          <label
+                            htmlFor={`supplier-onboarding-override-${document.id}`}
+                            className="text-[10px] font-semibold text-amber-900"
+                          >
+                            Required source override reason
+                          </label>
+                          <p className="mt-1 text-[9px] text-amber-700">
+                            Missing page-and-quote support:{' '}
+                            {sourceOverrideFields(document)
+                              .map((fieldName) => titleCase(fieldName))
+                              .join(', ')}
+                          </p>
+                          <Input
+                            id={`supplier-onboarding-override-${document.id}`}
+                            value={document.overrideReason}
+                            onChange={(event) =>
+                              updateDocument(document.id, {
+                                overrideReason: event.target.value,
+                              })
+                            }
+                            placeholder="Explain independent verification"
+                            className="mt-2 h-8 bg-white text-[10px]"
+                          />
+                        </div>
+                      ) : null}
                     </div>
                   ) : (
                     <p className="mt-2 text-[10px] text-slate-500">
@@ -4669,6 +4897,7 @@ function SupplierOnboardingDialog({
 function SupplierRegisterView({
   suppliers,
   allSuppliers,
+  riskProfiles,
   search,
   onSearch,
   onSelect,
@@ -4681,6 +4910,7 @@ function SupplierRegisterView({
 }: {
   suppliers: Workspace['suppliers'];
   allSuppliers: Workspace['suppliers'];
+  riskProfiles: NonNullable<Workspace['supplierRiskProfiles']>;
   search: string;
   onSearch: (value: string) => void;
   onSelect: (id: string) => void;
@@ -4737,7 +4967,11 @@ function SupplierRegisterView({
       item.qualification_status !== qualificationFilter
     )
       return false;
-    if (riskFilter !== 'all' && item.risk_tier !== riskFilter) return false;
+    if (
+      riskFilter !== 'all' &&
+      riskProfiles[String(item.id)]?.level !== riskFilter
+    )
+      return false;
     if (categoryFilter !== 'all' && item.category !== categoryFilter)
       return false;
     if (stateFilter !== 'all' && item.state !== stateFilter) return false;
@@ -4872,7 +5106,15 @@ function SupplierRegisterView({
               label="Risk tier"
               value={riskFilter}
               onChange={setRiskFilter}
-              options={options('risk_tier')}
+              options={Array.from(
+                new Set(
+                  suppliers
+                    .map((item) => riskProfiles[String(item.id)]?.level)
+                    .filter((value): value is 'low' | 'medium' | 'high' =>
+                      Boolean(value),
+                    ),
+                ),
+              ).sort()}
               titleCaseOptions
             />
             <FilterSelect
@@ -4922,8 +5164,8 @@ function SupplierRegisterView({
           </div>
           <p className="mt-3 text-[10px] text-slate-500">
             Filters can be combined with keyword search. “Expiring 90 days” uses
-            the earliest dated supplier or insurance record on each
-            supplier. Dates are displayed in U.S. English format (MM/DD/YYYY).
+            the earliest dated supplier or insurance record on each supplier.
+            Dates are displayed in U.S. English format (MM/DD/YYYY).
           </p>
         </div>
         <div>
@@ -4986,7 +5228,8 @@ function SupplierRegisterView({
                   </TableCell>
                   <TableCell>
                     <div className="text-xs font-medium">
-                      {titleCase(item.risk_tier)} risk
+                      {titleCase(riskProfiles[String(item.id)]?.level)} risk ·{' '}
+                      {riskProfiles[String(item.id)]?.score ?? 0} points
                     </div>
                     <div className="mt-1">
                       <StatusBadge
@@ -5542,7 +5785,16 @@ function ManagementInsightsSheet({
 type EvaluationDetail = {
   caseId: string;
   title: string;
+  fileName: string;
+  documentType: string;
+  difficulty: string;
+  fixtureVersion: string;
   model: string;
+  promptVersion: string;
+  extractionVersion: string;
+  status: 'success' | 'failed';
+  durationMs: number;
+  failureReason: string | null;
   totalFields: number;
   correctFields: number;
   accuracyPercent: number;
@@ -5551,9 +5803,11 @@ type EvaluationDetail = {
     label: string;
     expected: string | number;
     actual: string | number | null;
+    critical: boolean;
     correct: boolean;
     confidence: number;
     sourceBacked: boolean;
+    unsupported: boolean;
   }>;
 };
 
@@ -5576,16 +5830,43 @@ function AIEvaluationView({
       details = [];
     }
   }
+  const correctionRows = workspace?.aiCorrectionByField ?? [];
+  const governanceMetrics = workspace?.aiGovernanceMetrics;
+  const documentTypeMetrics = [
+    ...new Set(details.map((item) => item.documentType)),
+  ]
+    .map((documentType) => {
+      const cases = details.filter(
+        (item) => item.documentType === documentType,
+      );
+      const fields = cases.flatMap((item) => item.fields);
+      const correct = fields.filter((item) => item.correct).length;
+      return {
+        documentType,
+        caseCount: cases.length,
+        fields: fields.length,
+        accuracy: fields.length
+          ? Number(((correct / fields.length) * 100).toFixed(1))
+          : 0,
+        medianDuration:
+          cases.map((item) => item.durationMs).sort((a, b) => a - b)[
+            Math.floor(cases.length / 2)
+          ] ?? 0,
+      };
+    })
+    .sort((a, b) => a.documentType.localeCompare(b.documentType));
 
   const runEvaluation = async () => {
     setRunning(true);
     setError('');
     try {
       setProgress(
-        'Running three locked documents through a server-controlled evaluation…',
+        `Running ${AI_EVALUATION_CASES.length} locked documents through a server-controlled evaluation…`,
       );
       const response = await fetch('/api/evaluations', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'run' }),
       });
       const body = (await response.json()) as {
         workspace?: Workspace;
@@ -5607,6 +5888,45 @@ function AIEvaluationView({
     }
   };
 
+  const approveBaseline = async () => {
+    if (!latest?.id) return;
+    setRunning(true);
+    setError('');
+    try {
+      const response = await fetch('/api/evaluations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'approve_baseline',
+          runId: String(latest.id),
+        }),
+      });
+      const body = (await response.json()) as {
+        workspace?: Workspace;
+        error?: string;
+      };
+      if (!response.ok || !body.workspace)
+        throw new Error(body.error || 'Unable to approve the baseline.');
+      onCompleted(body.workspace);
+      setProgress('Approved baseline saved for this dataset version.');
+    } catch (approvalError) {
+      setError(
+        approvalError instanceof Error
+          ? approvalError.message
+          : 'Unable to approve the baseline.',
+      );
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const exportReport = () => {
+    if (!latest?.id) return;
+    window.location.assign(
+      `/api/evaluations?runId=${encodeURIComponent(String(latest.id))}`,
+    );
+  };
+
   return (
     <>
       <PageHeading
@@ -5614,28 +5934,35 @@ function AIEvaluationView({
         title="AI accuracy & validation"
         description="Validate live AI extraction against a locked fictional ground-truth set. Accuracy, source traceability, and confidence are measured and saved as interview evidence—not used for daily contract operations."
         action={
-          <Button
-            onClick={runEvaluation}
-            disabled={running}
-            className="bg-[#1d718f] hover:bg-[#185f78]"
-          >
-            {running ? (
-              <LoaderCircle className="animate-spin" />
-            ) : (
-              <FlaskConical />
-            )}
-            Run validation set
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {latest ? (
+              <Button variant="outline" onClick={exportReport}>
+                <Download /> Export validation CSV
+              </Button>
+            ) : null}
+            <Button
+              onClick={runEvaluation}
+              disabled={running}
+              className="bg-[#1d718f] hover:bg-[#185f78]"
+            >
+              {running ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <FlaskConical />
+              )}
+              Run validation set
+            </Button>
+          </div>
         }
       />
       <Alert className="mb-5 border-amber-200 bg-amber-50 text-amber-900">
         <AlertTriangle />
         <AlertTitle>Validation evidence—not an operational workflow</AlertTitle>
         <AlertDescription>
-          This page measures extraction accuracy, source traceability, and
-          confidence. It does not search records or analyze the live contract
-          and supplier portfolios. Production validation would require a larger,
-          more varied, access-controlled document corpus.
+          This page measures a locked fictional dataset separately from live
+          registers. Targets are development gates; achieved results remain
+          versioned evidence. Evaluation fixtures are never inserted into
+          operational contract or supplier tables.
         </AlertDescription>
       </Alert>
 
@@ -5662,7 +5989,7 @@ function AIEvaluationView({
 
       {latest ? (
         <>
-          <section className="mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <section className="mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {[
               [
                 'Field accuracy',
@@ -5670,19 +5997,31 @@ function AIEvaluationView({
                 `${valueText(latest.correct_fields)} of ${valueText(latest.total_fields)} ground-truth fields`,
               ],
               [
+                'Critical-field accuracy',
+                `${valueText(latest.critical_accuracy_percent)}%`,
+                `${valueText(latest.correct_critical_fields)} of ${valueText(latest.critical_fields)} party, value, date, reference and notice fields`,
+              ],
+              [
                 'Source coverage',
                 `${valueText(latest.source_coverage_percent)}%`,
-                `${valueText(latest.source_backed_fields)} fields include page and quote`,
+                `${valueText(latest.unsupported_value_percent)}% unsupported-value rate`,
               ],
               [
-                'Average confidence',
-                `${valueText(latest.average_confidence)}%`,
-                'Model confidence shown separately from measured accuracy',
+                'Processing success',
+                `${valueText(latest.processing_success_percent)}%`,
+                `${valueText(latest.successful_cases)} succeeded · ${valueText(latest.failed_cases)} failed · median ${Math.round(Number(latest.median_duration_ms ?? 0) / 1000)}s`,
               ],
               [
-                'Evaluation set',
-                `${valueText(latest.case_count)} documents`,
-                `Latest run ${valueText(latest.created_at)}`,
+                'Human correction rate',
+                `${valueText(governanceMetrics?.correction_rate_percent)}%`,
+                `${valueText(governanceMetrics?.corrected_fields)} corrected of ${valueText(governanceMetrics?.reviewed_fields)} reviewed operational fields`,
+              ],
+              [
+                'Regression gate',
+                valueText(latest.promotion_status).replaceAll('_', ' '),
+                latest.regression_delta === null
+                  ? 'Approve a complete run to establish the dataset baseline'
+                  : `${Number(latest.regression_delta) >= 0 ? '+' : ''}${valueText(latest.regression_delta)} points vs ${valueText(latest.baseline_run_id)}`,
               ],
             ].map(([label, metric, note]) => (
               <article
@@ -5705,8 +6044,32 @@ function AIEvaluationView({
           <Panel className="overflow-hidden">
             <PanelHeader
               title="Latest validation evidence"
-              description={`${valueText(latest.model)} · Results are compared server-side with fixed expected values`}
-              action={<StatusBadge tone="green">Persisted result</StatusBadge>}
+              description={`${valueText(latest.model)} · ${valueText(latest.prompt_version)} · ${valueText(latest.dataset_version)} · ${valueText(latest.case_count)} documents`}
+              action={
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge
+                    tone={
+                      latest.promotion_status === 'blocked' ? 'rose' : 'green'
+                    }
+                  >
+                    {valueText(latest.promotion_status).replaceAll('_', ' ')}
+                  </StatusBadge>
+                  {!Number(latest.is_approved_baseline) &&
+                  latest.promotion_status !== 'blocked' &&
+                  Number(latest.failed_cases ?? 0) === 0 ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={approveBaseline}
+                      disabled={running}
+                    >
+                      <ShieldCheck /> Approve baseline
+                    </Button>
+                  ) : Number(latest.is_approved_baseline) ? (
+                    <StatusBadge tone="blue">Approved baseline</StatusBadge>
+                  ) : null}
+                </div>
+              }
             />
             <div className="divide-y divide-[#e3e9ed]">
               {details.map((detail) => (
@@ -5717,20 +6080,34 @@ function AIEvaluationView({
                         {detail.title}
                       </p>
                       <p className="mt-1 text-[10px] text-slate-500">
+                        {detail.documentType} · {detail.difficulty} ·{' '}
                         {detail.correctFields} of {detail.totalFields} fields
-                        matched
+                        matched · {(detail.durationMs / 1000).toFixed(1)}s
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusBadge
-                        tone={detail.accuracyPercent >= 90 ? 'green' : 'amber'}
+                        tone={
+                          detail.status === 'failed'
+                            ? 'rose'
+                            : detail.accuracyPercent >= 90
+                              ? 'green'
+                              : 'amber'
+                        }
                       >
-                        {detail.accuracyPercent}% accuracy
+                        {detail.status === 'failed'
+                          ? 'Analysis failed'
+                          : `${detail.accuracyPercent}% accuracy`}
                       </StatusBadge>
                       <ChevronDown className="size-4 text-slate-400 transition-transform group-open:rotate-180" />
                     </div>
                   </summary>
                   <div className="overflow-x-auto border-t border-[#e3e9ed] bg-[#f8fafb]">
+                    {detail.failureReason ? (
+                      <p className="border-b border-rose-200 bg-rose-50 px-5 py-3 text-[11px] text-rose-800">
+                        {detail.failureReason}
+                      </p>
+                    ) : null}
                     <Table className="min-w-[820px]">
                       <TableHeader>
                         <TableRow>
@@ -5749,6 +6126,11 @@ function AIEvaluationView({
                           <TableRow key={field.fieldName}>
                             <TableCell className="px-5 text-xs font-medium">
                               {field.label}
+                              {field.critical ? (
+                                <span className="ml-1 text-[9px] text-rose-600">
+                                  Critical
+                                </span>
+                              ) : null}
                             </TableCell>
                             <TableCell className="text-xs text-slate-500">
                               {valueText(field.expected)}
@@ -5784,12 +6166,165 @@ function AIEvaluationView({
               ))}
             </div>
           </Panel>
+
+          <div className="mt-5 grid gap-5 xl:grid-cols-2">
+            <Panel className="overflow-hidden">
+              <PanelHeader
+                title="Quality by document type"
+                description="Achieved values for the latest locked dataset—not targets"
+              />
+              <div className="overflow-x-auto">
+                <Table className="min-w-[620px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="px-5">Document type</TableHead>
+                      <TableHead>Cases</TableHead>
+                      <TableHead>Fields</TableHead>
+                      <TableHead>Accuracy</TableHead>
+                      <TableHead className="pr-5">Median time</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {documentTypeMetrics.map((item) => (
+                      <TableRow key={item.documentType}>
+                        <TableCell className="px-5 text-xs font-medium">
+                          {item.documentType}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {item.caseCount}
+                        </TableCell>
+                        <TableCell className="text-xs">{item.fields}</TableCell>
+                        <TableCell>
+                          <StatusBadge
+                            tone={item.accuracy >= 90 ? 'green' : 'amber'}
+                          >
+                            {item.accuracy}%
+                          </StatusBadge>
+                        </TableCell>
+                        <TableCell className="pr-5 text-xs">
+                          {(item.medianDuration / 1000).toFixed(1)}s
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </Panel>
+
+            <Panel className="overflow-hidden">
+              <PanelHeader
+                title="Operational human corrections"
+                description="Reviewed demo records grouped by field, workflow, model and prompt"
+              />
+              <div className="max-h-[430px] overflow-auto">
+                <Table className="min-w-[760px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="px-5">Field</TableHead>
+                      <TableHead>Workflow</TableHead>
+                      <TableHead>Model / prompt</TableHead>
+                      <TableHead>Reviewed</TableHead>
+                      <TableHead className="pr-5">Correction rate</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {correctionRows.slice(0, 20).map((item, index) => (
+                      <TableRow
+                        key={`${valueText(item.field_name)}-${valueText(item.stage)}-${index}`}
+                      >
+                        <TableCell className="px-5 text-xs font-medium">
+                          {titleCase(valueText(item.field_name))}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {titleCase(valueText(item.stage))}
+                        </TableCell>
+                        <TableCell className="max-w-[260px] text-[10px] text-slate-500">
+                          {valueText(item.model)} ·{' '}
+                          {valueText(item.prompt_version)}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {valueText(item.reviewed_fields)}
+                        </TableCell>
+                        <TableCell className="pr-5">
+                          <StatusBadge
+                            tone={
+                              Number(item.correction_rate_percent ?? 0) <= 10
+                                ? 'green'
+                                : 'amber'
+                            }
+                          >
+                            {valueText(item.correction_rate_percent)}%
+                          </StatusBadge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {!correctionRows.length ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={5}
+                          className="px-5 py-8 text-center text-xs text-slate-500"
+                        >
+                          No operational AI fields have been reviewed yet.
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </TableBody>
+                </Table>
+              </div>
+            </Panel>
+          </div>
+
+          <Panel className="mt-5 overflow-hidden">
+            <PanelHeader
+              title="Governance targets versus achieved controls"
+              description={`Dataset ${valueText(latest.dataset_version)} · fixture ${valueText(latest.fixture_version)} · ${valueText(latest.case_count)} documents`}
+            />
+            <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-4">
+              {[
+                [
+                  'Critical source control',
+                  '100% target',
+                  `${valueText(governanceMetrics?.critical_source_control_percent)}% achieved`,
+                ],
+                [
+                  'Unknown case IDs',
+                  '0 accepted target',
+                  '0 accepted · server manifest only',
+                ],
+                [
+                  'Regression threshold',
+                  `${valueText(latest.regression_threshold)} points`,
+                  valueText(latest.promotion_status).replaceAll('_', ' '),
+                ],
+                [
+                  'Fixture isolation',
+                  'No operational writes',
+                  `${AI_EVALUATION_CASES.length} evaluation-only files`,
+                ],
+              ].map(([label, target, achieved]) => (
+                <article
+                  key={label}
+                  className="rounded-xl border border-[#dce3e8] bg-[#f8fafb] p-4"
+                >
+                  <p className="text-[10px] font-semibold text-[#203845]">
+                    {label}
+                  </p>
+                  <p className="mt-2 text-[10px] text-slate-500">
+                    Target · {target}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-[#287693]">
+                    Achieved · {achieved}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </Panel>
         </>
       ) : (
         <Panel>
           <PanelHeader
             title="Locked fictional validation set"
-            description="No saved run yet. Running validation calls the live AI but does not add these test files to operational registers."
+            description={`${AI_EVALUATION_DATASET_VERSION} · ${AI_EVALUATION_CASES.length} server-controlled fixtures · live AI results never enter operational registers`}
           />
           <div className="grid gap-3 p-5 md:grid-cols-3">
             {AI_EVALUATION_CASES.map((evaluationCase, index) => (
@@ -5881,121 +6416,323 @@ function AlertsExportsView({
   onSelectContract: (id: string) => void;
   onSelectSupplier: (id: string) => void;
 }) {
-  const contractAlerts = (workspace?.keyDates ?? []).filter(
-    (item) => item.contract_id && item.status !== 'completed',
-  );
-  const completedContractAlerts = (workspace?.keyDates ?? []).filter(
-    (item) => item.contract_id && item.status === 'completed',
-  );
+  const obligations = workspace?.keyDates ?? [];
   const supplierAlerts = workspace?.supplierAlerts ?? [];
-  const contractCriticalCount = contractAlerts.filter((item) => {
+  const metrics = workspace?.obligationMetrics;
+  const [search, setSearch] = useState('');
+  const [ownerFilter, setOwnerFilter] = useState('all');
+  const [contractFilter, setContractFilter] = useState('all');
+  const [supplierFilter, setSupplierFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
+  const [dueFilter, setDueFilter] = useState('all');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const optionValues = (key: string) =>
+    [
+      ...new Set(
+        obligations
+          .map((item) => valueText(item[key]))
+          .filter((value) => value !== 'Not found'),
+      ),
+    ].sort();
+  const filteredObligations = obligations.filter((item) => {
+    const searchable = [
+      item.title,
+      item.contract_number,
+      item.contract_title,
+      item.supplier_name,
+      item.owner,
+      item.backup_owner,
+    ]
+      .map((value) => valueText(value).toLowerCase())
+      .join(' ');
+    if (search && !searchable.includes(search.toLowerCase())) return false;
+    if (ownerFilter !== 'all' && item.owner !== ownerFilter) return false;
+    if (contractFilter !== 'all' && item.contract_number !== contractFilter)
+      return false;
+    if (supplierFilter !== 'all' && item.supplier_name !== supplierFilter)
+      return false;
+    if (
+      statusFilter !== 'all' &&
+      (item.effective_status ?? item.status) !== statusFilter
+    )
+      return false;
+    if (priorityFilter !== 'all' && item.priority !== priorityFilter)
+      return false;
     const timing = alertTiming(item.due_date);
-    return timing && timing.days <= 30;
-  }).length;
+    if (dueFilter === 'overdue' && item.effective_status !== 'overdue')
+      return false;
+    if (
+      dueFilter === 'next_30' &&
+      (!timing || timing.days < 0 || timing.days > 30)
+    )
+      return false;
+    if (
+      dueFilter === 'next_90' &&
+      (!timing || timing.days < 0 || timing.days > 90)
+    )
+      return false;
+    return true;
+  });
+  const openObligations = filteredObligations.filter(
+    (item) => item.status !== 'completed',
+  );
+  const completedObligations = filteredObligations.filter(
+    (item) => item.status === 'completed',
+  );
   const supplierCriticalCount = supplierAlerts.filter((item) => {
     if (item.source_type === 'missing_record') return true;
     const timing = alertTiming(item.due_date);
     return timing && timing.days <= 30;
   }).length;
+  const visibleIds = filteredObligations.map((item) => String(item.id));
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+  const toggleSelected = (id: string, checked: boolean) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+  const exportCalendar = () => {
+    if (!selectedIds.size) return;
+    window.location.href = `/api/obligations?format=ics&ids=${encodeURIComponent(
+      [...selectedIds].join(','),
+    )}`;
+  };
 
   return (
     <>
       <PageHeading
-        eyebrow="Operational follow-through"
-        title="Obligation & renewal management"
-        description="Assign ownership, record renewal decisions, close obligations, and export the latest registers—without expanding this focused portfolio into a full CLM."
+        eyebrow="Post-execution control"
+        title="Obligation execution & evidence"
+        description="Turn contract dates into owned work, surface overdue items automatically, preserve every status change, and close material obligations only with evidence."
       />
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        {[
+          [
+            'Open obligations',
+            metrics?.open_obligations ?? 0,
+            'Assigned operational work',
+          ],
+          [
+            'Overdue',
+            metrics?.overdue_obligations ?? 0,
+            `${metrics?.average_overdue_age_days ?? 0} average aging days`,
+          ],
+          [
+            'On-time completion',
+            `${metrics?.on_time_completion_rate ?? 0}%`,
+            'Measured from saved completion time',
+          ],
+          [
+            'Evidence coverage',
+            `${metrics?.completed_with_evidence_rate ?? 0}%`,
+            'Completed material obligations',
+          ],
+          [
+            'Median completion',
+            `${metrics?.median_completion_hours ?? 0}h`,
+            `${metrics?.median_assignment_hours ?? 0}h median to assignment`,
+          ],
+          [
+            'Integration outbox',
+            workspace?.integrationMetrics?.pending_events ?? 0,
+            `${workspace?.integrationMetrics?.failed_events ?? 0} failed · future delivery only`,
+          ],
+        ].map(([label, value, note]) => (
+          <Panel key={String(label)} className="p-4">
+            <p className="text-[10px] font-semibold tracking-[0.12em] text-slate-500 uppercase">
+              {label}
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-[#18394b]">
+              {value}
+            </p>
+            <p className="mt-1 text-[10px] leading-4 text-slate-500">{note}</p>
+          </Panel>
+        ))}
+      </div>
+
       <Panel className="mb-5 overflow-hidden">
-        <div className="flex flex-col gap-5 bg-white p-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 items-start gap-4">
-            <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#e4f2f6] text-[#1d718f]">
-              <FileSpreadsheet className="size-5" />
-            </span>
-            <div>
-              <p className="text-sm font-semibold text-[#203845]">
-                Current register package
-              </p>
-              <p className="mt-1 max-w-xl text-[11px] leading-5 text-slate-500">
-                Generate one timestamped Excel workbook containing the complete
-                Contract Register, Supplier Register, and obligation exceptions
-                from the current database.
-              </p>
-            </div>
+        <div className="border-b border-[#e2e8eb] bg-[#f8fafb] p-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <label
+              htmlFor="obligation-search"
+              className="text-[11px] font-medium text-slate-600 xl:col-span-2"
+            >
+              Search obligations
+              <Input
+                id="obligation-search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="mt-1 h-9 bg-white text-xs"
+                placeholder="Title, contract, supplier, or owner…"
+              />
+            </label>
+            <FilterSelect
+              label="Owner"
+              value={ownerFilter}
+              onChange={setOwnerFilter}
+              options={optionValues('owner')}
+            />
+            <FilterSelect
+              label="Status"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                'upcoming',
+                'in_progress',
+                'evidence_required',
+                'overdue',
+                'completed',
+              ]}
+              titleCaseOptions
+            />
+            <FilterSelect
+              label="Contract"
+              value={contractFilter}
+              onChange={setContractFilter}
+              options={optionValues('contract_number')}
+            />
+            <FilterSelect
+              label="Supplier"
+              value={supplierFilter}
+              onChange={setSupplierFilter}
+              options={optionValues('supplier_name')}
+            />
+            <FilterSelect
+              label="Priority"
+              value={priorityFilter}
+              onChange={setPriorityFilter}
+              options={['low', 'medium', 'high', 'critical']}
+              titleCaseOptions
+            />
+            <FilterSelect
+              label="Due window"
+              value={dueFilter}
+              onChange={setDueFilter}
+              options={['overdue', 'next_30', 'next_90']}
+              titleCaseOptions
+            />
           </div>
-          <div className="flex flex-wrap gap-x-5 gap-y-2 text-[11px] text-slate-600">
-            <span className="flex items-center gap-2">
-              <Check className="size-3.5 text-emerald-600" />
-              Executed values only
-            </span>
-            <span className="flex items-center gap-2">
-              <Check className="size-3.5 text-emerald-600" />
-              Owners and decisions included
-            </span>
-            <span className="flex items-center gap-2">
-              <Check className="size-3.5 text-emerald-600" />
-              Live database export
-            </span>
+        </div>
+        <div className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+          <label className="flex items-center gap-2 text-[11px] font-medium text-slate-600">
+            <Checkbox
+              checked={allVisibleSelected}
+              onCheckedChange={(checked) =>
+                setSelectedIds((current) => {
+                  const next = new Set(current);
+                  visibleIds.forEach((id) =>
+                    checked ? next.add(id) : next.delete(id),
+                  );
+                  return next;
+                })
+              }
+            />
+            Select all {filteredObligations.length} filtered obligations
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportCalendar}
+              disabled={!selectedIds.size}
+            >
+              <CalendarDays /> Export {selectedIds.size || ''} to calendar
+            </Button>
+            <Button
+              size="sm"
+              onClick={onExport}
+              disabled={!workspace || exporting}
+              className="bg-[#173f55] text-white hover:bg-[#123447]"
+            >
+              {exporting ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <FileSpreadsheet />
+              )}
+              Export audited workbook
+            </Button>
           </div>
-          <Button
-            onClick={onExport}
-            disabled={!workspace || exporting}
-            className="shrink-0 bg-[#173f55] text-white hover:bg-[#123447]"
-          >
-            {exporting ? (
-              <LoaderCircle className="animate-spin" />
-            ) : (
-              <Download />
-            )}
-            Generate current registers
-          </Button>
         </div>
       </Panel>
-      <div className="grid items-start gap-5 xl:grid-cols-2">
+
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.8fr)]">
         <Panel>
           <PanelHeader
-            title="Contract risk & obligation alerts"
-            description="Contract expirations, notice deadlines, renewals, and assigned follow-up"
+            title="Obligation work queue"
+            description="Workflow state is controlled; overdue is calculated from the due date."
             action={
               <div className="flex gap-2">
                 <StatusBadge tone="blue">
-                  {contractAlerts.length} active
+                  {openObligations.length} open
                 </StatusBadge>
-                {contractCriticalCount ? (
+                {openObligations.some(
+                  (item) => item.effective_status === 'overdue',
+                ) ? (
                   <StatusBadge tone="rose">
-                    {contractCriticalCount} urgent
+                    {
+                      openObligations.filter(
+                        (item) => item.effective_status === 'overdue',
+                      ).length
+                    }{' '}
+                    overdue
                   </StatusBadge>
                 ) : null}
               </div>
             }
           />
           <div className="space-y-3 p-5">
-            {contractAlerts.map((item) => (
+            {openObligations.map((item) => (
               <ObligationEditor
                 key={String(item.id)}
                 item={item}
+                selected={selectedIds.has(String(item.id))}
+                onSelectedChange={(checked) =>
+                  toggleSelected(String(item.id), checked)
+                }
                 onSaved={onRefresh}
-                onOpenRecord={() => onSelectContract(String(item.contract_id))}
+                onOpenRecord={
+                  item.contract_id
+                    ? () => onSelectContract(String(item.contract_id))
+                    : item.supplier_id
+                      ? () => onSelectSupplier(String(item.supplier_id))
+                      : undefined
+                }
               />
             ))}
-            {!contractAlerts.length ? (
+            {!openObligations.length ? (
               <EmptyState
-                title="No open contract alerts"
-                description="Upcoming contract deadlines will appear here after an executed agreement is registered."
+                title="No open obligations match"
+                description="Adjust the combined filters or register an executed agreement with key dates."
               />
             ) : null}
-            {completedContractAlerts.length ? (
+            {completedObligations.length ? (
               <details className="rounded-xl border border-[#dce3e8] bg-slate-50">
                 <summary className="cursor-pointer px-4 py-3 text-xs font-medium text-slate-600">
-                  Completed contract actions ({completedContractAlerts.length})
+                  Completed with closeout history ({completedObligations.length}
+                  )
                 </summary>
                 <div className="space-y-3 border-t border-[#dce3e8] p-3">
-                  {completedContractAlerts.map((item) => (
+                  {completedObligations.map((item) => (
                     <ObligationEditor
                       key={String(item.id)}
                       item={item}
+                      selected={selectedIds.has(String(item.id))}
+                      onSelectedChange={(checked) =>
+                        toggleSelected(String(item.id), checked)
+                      }
                       onSaved={onRefresh}
-                      onOpenRecord={() =>
-                        onSelectContract(String(item.contract_id))
+                      onOpenRecord={
+                        item.contract_id
+                          ? () => onSelectContract(String(item.contract_id))
+                          : item.supplier_id
+                            ? () => onSelectSupplier(String(item.supplier_id))
+                            : undefined
                       }
                     />
                   ))}
@@ -6007,8 +6744,8 @@ function AlertsExportsView({
 
         <Panel>
           <PanelHeader
-            title="Supplier documentation risk alerts"
-            description="Expiring supplier evidence and missing core records"
+            title="Supplier evidence alerts"
+            description="Expiring qualification files and missing core records"
             action={
               <div className="flex gap-2">
                 <StatusBadge tone="blue">
@@ -6047,16 +6784,32 @@ function AlertsExportsView({
 
 function ObligationEditor({
   item,
+  selected,
+  onSelectedChange,
   onSaved,
   onOpenRecord,
 }: {
   item: Workspace['keyDates'][number];
+  selected: boolean;
+  onSelectedChange: (checked: boolean) => void;
   onSaved: () => Promise<void>;
   onOpenRecord?: () => void;
 }) {
-  const [status, setStatus] = useState(valueText(item.status));
+  const savedStatus =
+    item.status === 'due' ? 'in_progress' : valueText(item.status);
+  const [status, setStatus] = useState(savedStatus);
   const [owner, setOwner] = useState(
     valueText(item.owner) === 'Not found' ? '' : valueText(item.owner),
+  );
+  const [backupOwner, setBackupOwner] = useState(
+    valueText(item.backup_owner) === 'Not found'
+      ? ''
+      : valueText(item.backup_owner),
+  );
+  const [priority, setPriority] = useState(
+    valueText(item.priority) === 'Not found'
+      ? 'medium'
+      : valueText(item.priority),
   );
   const [decision, setDecision] = useState(
     valueText(item.decision) === 'Not found' ? '' : valueText(item.decision),
@@ -6064,32 +6817,108 @@ function ObligationEditor({
   const [notes, setNotes] = useState(
     valueText(item.notes) === 'Not found' ? '' : valueText(item.notes),
   );
+  const [completionNote, setCompletionNote] = useState(
+    valueText(item.completion_note) === 'Not found'
+      ? ''
+      : valueText(item.completion_note),
+  );
+  const [evidenceReference, setEvidenceReference] = useState(
+    valueText(item.evidence_reference) === 'Not found'
+      ? ''
+      : valueText(item.evidence_reference),
+  );
+  const [evidenceDocumentId, setEvidenceDocumentId] = useState(
+    valueText(item.evidence_document_id) === 'Not found'
+      ? ''
+      : valueText(item.evidence_document_id),
+  );
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [transitionNote, setTransitionNote] = useState('');
+  const [details, setDetails] = useState<ObligationDetails | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
+  const [loadingDetails, setLoadingDetails] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const renewalItem =
     item.type === 'non_renewal_notice' || item.type === 'renewal';
+  const effectiveStatus = valueText(item.effective_status ?? item.status);
   const timing = alertTiming(item.due_date);
+  const nextStatus: Record<string, string | null> = {
+    upcoming: 'in_progress',
+    in_progress: 'evidence_required',
+    evidence_required: 'completed',
+    completed: null,
+  };
+  const statusOptions = [
+    savedStatus,
+    ...(nextStatus[savedStatus] ? [String(nextStatus[savedStatus])] : []),
+  ];
 
-  const save = async () => {
+  const loadDetails = async () => {
+    setLoadingDetails(true);
+    setMessage('');
+    try {
+      const response = await fetch(
+        `/api/obligations?id=${encodeURIComponent(String(item.id))}`,
+      );
+      const body = (await response.json()) as ObligationDetails & {
+        error?: string;
+      };
+      if (!response.ok)
+        throw new Error(body.error || 'Unable to load obligation history.');
+      setDetails(body);
+      if (!evidenceDocumentId && body.obligation.evidence_document_id)
+        setEvidenceDocumentId(String(body.obligation.evidence_document_id));
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Unable to load obligation history.',
+      );
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  const toggleDetails = async () => {
+    const next = !showDetails;
+    setShowDetails(next);
+    if (next && !details) await loadDetails();
+  };
+
+  const save = async (action: 'update' | 'escalate' = 'update') => {
     setSaving(true);
     setMessage('');
     try {
+      const form = new FormData();
+      [
+        ['id', String(item.id)],
+        ['action', action],
+        ['status', status],
+        ['owner', owner],
+        ['backupOwner', backupOwner],
+        ['priority', priority],
+        ['decision', decision],
+        ['notes', notes],
+        ['completionNote', completionNote],
+        ['evidenceDocumentId', evidenceDocumentId],
+        ['evidenceReference', evidenceReference],
+        ['transitionNote', transitionNote],
+      ].forEach(([key, value]) => form.append(key, value));
+      if (evidenceFile) form.append('evidenceFile', evidenceFile);
       const response = await fetch('/api/obligations', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: item.id,
-          status,
-          owner: owner || null,
-          decision: decision || null,
-          notes: notes || null,
-        }),
+        body: form,
       });
       const body = (await response.json()) as { error?: string };
       if (!response.ok)
         throw new Error(body.error || 'Unable to update obligation.');
-      setMessage('Saved');
+      setMessage(action === 'escalate' ? 'Escalation recorded' : 'Saved');
+      setEvidenceFile(null);
+      setTransitionNote('');
+      setDetails(null);
       await onSaved();
+      if (showDetails) await loadDetails();
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : 'Unable to update obligation.',
@@ -6101,39 +6930,88 @@ function ObligationEditor({
 
   return (
     <article
-      className={`rounded-xl border p-4 ${status === 'completed' ? 'border-emerald-200 bg-emerald-50/40' : 'border-[#dce3e8] bg-white'}`}
+      className={`rounded-xl border p-4 ${
+        status === 'completed'
+          ? 'border-emerald-200 bg-emerald-50/40'
+          : effectiveStatus === 'overdue'
+            ? 'border-rose-200 bg-rose-50/30'
+            : 'border-[#dce3e8] bg-white'
+      }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-medium text-[#203845]">
-              {valueText(item.title)}
+        <div className="flex min-w-0 items-start gap-3">
+          <Checkbox
+            checked={selected}
+            onCheckedChange={(checked) => onSelectedChange(Boolean(checked))}
+            aria-label={`Select ${valueText(item.title)}`}
+            className="mt-1"
+          />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-medium text-[#203845]">
+                {valueText(item.title)}
+              </p>
+              <StatusBadge tone={toneForStatus(effectiveStatus)}>
+                {titleCase(effectiveStatus)}
+              </StatusBadge>
+              <StatusBadge
+                tone={
+                  priority === 'critical'
+                    ? 'rose'
+                    : priority === 'high'
+                      ? 'amber'
+                      : 'blue'
+                }
+              >
+                {titleCase(priority)}
+              </StatusBadge>
+              {timing && effectiveStatus !== 'completed' ? (
+                <StatusBadge tone={timing.tone}>{timing.label}</StatusBadge>
+              ) : null}
+            </div>
+            <p className="mt-1 text-xs font-medium text-[#335565]">
+              {item.contract_number
+                ? `${valueText(item.contract_number)} · ${valueText(item.contract_title)}`
+                : valueText(item.supplier_name)}
             </p>
-            <StatusBadge tone={toneForStatus(status)}>
-              {titleCase(status)}
-            </StatusBadge>
-            {timing ? (
-              <StatusBadge tone={timing.tone}>{timing.label}</StatusBadge>
-            ) : null}
+            <p className="mt-1 text-[11px] text-slate-500">
+              Supplier: {valueText(item.supplier_name)} · Due{' '}
+              {valueText(item.due_date)}
+              {item.internal_review_date
+                ? ` · Internal review ${valueText(item.internal_review_date)}`
+                : ''}
+              {item.source_page ? ` · Source p. ${item.source_page}` : ''}
+            </p>
           </div>
-          <p className="mt-1 text-xs font-medium text-[#335565]">
-            {valueText(item.contract_number)} · {valueText(item.contract_title)}
-          </p>
-          <p className="mt-1 text-[11px] text-slate-500">
-            Supplier: {valueText(item.supplier_name)} · Due{' '}
-            {valueText(item.due_date)}
-            {item.source_page ? ` · Source p. ${item.source_page}` : ''}
-          </p>
         </div>
-        {onOpenRecord ? (
-          <Button variant="outline" size="sm" onClick={onOpenRecord}>
-            <FileText /> Open contract
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {item.source_document_id ? (
+            <a
+              href={`/api/document?id=${encodeURIComponent(String(item.source_document_id))}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d4dfe4] bg-white px-3 text-[11px] font-medium text-[#27657c]"
+            >
+              <ExternalLink className="size-3.5" /> Source
+            </a>
+          ) : null}
+          {onOpenRecord ? (
+            <Button variant="outline" size="sm" onClick={onOpenRecord}>
+              {item.contract_id ? <FileText /> : <Building2 />}
+              Open {item.contract_id ? 'contract' : 'supplier'}
+            </Button>
+          ) : null}
+        </div>
       </div>
-      <div
-        className={`mt-4 grid gap-3 ${renewalItem ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}
-      >
+
+      {item.source_clause ? (
+        <p className="mt-3 rounded-lg border border-[#e1e8eb] bg-slate-50 px-3 py-2 text-[10px] leading-4 text-slate-600">
+          <span className="font-semibold text-slate-700">Source clause:</span>{' '}
+          {valueText(item.source_clause)}
+        </p>
+      ) : null}
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <label
           htmlFor={`obligation-owner-${String(item.id)}`}
           className="text-[11px] font-medium text-slate-600"
@@ -6146,20 +7024,48 @@ function ObligationEditor({
             className="mt-1 h-9 bg-white text-xs"
           />
         </label>
+        <label
+          htmlFor={`obligation-backup-owner-${String(item.id)}`}
+          className="text-[11px] font-medium text-slate-600"
+        >
+          Backup owner
+          <Input
+            id={`obligation-backup-owner-${String(item.id)}`}
+            value={backupOwner}
+            onChange={(event) => setBackupOwner(event.target.value)}
+            className="mt-1 h-9 bg-white text-xs"
+          />
+        </label>
         <label className="text-[11px] font-medium text-slate-600">
-          Status
+          Priority
+          <select
+            value={priority}
+            onChange={(event) => setPriority(event.target.value)}
+            className="mt-1 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
+          >
+            {['low', 'medium', 'high', 'critical'].map((value) => (
+              <option key={value} value={value}>
+                {titleCase(value)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-[11px] font-medium text-slate-600">
+          Workflow status
           <select
             value={status}
             onChange={(event) => setStatus(event.target.value)}
             className="mt-1 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
           >
-            <option value="upcoming">Upcoming</option>
-            <option value="due">Due</option>
-            <option value="completed">Completed</option>
+            {statusOptions.map((value) => (
+              <option key={value} value={value}>
+                {titleCase(value)}
+              </option>
+            ))}
           </select>
         </label>
         {renewalItem ? (
-          <label className="text-[11px] font-medium text-slate-600">
+          <label className="text-[11px] font-medium text-slate-600 md:col-span-2">
             Renewal decision
             <select
               value={decision}
@@ -6175,27 +7081,190 @@ function ObligationEditor({
           </label>
         ) : null}
       </div>
+
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <label
+          htmlFor={`obligation-evidence-reference-${String(item.id)}`}
+          className="text-[11px] font-medium text-slate-600"
+        >
+          Evidence reference
+          <Input
+            id={`obligation-evidence-reference-${String(item.id)}`}
+            value={evidenceReference}
+            onChange={(event) => setEvidenceReference(event.target.value)}
+            className="mt-1 h-9 bg-white text-xs"
+            placeholder="Closeout record, ticket, or repository reference"
+          />
+        </label>
+        <label className="text-[11px] font-medium text-slate-600">
+          Upload evidence
+          <input
+            type="file"
+            accept="application/pdf,image/png,image/jpeg"
+            onChange={(event) =>
+              setEvidenceFile(event.target.files?.[0] ?? null)
+            }
+            className="mt-1 block h-9 w-full rounded-md border border-input bg-white px-2 py-1.5 text-[10px] text-slate-600 file:mr-2 file:rounded file:border-0 file:bg-[#e4f2f6] file:px-2 file:py-1 file:text-[10px] file:font-medium file:text-[#1d647d]"
+          />
+        </label>
+      </div>
+      {details?.eligibleDocuments.length ? (
+        <label className="mt-3 block text-[11px] font-medium text-slate-600">
+          Or link an existing contract or supplier file
+          <select
+            value={evidenceDocumentId}
+            onChange={(event) => setEvidenceDocumentId(event.target.value)}
+            className="mt-1 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
+          >
+            <option value="">No existing file selected</option>
+            {details.eligibleDocuments.map((document) => (
+              <option key={String(document.id)} value={String(document.id)}>
+                {valueText(document.file_name)} ·{' '}
+                {titleCase(document.lifecycle_stage)}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      {evidenceFile ? (
+        <p className="mt-2 text-[10px] text-[#246a83]">
+          New evidence ready: {evidenceFile.name}
+        </p>
+      ) : item.evidence_document_id ? (
+        <a
+          href={`/api/document?id=${encodeURIComponent(String(item.evidence_document_id))}`}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 inline-flex items-center gap-1 text-[10px] font-medium text-[#246a83]"
+        >
+          <FileCheck2 className="size-3.5" />
+          Open linked evidence: {valueText(item.evidence_file_name)}
+        </a>
+      ) : null}
+
       <label className="mt-3 block text-[11px] font-medium text-slate-600">
-        Notes
+        Completion note
         <textarea
-          value={notes}
-          onChange={(event) => setNotes(event.target.value)}
+          value={completionNote}
+          onChange={(event) => setCompletionNote(event.target.value)}
           rows={2}
           className="mt-1 w-full rounded-md border border-input bg-white px-3 py-2 text-xs"
-          placeholder="Record follow-up, confirmation, or decision rationale…"
+          placeholder="Required when completing: what was done and what the evidence proves…"
         />
       </label>
-      <div className="mt-3 flex items-center justify-end gap-3">
-        <span
-          className={`text-[11px] ${message === 'Saved' ? 'text-emerald-700' : 'text-rose-600'}`}
-        >
-          {message}
-        </span>
-        <Button size="sm" onClick={save} disabled={saving}>
-          {saving ? <LoaderCircle className="animate-spin" /> : <Check />}Save
-          obligation
-        </Button>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <label className="block text-[11px] font-medium text-slate-600">
+          Working notes
+          <textarea
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            rows={2}
+            className="mt-1 w-full rounded-md border border-input bg-white px-3 py-2 text-xs"
+            placeholder="Follow-up, decision rationale, or next step…"
+          />
+        </label>
+        <label className="block text-[11px] font-medium text-slate-600">
+          Status / escalation note
+          <textarea
+            value={transitionNote}
+            onChange={(event) => setTransitionNote(event.target.value)}
+            rows={2}
+            className="mt-1 w-full rounded-md border border-input bg-white px-3 py-2 text-xs"
+            placeholder="Explain this transition or an overdue escalation…"
+          />
+        </label>
       </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-current/10 pt-3">
+        <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-500">
+          <span>Escalation level {valueText(item.escalation_level ?? 0)}</span>
+          {item.completed_by ? (
+            <span>
+              Completed by {valueText(item.completed_by)} ·{' '}
+              {usDateText(item.completed_at)}
+            </span>
+          ) : null}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void toggleDetails()}
+            disabled={loadingDetails}
+          >
+            {loadingDetails ? (
+              <LoaderCircle className="animate-spin" />
+            ) : (
+              <ChevronDown />
+            )}
+            {showDetails ? 'Hide' : 'History & existing files'}
+          </Button>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span
+            className={`max-w-sm text-right text-[11px] ${
+              message === 'Saved' || message === 'Escalation recorded'
+                ? 'text-emerald-700'
+                : 'text-rose-600'
+            }`}
+          >
+            {message}
+          </span>
+          {effectiveStatus === 'overdue' && status !== 'completed' ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void save('escalate')}
+              disabled={saving || !backupOwner || !transitionNote}
+              className="border-rose-200 text-rose-700 hover:bg-rose-50"
+            >
+              <AlertTriangle /> Escalate to backup
+            </Button>
+          ) : null}
+          <Button size="sm" onClick={() => void save()} disabled={saving}>
+            {saving ? <LoaderCircle className="animate-spin" /> : <Check />}
+            Save obligation
+          </Button>
+        </div>
+      </div>
+
+      {showDetails ? (
+        <div className="mt-3 rounded-lg border border-[#dce3e8] bg-white">
+          <div className="border-b border-[#e8edef] px-3 py-2 text-[10px] font-semibold tracking-[0.1em] text-slate-500 uppercase">
+            Immutable event history
+          </div>
+          <div className="divide-y divide-[#edf1f3]">
+            {details?.events.map((event) => (
+              <div key={String(event.id)} className="px-3 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11px] font-medium text-[#294454]">
+                    {titleCase(event.event_type)}
+                    {event.from_status && event.to_status
+                      ? ` · ${titleCase(event.from_status)} → ${titleCase(event.to_status)}`
+                      : ''}
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    {valueText(event.actor)} · {valueText(event.created_at)}
+                  </span>
+                </div>
+                {event.note ? (
+                  <p className="mt-1 text-[10px] leading-4 text-slate-600">
+                    {valueText(event.note)}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+            {details && !details.events.length ? (
+              <p className="px-3 py-4 text-[10px] text-slate-500">
+                The next saved change will create the first event.
+              </p>
+            ) : null}
+            {loadingDetails ? (
+              <p className="px-3 py-4 text-[10px] text-slate-500">
+                Loading status and evidence history…
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -6319,6 +7388,1235 @@ function IntakeTable({ intakes }: { intakes: Workspace['intakes'] }) {
   );
 }
 
+function BulkImportView({
+  onUpdated,
+}: {
+  onUpdated: (workspace: Workspace) => void;
+}) {
+  const [target, setTarget] = useState<'suppliers' | 'contracts'>('suppliers');
+  const [file, setFile] = useState<File | null>(null);
+  const [batches, setBatches] = useState<
+    Array<Record<string, string | number | null>>
+  >([]);
+  const [details, setDetails] = useState<ImportBatchDetails | null>(null);
+  const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const loadBatches = useCallback(async () => {
+    try {
+      const response = await fetch('/api/imports');
+      const body = (await response.json()) as {
+        batches?: Array<Record<string, string | number | null>>;
+        error?: string;
+      };
+      if (!response.ok)
+        throw new Error(body.error || 'Import history could not be loaded.');
+      setBatches(body.batches ?? []);
+      setError('');
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : 'Import history could not be loaded.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadBatches(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadBatches]);
+
+  const applyDetails = (next: ImportBatchDetails) => {
+    setDetails(next);
+    setMapping(next.batch.mapping);
+  };
+
+  const openBatch = async (batchId: string) => {
+    setSaving(true);
+    setError('');
+    try {
+      const response = await fetch(
+        `/api/imports?id=${encodeURIComponent(batchId)}`,
+      );
+      const body = (await response.json()) as ImportBatchDetails & {
+        error?: string;
+      };
+      if (!response.ok)
+        throw new Error(body.error || 'Import batch could not be loaded.');
+      applyDetails(body);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : 'Import batch could not be loaded.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const previewFile = async () => {
+    if (!file) {
+      setError('Choose a CSV or XLSX file first.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const form = new FormData();
+      form.append('target', target);
+      form.append('file', file);
+      const response = await fetch('/api/imports', {
+        method: 'POST',
+        body: form,
+      });
+      const body = (await response.json()) as ImportBatchDetails & {
+        error?: string;
+      };
+      if (!response.ok)
+        throw new Error(
+          body.error || 'The import preview could not be created.',
+        );
+      applyDetails(body);
+      await loadBatches();
+    } catch (previewError) {
+      setError(
+        previewError instanceof Error
+          ? previewError.message
+          : 'The import preview could not be created.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const patchBatch = async (payload: Record<string, unknown>) => {
+    setSaving(true);
+    setError('');
+    try {
+      const response = await fetch('/api/imports', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const body = (await response.json()) as ImportBatchDetails & {
+        workspace?: Workspace;
+        error?: string;
+      };
+      if (!response.ok)
+        throw new Error(body.error || 'The import batch could not be updated.');
+      applyDetails(body);
+      if (body.workspace) onUpdated(body.workspace);
+      await loadBatches();
+    } catch (updateError) {
+      setError(
+        updateError instanceof Error
+          ? updateError.message
+          : 'The import batch could not be updated.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const batchId = details ? String(details.batch.id) : '';
+  const batchStatus = details ? String(details.batch.status) : '';
+  const reviewableRows =
+    details?.rows.filter(
+      (row) =>
+        row.status !== 'invalid' &&
+        row.duplicate_type !== 'exact' &&
+        row.decision !== 'accept',
+    ) ?? [];
+  const blockedRows =
+    details?.rows.filter(
+      (row) =>
+        (row.status === 'invalid' || row.duplicate_type === 'exact') &&
+        row.decision !== 'skip',
+    ) ?? [];
+  const pendingRows =
+    details?.rows.filter((row) => row.decision === 'pending').length ?? 0;
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="Controlled migration"
+        title="Bulk Import & Data Quality"
+        description="Map legacy CSV or XLSX columns, normalize values, review every duplicate and validation issue, then commit only explicitly accepted rows with a reversible audit trail."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={`/api/imports?template=${target}&format=csv`}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-input bg-white px-3 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <Download className="size-3.5" /> CSV template
+            </a>
+            <a
+              href={`/api/imports?template=${target}&format=xlsx`}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-input bg-white px-3 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <Download className="size-3.5" /> XLSX template
+            </a>
+          </div>
+        }
+      />
+
+      {error ? (
+        <Alert variant="destructive" className="mb-5">
+          <AlertCircle />
+          <AlertTitle>Import action could not be completed</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-5">
+          <Panel>
+            <PanelHeader
+              title="1. Choose a legacy register"
+              description="Preview is isolated from official supplier and contract records. Maximum 5 MB and 150 data rows per batch."
+            />
+            <div className="grid gap-4 p-5 md:grid-cols-[220px_minmax(0,1fr)_auto] md:items-end">
+              <label className="text-[10px] font-medium text-slate-600">
+                Register type
+                <select
+                  value={target}
+                  onChange={(event) =>
+                    setTarget(event.target.value as 'suppliers' | 'contracts')
+                  }
+                  className="mt-1 block h-10 w-full rounded-md border border-input bg-white px-3 text-xs"
+                >
+                  <option value="suppliers">Supplier master</option>
+                  <option value="contracts">Contract register</option>
+                </select>
+              </label>
+              <label
+                htmlFor="bulk-import-file"
+                className="text-[10px] font-medium text-slate-600"
+              >
+                CSV or XLSX file
+                <Input
+                  id="bulk-import-file"
+                  className="mt-1 h-10 bg-white text-xs"
+                  type="file"
+                  accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                />
+              </label>
+              <Button onClick={previewFile} disabled={!file || saving}>
+                {saving ? (
+                  <LoaderCircle className="size-4 animate-spin" />
+                ) : (
+                  <Upload className="size-4" />
+                )}
+                Create dry run
+              </Button>
+            </div>
+          </Panel>
+
+          {details ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                {[
+                  ['Rows', details.batch.total_rows],
+                  ['Ready', details.batch.ready_rows],
+                  ['Warnings', details.batch.warning_rows],
+                  ['Duplicates', details.batch.duplicate_rows],
+                  ['Invalid', details.batch.invalid_rows],
+                  ['Accepted', details.batch.accepted_rows],
+                ].map(([label, value]) => (
+                  <article
+                    key={String(label)}
+                    className="rounded-xl border border-[#dce3e8] bg-white p-4 shadow-sm"
+                  >
+                    <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                      {label}
+                    </p>
+                    <p className="mt-2 text-xl font-semibold text-[#183040]">
+                      {valueText(value)}
+                    </p>
+                  </article>
+                ))}
+              </div>
+
+              <Panel>
+                <PanelHeader
+                  title="2. Confirm column mapping"
+                  description={`Mapping version ${valueText(details.batch.mapping_version)} · required fields must have a source column.`}
+                  action={
+                    batchStatus === 'preview' ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={saving}
+                        onClick={() =>
+                          void patchBatch({ action: 'remap', batchId, mapping })
+                        }
+                      >
+                        Re-run mapping
+                      </Button>
+                    ) : null
+                  }
+                />
+                <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-3">
+                  {details.fields.map((field) => (
+                    <label
+                      key={field.key}
+                      className="text-[10px] font-medium text-slate-600"
+                    >
+                      {field.label}{' '}
+                      {field.required ? (
+                        <span className="text-rose-600">*</span>
+                      ) : null}
+                      <select
+                        value={mapping[field.key] ?? ''}
+                        disabled={batchStatus !== 'preview'}
+                        onChange={(event) =>
+                          setMapping((current) => ({
+                            ...current,
+                            [field.key]: event.target.value,
+                          }))
+                        }
+                        className="mt-1 block h-9 w-full rounded-md border border-input bg-white px-2 text-[11px]"
+                      >
+                        <option value="">Not mapped</option>
+                        {(details.batch.headers as string[]).map((header) => (
+                          <option key={header} value={header}>
+                            {header}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              </Panel>
+
+              <Panel>
+                <PanelHeader
+                  title="3. Resolve row-level quality results"
+                  description="Possible matches require an explicit accept or skip. Exact duplicates and invalid rows must be corrected or skipped."
+                  action={
+                    batchStatus === 'preview' ? (
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!reviewableRows.length || saving}
+                          onClick={() =>
+                            void patchBatch({
+                              action: 'resolve',
+                              batchId,
+                              rowIds: reviewableRows.map((row) => row.id),
+                              decision: 'accept',
+                            })
+                          }
+                        >
+                          Accept reviewable ({reviewableRows.length})
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!blockedRows.length || saving}
+                          onClick={() =>
+                            void patchBatch({
+                              action: 'resolve',
+                              batchId,
+                              rowIds: blockedRows.map((row) => row.id),
+                              decision: 'skip',
+                            })
+                          }
+                        >
+                          Skip blocked ({blockedRows.length})
+                        </Button>
+                      </div>
+                    ) : null
+                  }
+                />
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="pl-5">Row / record</TableHead>
+                        <TableHead>Normalized preview</TableHead>
+                        <TableHead>Quality result</TableHead>
+                        <TableHead>Decision</TableHead>
+                        <TableHead className="pr-5 text-right">
+                          Action
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {details.rows.map((row) => {
+                        const recordLabel =
+                          valueText(row.normalized.legal_name) ||
+                          valueText(row.normalized.contract_number) ||
+                          `Source row ${row.row_number}`;
+                        const canAccept =
+                          row.status !== 'invalid' &&
+                          row.duplicate_type !== 'exact';
+                        return (
+                          <TableRow key={row.id} className="align-top">
+                            <TableCell className="pl-5">
+                              <p className="text-[11px] font-semibold text-[#1d718f]">
+                                Row {row.row_number} · {recordLabel}
+                              </p>
+                              <p className="mt-1 max-w-64 truncate text-[9px] text-slate-500">
+                                {valueText(row.normalized.title) ||
+                                  valueText(row.normalized.category)}
+                              </p>
+                            </TableCell>
+                            <TableCell className="max-w-72">
+                              <p className="text-[10px] leading-4 text-slate-600">
+                                {Object.entries(row.normalized)
+                                  .filter(
+                                    ([, value]) =>
+                                      value !== null && value !== '',
+                                  )
+                                  .slice(0, 5)
+                                  .map(
+                                    ([key, value]) =>
+                                      `${titleCase(key)}: ${valueText(value)}`,
+                                  )
+                                  .join(' · ')}
+                              </p>
+                            </TableCell>
+                            <TableCell className="max-w-80">
+                              <StatusBadge
+                                tone={
+                                  row.status === 'ready'
+                                    ? 'green'
+                                    : row.status === 'warning'
+                                      ? 'amber'
+                                      : 'rose'
+                                }
+                              >
+                                {titleCase(row.status)}
+                              </StatusBadge>
+                              {row.issues.length ? (
+                                <ul className="mt-2 space-y-1 text-[9px] leading-4 text-slate-500">
+                                  {row.issues.map((issue, index) => (
+                                    <li key={`${issue.code}-${index}`}>
+                                      • {issue.message}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : null}
+                            </TableCell>
+                            <TableCell>
+                              <StatusBadge
+                                tone={
+                                  row.decision === 'accept'
+                                    ? 'green'
+                                    : row.decision === 'skip'
+                                      ? 'rose'
+                                      : 'amber'
+                                }
+                              >
+                                {titleCase(row.decision)}
+                              </StatusBadge>
+                            </TableCell>
+                            <TableCell className="pr-5 text-right">
+                              {batchStatus === 'preview' ? (
+                                <div className="flex justify-end gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 px-2 text-[9px]"
+                                    disabled={!canAccept || saving}
+                                    onClick={() =>
+                                      void patchBatch({
+                                        action: 'resolve',
+                                        batchId,
+                                        rowIds: [row.id],
+                                        decision: 'accept',
+                                      })
+                                    }
+                                  >
+                                    Accept
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 px-2 text-[9px]"
+                                    disabled={saving}
+                                    onClick={() =>
+                                      void patchBatch({
+                                        action: 'resolve',
+                                        batchId,
+                                        rowIds: [row.id],
+                                        decision: 'skip',
+                                      })
+                                    }
+                                  >
+                                    Skip
+                                  </Button>
+                                </div>
+                              ) : (
+                                <span className="text-[9px] text-slate-500">
+                                  {row.created_record_id
+                                    ? `Created ${row.created_record_id}`
+                                    : 'No official record'}
+                                </span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="flex flex-col justify-between gap-3 border-t border-[#e3e9ed] bg-[#f8fafb] px-5 py-4 sm:flex-row sm:items-center">
+                  <div>
+                    <p className="text-[10px] font-medium text-slate-700">
+                      {pendingRows} unresolved ·{' '}
+                      {valueText(details.batch.accepted_rows)} accepted ·{' '}
+                      {valueText(details.batch.rejected_rows)} skipped
+                    </p>
+                    <p className="mt-1 text-[9px] text-slate-500">
+                      Dry run data remains isolated until commit.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <a
+                      href={`/api/imports?id=${encodeURIComponent(batchId)}&format=corrections`}
+                      className="inline-flex h-8 items-center gap-2 rounded-md border border-input bg-white px-3 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      <Download className="size-3.5" /> Correction report
+                    </a>
+                    {batchStatus === 'preview' ? (
+                      <Button
+                        size="sm"
+                        disabled={
+                          saving ||
+                          Boolean(pendingRows) ||
+                          !Number(details.batch.accepted_rows)
+                        }
+                        onClick={() =>
+                          void patchBatch({ action: 'commit', batchId })
+                        }
+                      >
+                        <Database className="size-3.5" /> Commit accepted rows
+                      </Button>
+                    ) : null}
+                    {batchStatus === 'committed' ? (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={saving}
+                        onClick={() => {
+                          const reason = window.prompt(
+                            'Enter the rollback reason (required for the audit trail):',
+                          );
+                          if (reason?.trim())
+                            void patchBatch({
+                              action: 'rollback',
+                              batchId,
+                              reason: reason.trim(),
+                            });
+                        }}
+                      >
+                        <RotateCcw className="size-3.5" /> Roll back batch
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              </Panel>
+            </>
+          ) : (
+            <Panel>
+              <EmptyState
+                title="No import preview selected"
+                description="Upload a legacy register or open a prior batch from the audit history. Previewing never changes official data."
+              />
+            </Panel>
+          )}
+        </div>
+
+        <Panel className="h-fit overflow-hidden">
+          <PanelHeader
+            title="Import audit history"
+            description="Preview, commit, and rollback states are retained."
+          />
+          <div className="divide-y divide-[#e7ecef]">
+            {loading ? (
+              <div className="flex items-center gap-2 p-5 text-xs text-slate-500">
+                <LoaderCircle className="size-4 animate-spin" /> Loading
+                batches…
+              </div>
+            ) : batches.length ? (
+              batches.map((batch) => (
+                <button
+                  key={String(batch.id)}
+                  type="button"
+                  onClick={() => void openBatch(String(batch.id))}
+                  className="block w-full p-4 text-left transition hover:bg-[#f6fafb]"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-[11px] font-semibold text-[#203845]">
+                      {valueText(batch.file_name)}
+                    </p>
+                    <StatusBadge tone={toneForStatus(batch.status)}>
+                      {titleCase(batch.status)}
+                    </StatusBadge>
+                  </div>
+                  <p className="mt-2 text-[9px] text-slate-500">
+                    {titleCase(batch.entity_type)} ·{' '}
+                    {valueText(batch.total_rows)} rows ·{' '}
+                    {usDateText(batch.created_at)}
+                  </p>
+                  <p className="mt-1 text-[9px] text-slate-400">
+                    {valueText(batch.accepted_rows)} accepted ·{' '}
+                    {valueText(batch.invalid_rows)} invalid ·{' '}
+                    {valueText(batch.duplicate_rows)} duplicates
+                  </p>
+                </button>
+              ))
+            ) : (
+              <EmptyState
+                title="No import batches"
+                description="Your first dry run will appear here."
+              />
+            )}
+          </div>
+        </Panel>
+      </div>
+    </>
+  );
+}
+
+function ApprovalQueueView({
+  workspace,
+  onUpdated,
+  onOpenIntake,
+}: {
+  workspace: Workspace | null;
+  onUpdated: (workspace: Workspace) => void;
+  onOpenIntake: (id: string) => void;
+}) {
+  const [statusFilter, setStatusFilter] = useState('open');
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(
+    null,
+  );
+  const filtered = (workspace?.approvalQueue ?? []).filter((item) =>
+    statusFilter === 'all'
+      ? true
+      : statusFilter === 'open'
+        ? ['pending', 'in_review', 'revision_requested'].includes(
+            item.request_status,
+          )
+        : item.request_status === statusFilter,
+  );
+  const metrics = workspace?.approvalMetrics;
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="Controlled decisions"
+        title="Approvals & Exceptions"
+        description="Route deterministic policy triggers to accountable reviewers, preserve every decision, and prevent execution while mandatory controls remain incomplete."
+        action={
+          <label className="text-[10px] font-medium text-slate-500">
+            Status
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="ml-2 h-9 rounded-md border border-input bg-white px-3 text-xs text-slate-700"
+            >
+              <option value="open">Open decisions</option>
+              <option value="all">All decisions</option>
+              <option value="pending">Pending</option>
+              <option value="in_review">In review</option>
+              <option value="revision_requested">Revision requested</option>
+              <option value="approved">Approved</option>
+              <option value="declined">Declined</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </label>
+        }
+      />
+
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {[
+          ['Open requests', metrics?.open_requests ?? 0, 'Awaiting a decision'],
+          ['Overdue', metrics?.overdue_requests ?? 0, 'Past the deadline'],
+          ['Blocked intakes', metrics?.blocked_intakes ?? 0, 'Gate is active'],
+          [
+            'Avg. turnaround',
+            `${metrics?.average_turnaround_hours ?? 0}h`,
+            'Completed requests',
+          ],
+          [
+            'Exception rate',
+            `${metrics?.exception_approval_rate ?? 0}%`,
+            'Exception approvals ÷ decisions',
+          ],
+        ].map(([label, value, note]) => (
+          <article
+            key={String(label)}
+            className="rounded-xl border border-[#dce3e8] bg-white p-4 shadow-sm"
+          >
+            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+              {label}
+            </p>
+            <p className="mt-2 text-2xl font-semibold tracking-tight text-[#183040]">
+              {value}
+            </p>
+            <p className="mt-1 text-[9px] text-slate-500">{note}</p>
+          </article>
+        ))}
+      </div>
+
+      <section className="overflow-hidden rounded-xl border border-[#dce3e8] bg-white shadow-sm">
+        <div className="flex items-center justify-between gap-3 border-b border-[#e2e8eb] px-5 py-4">
+          <div>
+            <h2 className="text-sm font-semibold text-[#203845]">
+              Approval aging queue
+            </h2>
+            <p className="mt-1 text-[10px] text-slate-500">
+              Owner, source, rule version, age, and deadline travel with every
+              decision.
+            </p>
+          </div>
+          <Badge variant="outline">{filtered.length} shown</Badge>
+        </div>
+        {filtered.length ? (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-5">Control / reason</TableHead>
+                  <TableHead>Intake</TableHead>
+                  <TableHead>Decision owner</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Age / deadline</TableHead>
+                  <TableHead className="pr-5 text-right">Source</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((item) => (
+                  <TableRow key={item.step_id} className="align-top">
+                    <TableCell className="max-w-[360px] pl-5">
+                      <p className="text-xs font-semibold text-[#1d718f]">
+                        {item.rule_name}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-[10px] leading-4 text-slate-500">
+                        {item.reason}
+                      </p>
+                      <p className="mt-1 text-[9px] text-slate-400">
+                        {item.rule_key} · v{item.rule_version}
+                      </p>
+                    </TableCell>
+                    <TableCell>
+                      <p className="text-[11px] font-medium text-slate-700">
+                        {item.intake_number}
+                      </p>
+                      <p className="mt-1 max-w-52 truncate text-[9px] text-slate-500">
+                        {item.intake_title}
+                      </p>
+                    </TableCell>
+                    <TableCell>
+                      <p className="text-[11px] font-medium text-slate-700">
+                        {item.owner_role}
+                      </p>
+                      <p className="mt-1 text-[9px] text-slate-500">
+                        {item.assigned_reviewer || 'Unassigned'}
+                      </p>
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge tone={toneForStatus(item.request_status)}>
+                        {titleCase(item.request_status)}
+                      </StatusBadge>
+                      {item.escalation_level ? (
+                        <p className="mt-1 text-[9px] text-amber-700">
+                          Escalation level {item.escalation_level}
+                        </p>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
+                      <p
+                        className={`text-[11px] font-medium ${item.overdue ? 'text-rose-700' : 'text-slate-700'}`}
+                      >
+                        {item.age_days} day{item.age_days === 1 ? '' : 's'} open
+                      </p>
+                      <p className="mt-1 text-[9px] text-slate-500">
+                        Due {usDateText(item.due_at)}
+                      </p>
+                    </TableCell>
+                    <TableCell className="pr-5 text-right">
+                      <p className="max-w-52 truncate text-[10px] text-slate-600">
+                        {item.source_file_name || 'Verified register data'}
+                      </p>
+                      {item.source_page ? (
+                        <p className="mt-1 text-[9px] text-slate-400">
+                          Page {item.source_page}
+                        </p>
+                      ) : null}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedRequestId(item.request_id)}
+                        className="mt-2 h-7 px-2 text-[9px]"
+                      >
+                        Review decision
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : (
+          <EmptyState
+            title="No approvals in this view"
+            description="Change the filter or save a draft whose verified values trigger a versioned approval rule."
+          />
+        )}
+      </section>
+
+      {selectedRequestId ? (
+        <ApprovalDecisionDialog
+          requestId={selectedRequestId}
+          onClose={() => setSelectedRequestId(null)}
+          onUpdated={onUpdated}
+          onOpenIntake={(id) => {
+            setSelectedRequestId(null);
+            onOpenIntake(id);
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
+const approvalActionLabels = {
+  start_review: 'Start review',
+  approve: 'Approve',
+  decline: 'Decline',
+  request_revision: 'Request revision',
+  approve_exception: 'Approve exception',
+  escalate: 'Escalate',
+  cancel: 'Cancel request',
+} as const;
+
+function ApprovalDecisionDialog({
+  requestId,
+  onClose,
+  onUpdated,
+  onOpenIntake,
+}: {
+  requestId: string;
+  onClose: () => void;
+  onUpdated: (workspace: Workspace) => void;
+  onOpenIntake: (id: string) => void;
+}) {
+  const [details, setDetails] = useState<ApprovalRequestDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [action, setAction] =
+    useState<keyof typeof approvalActionLabels>('start_review');
+  const [reason, setReason] = useState('');
+  const [assignedReviewer, setAssignedReviewer] = useState('');
+
+  const loadDetails = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch(
+        `/api/approvals?id=${encodeURIComponent(requestId)}`,
+      );
+      const body = (await response.json()) as ApprovalRequestDetails & {
+        error?: string;
+      };
+      if (!response.ok)
+        throw new Error(body.error || 'Unable to load the approval request.');
+      setDetails(body);
+      const loadedStep = body.steps[0];
+      setAssignedReviewer(String(loadedStep?.assigned_reviewer ?? ''));
+      setAction(
+        loadedStep?.status === 'in_review' ? 'approve' : 'start_review',
+      );
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : 'Unable to load the approval request.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [requestId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadDetails(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadDetails]);
+
+  const step = details?.steps[0];
+  const terminal = ['approved', 'declined', 'cancelled'].includes(
+    String(step?.status ?? ''),
+  );
+  const allowedActions: Array<keyof typeof approvalActionLabels> = terminal
+    ? []
+    : step?.status === 'pending'
+      ? [
+          'start_review',
+          'approve',
+          'approve_exception',
+          'decline',
+          'request_revision',
+          'escalate',
+          'cancel',
+        ]
+      : step?.status === 'revision_requested'
+        ? ['start_review', 'cancel']
+        : [
+            'approve',
+            'approve_exception',
+            'decline',
+            'request_revision',
+            'escalate',
+            'cancel',
+          ];
+  const reasonRequired = [
+    'decline',
+    'request_revision',
+    'approve_exception',
+    'escalate',
+    'cancel',
+  ].includes(action);
+
+  const submitDecision = async () => {
+    if (!step) return;
+    if (reasonRequired && !reason.trim()) {
+      setError('Record a reason for this decision or escalation.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const response = await fetch('/api/approvals', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stepId: step.id,
+          action,
+          reason,
+          assignedReviewer,
+        }),
+      });
+      const body = (await response.json()) as {
+        details?: ApprovalRequestDetails;
+        workspace?: Workspace;
+        error?: string;
+      };
+      if (!response.ok || !body.details || !body.workspace)
+        throw new Error(body.error || 'Unable to record this decision.');
+      setDetails(body.details);
+      onUpdated(body.workspace);
+      setReason('');
+      const nextStep = body.details.steps[0];
+      setAction(nextStep?.status === 'in_review' ? 'approve' : 'start_review');
+    } catch (decisionError) {
+      setError(
+        decisionError instanceof Error
+          ? decisionError.message
+          : 'Unable to record this decision.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 p-4 backdrop-blur-[2px]"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !saving) onClose();
+      }}
+    >
+      <dialog
+        open
+        aria-modal="true"
+        aria-labelledby="approval-decision-title"
+        className="m-0 grid h-[86vh] min-h-[620px] w-[96vw] max-w-[1120px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl bg-white p-0 text-sm shadow-2xl ring-1 ring-slate-900/10"
+      >
+        <header className="relative border-b border-[#e1e7ea] px-6 py-4 pr-14">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            aria-label="Close approval decision"
+            className="absolute right-4 top-4 flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+          >
+            ×
+          </button>
+          <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
+            <ShieldCheck className="size-3.5" /> Versioned approval control
+            {details ? (
+              <StatusBadge tone={toneForStatus(details.request.status)}>
+                {titleCase(details.request.status)}
+              </StatusBadge>
+            ) : null}
+          </div>
+          <h2
+            id="approval-decision-title"
+            className="mt-1 text-xl font-semibold text-[#183040]"
+          >
+            {details
+              ? valueText(details.request.rule_name)
+              : 'Loading approval request…'}
+          </h2>
+          {details ? (
+            <p className="mt-1 text-xs text-slate-500">
+              {valueText(details.request.intake_number)} · Rule{' '}
+              {valueText(details.request.rule_key)} v
+              {valueText(details.request.rule_version)}
+            </p>
+          ) : null}
+        </header>
+
+        <div className="min-h-0 overflow-y-auto bg-[#f6f8f9] p-5">
+          {loading ? (
+            <div className="flex min-h-64 items-center justify-center text-xs text-slate-500">
+              <LoaderCircle className="mr-2 size-5 animate-spin text-[#287d9b]" />
+              Loading source and immutable decision history…
+            </div>
+          ) : details && step ? (
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+              <div className="space-y-4">
+                <article className="rounded-xl border border-[#dce3e8] bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-[#203845]">
+                        Trigger and source
+                      </h3>
+                      <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                        {valueText(details.request.rule_description)}
+                      </p>
+                    </div>
+                    <Badge variant="outline">
+                      {Number(details.request.mandatory)
+                        ? 'Mandatory'
+                        : 'Advisory'}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[10px] leading-4 text-amber-900">
+                    {valueText(details.request.reason)}
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {[
+                      ['Decision owner', step.owner_role],
+                      ['Assigned reviewer', step.assigned_reviewer],
+                      ['Generated', details.request.generated_at],
+                      ['Due date', details.request.due_at],
+                      ['Source page', step.source_page],
+                      ['Escalation level', step.escalation_level],
+                    ].map(([label, value]) => (
+                      <div
+                        key={String(label)}
+                        className="rounded-lg bg-slate-50 px-3 py-2"
+                      >
+                        <p className="text-[9px] font-semibold uppercase text-slate-500">
+                          {label}
+                        </p>
+                        <p className="mt-1 text-[10px] font-medium text-slate-700">
+                          {valueText(value)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  {step.source_quote ? (
+                    <blockquote className="mt-3 rounded-lg border-l-2 border-[#65a9bf] bg-[#f2f8fa] px-3 py-2 text-[10px] leading-4 text-slate-700">
+                      “{valueText(step.source_quote)}”
+                    </blockquote>
+                  ) : null}
+                  {details.request.source_document_id ? (
+                    <a
+                      href={`/api/document?id=${encodeURIComponent(String(details.request.source_document_id))}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-flex items-center gap-1.5 text-[10px] font-medium text-[#1d718f]"
+                    >
+                      <ExternalLink className="size-3.5" /> Open{' '}
+                      {valueText(details.request.source_file_name)}
+                    </a>
+                  ) : null}
+                </article>
+
+                <article className="rounded-xl border border-[#dce3e8] bg-white p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-[#203845]">
+                        Related intake
+                      </h3>
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        {valueText(details.request.intake_title)} ·{' '}
+                        {valueText(details.request.proposed_supplier_name)}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        onOpenIntake(String(details.request.intake_id))
+                      }
+                    >
+                      <FileSearch /> Open review
+                    </Button>
+                  </div>
+                </article>
+
+                {!terminal ? (
+                  <article className="rounded-xl border border-[#bfd6df] bg-white p-4">
+                    <h3 className="text-sm font-semibold text-[#203845]">
+                      Record a controlled action
+                    </h3>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <label className="text-[10px] font-medium text-slate-600">
+                        Action
+                        <select
+                          value={action}
+                          onChange={(event) =>
+                            setAction(
+                              event.target
+                                .value as keyof typeof approvalActionLabels,
+                            )
+                          }
+                          className="mt-1 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
+                        >
+                          {allowedActions.map((item) => (
+                            <option key={item} value={item}>
+                              {approvalActionLabels[item]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label
+                        htmlFor="approval-assigned-reviewer"
+                        className="text-[10px] font-medium text-slate-600"
+                      >
+                        Assigned reviewer
+                        <Input
+                          id="approval-assigned-reviewer"
+                          value={assignedReviewer}
+                          onChange={(event) =>
+                            setAssignedReviewer(event.target.value)
+                          }
+                          placeholder={valueText(step.owner_role)}
+                          className="mt-1 text-xs"
+                        />
+                      </label>
+                    </div>
+                    <label className="mt-3 block text-[10px] font-medium text-slate-600">
+                      Decision reason{' '}
+                      {reasonRequired ? '(required)' : '(optional)'}
+                      <textarea
+                        value={reason}
+                        onChange={(event) => setReason(event.target.value)}
+                        rows={4}
+                        maxLength={2000}
+                        className="mt-1 w-full rounded-md border border-input bg-white px-3 py-2 text-xs"
+                        placeholder="Record the evidence, rationale, exception basis, revision needed, or escalation reason…"
+                      />
+                    </label>
+                  </article>
+                ) : (
+                  <Alert>
+                    <CircleCheck />
+                    <AlertTitle>This decision is immutable</AlertTitle>
+                    <AlertDescription>
+                      The completed step remains in the audit history and cannot
+                      be overwritten.
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+
+              <article className="rounded-xl border border-[#dce3e8] bg-white p-4">
+                <h3 className="text-sm font-semibold text-[#203845]">
+                  Immutable decision history
+                </h3>
+                <p className="mt-1 text-[10px] text-slate-500">
+                  Actor, role, timestamp, reason, and before/after state are
+                  retained for every event.
+                </p>
+                <div className="mt-4 space-y-3">
+                  {details.history.map((item) => (
+                    <div
+                      key={String(item.id)}
+                      className="rounded-lg border border-[#e1e7ea] bg-[#fafcfc] p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] font-semibold text-[#294354]">
+                            {titleCase(item.action)}
+                          </p>
+                          <p className="mt-1 text-[9px] text-slate-500">
+                            {valueText(item.actor)} ·{' '}
+                            {valueText(item.actor_role)}
+                          </p>
+                        </div>
+                        <span className="text-[9px] text-slate-400">
+                          {valueText(item.created_at)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-[9px] font-medium text-slate-600">
+                        {titleCase(item.from_status)} →{' '}
+                        {titleCase(item.to_status)}
+                      </p>
+                      {item.reason ? (
+                        <p className="mt-2 text-[10px] leading-4 text-slate-600">
+                          {valueText(item.reason)}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </article>
+            </div>
+          ) : (
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertTitle>Approval request unavailable</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+        </div>
+
+        <footer className="flex items-center justify-between gap-3 border-t border-[#e1e7ea] bg-white px-6 py-4">
+          <span className="text-[10px] text-rose-600">
+            {details ? error : ''}
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose} disabled={saving}>
+              Close
+            </Button>
+            {!terminal && details ? (
+              <Button
+                onClick={() => void submitDecision()}
+                disabled={saving || (reasonRequired && !reason.trim())}
+                className="bg-[#1d718f] hover:bg-[#185f78]"
+              >
+                {saving ? <LoaderCircle className="animate-spin" /> : <Check />}
+                {approvalActionLabels[action]}
+              </Button>
+            ) : null}
+          </div>
+        </footer>
+      </dialog>
+    </div>
+  );
+}
+
 function IntakeReviewDialog({
   intakeId,
   onClose,
@@ -6338,7 +8636,6 @@ function IntakeReviewDialog({
   const [owner, setOwner] = useState('');
   const [targetReviewDate, setTargetReviewDate] = useState('');
   const [internalNotes, setInternalNotes] = useState('');
-  const [approvalStatus, setApprovalStatus] = useState('not_required');
   const [findingStatuses, setFindingStatuses] = useState<
     Record<string, string>
   >({});
@@ -6352,9 +8649,6 @@ function IntakeReviewDialog({
     setOwner(String(nextDetails.intake.owner ?? 'Selina Armstrong'));
     setTargetReviewDate(String(nextDetails.intake.target_review_date ?? ''));
     setInternalNotes(String(nextDetails.intake.internal_notes ?? ''));
-    setApprovalStatus(
-      String(nextDetails.intake.approval_status ?? 'not_required'),
-    );
     setFindingStatuses(
       Object.fromEntries(
         nextDetails.findings.map((finding) => [
@@ -6415,7 +8709,6 @@ function IntakeReviewDialog({
           owner,
           targetReviewDate,
           internalNotes,
-          approvalStatus,
           findings: details.findings.map((finding) => ({
             id: String(finding.id),
             status: findingStatuses[String(finding.id)] ?? 'open',
@@ -6448,8 +8741,7 @@ function IntakeReviewDialog({
     details?.documents[0];
   const analysis = details?.analysis;
   const supplier = details?.supplier;
-  const cfoApprovalRequired =
-    details?.intake.required_approval === 'CFO approval';
+  const openApprovalCount = Number(details?.intake.open_approval_count ?? 0);
   const analysisSummary = analysis
     ? extractionFields.map(([fieldName, label]) => ({
         fieldName,
@@ -6625,8 +8917,8 @@ function IntakeReviewDialog({
                         Supplier handling
                       </h3>
                       <p className="mt-1 text-[10px] text-slate-500">
-                        Draft review records the proposed supplier name only.
-                        It does not create or update the Supplier Register.
+                        Draft review records the proposed supplier name only. It
+                        does not create or update the Supplier Register.
                       </p>
                     </div>
                     {supplier ? (
@@ -6854,26 +9146,21 @@ function IntakeReviewDialog({
                         </option>
                       </select>
                     </label>
-                    <label className="text-[10px] font-medium text-slate-600">
-                      {cfoApprovalRequired
-                        ? 'CFO approval status'
-                        : 'Additional approval'}
-                      <select
-                        value={
-                          cfoApprovalRequired ? approvalStatus : 'not_required'
-                        }
-                        onChange={(event) =>
-                          setApprovalStatus(event.target.value)
-                        }
-                        disabled={!cfoApprovalRequired}
-                        className="mt-1 h-9 w-full rounded-md border border-input bg-white px-3 text-xs disabled:bg-slate-100"
-                      >
-                        <option value="not_required">Not required</option>
-                        <option value="pending">Pending</option>
-                        <option value="approved">Approved</option>
-                        <option value="declined">Declined</option>
-                      </select>
-                    </label>
+                    <div className="rounded-lg border border-[#dce3e8] bg-white px-3 py-2">
+                      <p className="text-[9px] font-semibold uppercase text-slate-500">
+                        Mandatory approval gate
+                      </p>
+                      <div className="mt-1 flex items-center justify-between gap-2">
+                        <StatusBadge
+                          tone={toneForStatus(details.intake.approval_status)}
+                        >
+                          {titleCase(details.intake.approval_status)}
+                        </StatusBadge>
+                        <span className="text-[10px] text-slate-500">
+                          {openApprovalCount} open
+                        </span>
+                      </div>
+                    </div>
                   </div>
                   <label className="mt-3 block text-[10px] font-medium text-slate-600">
                     Internal review notes
@@ -6885,10 +9172,12 @@ function IntakeReviewDialog({
                       placeholder="Record negotiation position, business input, approval rationale, or next step…"
                     />
                   </label>
-                  {cfoApprovalRequired ? (
+                  {details.approvalRequests.length ? (
                     <p className="mt-2 text-[10px] text-amber-700">
-                      This proposed value exceeds $500,000. CFO approval must be
-                      recorded before Approved for signature can be selected.
+                      Versioned approval requests are controlled in Approvals &
+                      Exceptions. This intake cannot advance to Approved for
+                      signature while {openApprovalCount} mandatory request
+                      {openApprovalCount === 1 ? '' : 's'} remain open.
                     </p>
                   ) : null}
                 </article>
@@ -6987,15 +9276,60 @@ function RecordDetailDialog({
       ? workspace.suppliers.find((item) => item.id === selection.id)
       : workspace.suppliers.find((item) => item.id === contract?.supplier_id);
   const record = selection.type === 'contract' ? contract : supplier;
+  const supplierRiskProfile = supplier
+    ? workspace.supplierRiskProfiles?.[String(supplier.id)]
+    : undefined;
   const [details, setDetails] = useState<RecordDetails>({
     documents: [],
     aiReviews: [],
+    amendments: [],
+    auditLogs: [],
+    approvalRequests: [],
+    approvalHistory: [],
   });
   const [detailsLoading, setDetailsLoading] = useState(true);
   const [detailsError, setDetailsError] = useState('');
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(
     null,
   );
+  const [amendmentOpen, setAmendmentOpen] = useState(false);
+  const [reviewPackageExporting, setReviewPackageExporting] = useState(false);
+  const [reviewPackageError, setReviewPackageError] = useState('');
+  const exportReviewPackage = async () => {
+    if (!contract) return;
+    setReviewPackageExporting(true);
+    setReviewPackageError('');
+    try {
+      const response = await fetch('/api/review-package', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contractId: contract.id }),
+      });
+      if (!response.ok) {
+        const body = (await response.json()) as { error?: string };
+        throw new Error(body.error || 'Unable to generate the review package.');
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get('content-disposition') ?? '';
+      const fileName =
+        disposition.match(/filename="([^"]+)"/)?.[1] ??
+        'ContractLedger_Operational_Review_Package.pdf';
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setReviewPackageError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to generate the review package.',
+      );
+    } finally {
+      setReviewPackageExporting(false);
+    }
+  };
   const loadDetails = useCallback(async () => {
     setDetailsLoading(true);
     setDetailsError('');
@@ -7021,7 +9355,14 @@ function RecordDetailDialog({
             : null;
       });
     } catch (error) {
-      setDetails({ documents: [], aiReviews: [] });
+      setDetails({
+        documents: [],
+        aiReviews: [],
+        amendments: [],
+        auditLogs: [],
+        approvalRequests: [],
+        approvalHistory: [],
+      });
       setSelectedDocumentId(null);
       setDetailsError(
         error instanceof Error
@@ -7090,13 +9431,41 @@ function RecordDetailDialog({
               ? 'Contract source document'
               : 'Supplier qualification files'}
           </div>
-          <h2
-            id="detail-dialog-title"
-            className="pr-10 text-xl font-semibold text-[#183040]"
-          >
-            {title}
-          </h2>
-          <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
+          <div className="flex flex-col justify-between gap-3 pr-10 sm:flex-row sm:items-end">
+            <div>
+              <h2
+                id="detail-dialog-title"
+                className="text-xl font-semibold text-[#183040]"
+              >
+                {title}
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
+            </div>
+            {selection.type === 'contract' && contract ? (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void exportReviewPackage()}
+                  disabled={reviewPackageExporting}
+                >
+                  {reviewPackageExporting ? (
+                    <LoaderCircle className="animate-spin" />
+                  ) : (
+                    <Download />
+                  )}
+                  Review package PDF
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => setAmendmentOpen(true)}
+                  className="bg-[#1d718f] hover:bg-[#185f78]"
+                >
+                  <Plus /> Add amendment
+                </Button>
+              </div>
+            ) : null}
+          </div>
         </div>
         <div className="space-y-6 p-6">
           {detailsError ? (
@@ -7105,6 +9474,31 @@ function RecordDetailDialog({
               <AlertTitle>Record details unavailable</AlertTitle>
               <AlertDescription>{detailsError}</AlertDescription>
             </Alert>
+          ) : null}
+          {reviewPackageError ? (
+            <Alert variant="destructive">
+              <AlertCircle className="size-4" />
+              <AlertTitle>Review package unavailable</AlertTitle>
+              <AlertDescription>{reviewPackageError}</AlertDescription>
+            </Alert>
+          ) : null}
+          {selection.type === 'supplier' && supplierRiskProfile ? (
+            <SupplierRiskProfilePanel profile={supplierRiskProfile} />
+          ) : null}
+          {selection.type === 'contract' && contract ? (
+            <ContractVersionPanel
+              contract={contract}
+              amendments={details.amendments}
+              auditLogs={details.auditLogs}
+              loading={detailsLoading}
+              onAddAmendment={() => setAmendmentOpen(true)}
+            />
+          ) : null}
+          {selection.type === 'contract' && details.approvalRequests.length ? (
+            <ExecutedApprovalHistory
+              requests={details.approvalRequests}
+              history={details.approvalHistory}
+            />
           ) : null}
           {aiReviews.length ? <AIReviewTrail items={aiReviews} /> : null}
           <section>
@@ -7229,6 +9623,906 @@ function RecordDetailDialog({
           ) : null}
         </div>
       </dialog>
+      {selection.type === 'contract' && contract ? (
+        <AmendmentDialog
+          open={amendmentOpen}
+          contract={contract}
+          onOpenChange={setAmendmentOpen}
+          onApplied={async () => {
+            await onRefresh();
+            await loadDetails();
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function SupplierRiskProfilePanel({
+  profile,
+}: {
+  profile: NonNullable<Workspace['supplierRiskProfiles']>[string];
+}) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-[#cbdcdf] bg-white">
+      <div className="flex flex-col justify-between gap-3 border-b border-[#e1e7ea] bg-[#f7fafb] px-5 py-4 sm:flex-row sm:items-start">
+        <div>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="size-4 text-[#287d9b]" />
+            <h3 className="text-sm font-semibold text-[#203845]">
+              Explainable supplier risk profile
+            </h3>
+          </div>
+          <p className="mt-1 text-[10px] text-slate-500">
+            Deterministic {profile.version} rules as of {profile.asOfDate}; no
+            model-generated score.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <StatusBadge tone={profile.level === 'high' ? 'rose' : profile.level === 'medium' ? 'amber' : 'green'}>
+            {titleCase(profile.level)} risk
+          </StatusBadge>
+          <Badge variant="outline">{profile.score} points</Badge>
+        </div>
+      </div>
+      <div className="p-4">
+        <p className="mb-3 text-[11px] text-slate-600">{profile.summary}</p>
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {profile.factors.map((factor) => (
+            <article
+              key={factor.key}
+              className="rounded-lg border border-[#dce3e8] p-3"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-[11px] font-semibold text-[#294354]">
+                  {factor.label}
+                </p>
+                <StatusBadge
+                  tone={
+                    factor.status === 'high_risk'
+                      ? 'rose'
+                      : factor.status === 'attention'
+                        ? 'amber'
+                        : factor.status === 'satisfied'
+                          ? 'green'
+                          : 'slate'
+                  }
+                >
+                  +{factor.points}
+                </StatusBadge>
+              </div>
+              <p className="mt-2 text-[10px] leading-4 text-slate-600">
+                {factor.explanation}
+              </p>
+              <p className="mt-2 border-t border-[#edf1f3] pt-2 text-[9px] leading-4 text-slate-500">
+                Evidence: {factor.evidence}
+              </p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ExecutedApprovalHistory({
+  requests,
+  history,
+}: {
+  requests: RecordDetails['approvalRequests'];
+  history: RecordDetails['approvalHistory'];
+}) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-[#cbdcdf] bg-white">
+      <div className="flex items-start justify-between gap-3 border-b border-[#e1e7ea] bg-[#f7fafb] px-5 py-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="size-4 text-[#287d9b]" />
+            <h3 className="text-sm font-semibold text-[#203845]">
+              Pre-execution approval history
+            </h3>
+          </div>
+          <p className="mt-1 text-[10px] text-slate-500">
+            Approval evidence remains attached after the agreement enters the
+            official register.
+          </p>
+        </div>
+        <Badge variant="outline">{requests.length} control(s)</Badge>
+      </div>
+      <div className="grid gap-3 p-4 lg:grid-cols-2">
+        {requests.map((request) => {
+          const latestDecision = history.find(
+            (item) => item.request_id === request.request_id,
+          );
+          return (
+            <article
+              key={String(request.request_id)}
+              className="rounded-lg border border-[#dce3e8] p-3"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold text-[#294354]">
+                    {valueText(request.rule_name)}
+                  </p>
+                  <p className="mt-1 text-[9px] text-slate-500">
+                    Rule {valueText(request.rule_key)} v
+                    {valueText(request.rule_version)} ·{' '}
+                    {valueText(request.owner_role)}
+                  </p>
+                </div>
+                <StatusBadge tone={toneForStatus(request.request_status)}>
+                  {titleCase(request.request_status)}
+                </StatusBadge>
+              </div>
+              <p className="mt-2 text-[10px] leading-4 text-slate-600">
+                {valueText(request.reason)}
+              </p>
+              {latestDecision ? (
+                <p className="mt-2 border-t border-[#edf1f3] pt-2 text-[9px] text-slate-500">
+                  Latest: {titleCase(latestDecision.action)} by{' '}
+                  {valueText(latestDecision.actor)} (
+                  {valueText(latestDecision.actor_role)}) ·{' '}
+                  {valueText(latestDecision.created_at)}
+                </p>
+              ) : null}
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ContractVersionPanel({
+  contract,
+  amendments,
+  auditLogs,
+  loading,
+  onAddAmendment,
+}: {
+  contract: Record<string, string | number | null>;
+  amendments: RecordDetails['amendments'];
+  auditLogs: RecordDetails['auditLogs'];
+  loading: boolean;
+  onAddAmendment: () => void;
+}) {
+  const ordered = [...amendments].sort(
+    (a, b) => Number(a.version_number) - Number(b.version_number),
+  );
+  const amendmentAudits = auditLogs.filter(
+    (item) => item.action === 'amendment_applied',
+  );
+  return (
+    <section className="overflow-hidden rounded-xl border border-[#bdd7e0] bg-[#f7fbfc]">
+      <div className="flex flex-col justify-between gap-3 border-b border-[#d6e4e9] px-5 py-4 sm:flex-row sm:items-center">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <FileSpreadsheet className="size-4 text-[#287d9b]" />
+            <h3>Contract version lifecycle</h3>
+            <StatusBadge tone="blue">
+              Version {valueText(contract.current_version ?? 1)}
+            </StatusBadge>
+          </div>
+          <p className="mt-1 text-[11px] text-slate-500">
+            Original agreement, verified amendments, current effective terms,
+            and change history.
+          </p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          onClick={onAddAmendment}
+          className="bg-[#1d718f] hover:bg-[#185f78]"
+        >
+          <Plus /> Add amendment
+        </Button>
+      </div>
+      <div className="grid gap-3 border-b border-[#dbe6ea] bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          ['Original value', moneyFromCents(contract.original_value_cents)],
+          ['Amendment value', moneyFromCents(contract.amendment_value_cents)],
+          ['Current value', moneyFromCents(contract.current_value_cents)],
+          ['Current expiration', usDateText(contract.expiration_date)],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-lg bg-[#f4f8f9] px-3 py-3">
+            <p className="text-[10px] text-slate-500">{label}</p>
+            <p className="mt-1 text-sm font-semibold text-[#203845]">{value}</p>
+          </div>
+        ))}
+      </div>
+      <div className="p-4">
+        <div className="relative space-y-3 before:absolute before:bottom-5 before:left-[17px] before:top-5 before:w-px before:bg-[#c8dce3]">
+          <div className="relative flex gap-3 rounded-lg border border-[#dce5e9] bg-white p-3">
+            <span className="z-10 flex size-9 shrink-0 items-center justify-center rounded-full bg-[#dceff5] text-[10px] font-semibold text-[#1d718f]">
+              V1
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-[#203845]">
+                  Original executed agreement
+                </p>
+                <StatusBadge tone={ordered.length ? 'slate' : 'green'}>
+                  {ordered.length ? 'Superseded terms' : 'Current terms'}
+                </StatusBadge>
+              </div>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Effective {usDateText(contract.effective_date)} · Original value{' '}
+                {moneyFromCents(contract.original_value_cents)}
+              </p>
+            </div>
+          </div>
+          {ordered.map((item) => (
+            <div
+              key={String(item.id)}
+              className="relative flex gap-3 rounded-lg border border-[#dce5e9] bg-white p-3"
+            >
+              <span className="z-10 flex size-9 shrink-0 items-center justify-center rounded-full bg-[#dceff5] text-[10px] font-semibold text-[#1d718f]">
+                V{valueText(item.version_number)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold text-[#203845]">
+                      {valueText(item.amendment_number)} ·{' '}
+                      {titleCase(item.amendment_type)}
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      Signed {usDateText(item.signed_date)} · Applied by{' '}
+                      {valueText(item.created_by)}
+                    </p>
+                  </div>
+                  <StatusBadge
+                    tone={item.version_status === 'current' ? 'green' : 'slate'}
+                  >
+                    {titleCase(item.version_status)}
+                  </StatusBadge>
+                </div>
+                <div className="mt-3 grid gap-2 text-[10px] sm:grid-cols-3">
+                  <div className="rounded-md bg-[#f4f8f9] px-2.5 py-2">
+                    <span className="text-slate-500">Value</span>
+                    <span className="ml-2 font-semibold text-[#294454]">
+                      {moneyFromCents(item.previous_value_cents)} →{' '}
+                      {moneyFromCents(item.resulting_value_cents)}
+                    </span>
+                  </div>
+                  <div className="rounded-md bg-[#f4f8f9] px-2.5 py-2">
+                    <span className="text-slate-500">Expiration</span>
+                    <span className="ml-2 font-semibold text-[#294454]">
+                      {usDateText(item.previous_expiration_date)} →{' '}
+                      {usDateText(item.new_expiration_date)}
+                    </span>
+                  </div>
+                  <div className="rounded-md bg-[#f4f8f9] px-2.5 py-2">
+                    <span className="text-slate-500">Net change</span>
+                    <span className="ml-2 font-semibold text-[#294454]">
+                      {moneyFromCents(item.value_change_cents)}
+                    </span>
+                  </div>
+                </div>
+                {item.scope_summary ? (
+                  <p className="mt-2 text-[10px] leading-4 text-slate-500">
+                    {valueText(item.scope_summary)}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+        {!loading && !ordered.length ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-[#bdd4dc] bg-white px-4 py-3">
+            <p className="text-[11px] text-slate-500">
+              No amendment has been recorded for this contract.
+            </p>
+            <Button variant="outline" size="sm" onClick={onAddAmendment}>
+              <Plus /> Record the first amendment
+            </Button>
+          </div>
+        ) : null}
+        {amendmentAudits.length ? (
+          <p className="mt-3 text-[10px] text-slate-500">
+            {amendmentAudits.length} amendment audit event
+            {amendmentAudits.length === 1 ? '' : 's'} retained.
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function AmendmentDialog({
+  open,
+  contract,
+  onOpenChange,
+  onApplied,
+}: {
+  open: boolean;
+  contract: Record<string, string | number | null>;
+  onOpenChange: (open: boolean) => void;
+  onApplied: () => Promise<void>;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const previewUrlRef = useRef('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [result, setResult] = useState<AmendmentAnalysisResponse | null>(null);
+  const [status, setStatus] = useState<
+    'idle' | 'analyzing' | 'ready' | 'saving' | 'saved' | 'error'
+  >('idle');
+  const [error, setError] = useState('');
+  const [confirmed, setConfirmed] = useState(false);
+  const [overrideReasons, setOverrideReasons] = useState<
+    Partial<Record<AmendmentFieldKey, string>>
+  >({});
+
+  const selectFile = useCallback((nextFile: File | null) => {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    const nextPreview =
+      nextFile?.type === 'application/pdf' ? URL.createObjectURL(nextFile) : '';
+    previewUrlRef.current = nextPreview;
+    setPreviewUrl(nextPreview);
+    setFile(nextFile);
+    setResult(null);
+    setConfirmed(false);
+    setOverrideReasons({});
+    setStatus('idle');
+    setError('');
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    };
+  }, []);
+
+  const closeDialog = () => {
+    selectFile(null);
+    onOpenChange(false);
+  };
+
+  const loadDemoAmendment = async () => {
+    try {
+      const fileName = '14_Apex_Equipment_Amendment_No_2.pdf';
+      const response = await fetch(`/demo-documents/${fileName}`);
+      if (!response.ok) throw new Error('The demo amendment is unavailable.');
+      const blob = await response.blob();
+      selectFile(new File([blob], fileName, { type: 'application/pdf' }));
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : 'The demo amendment is unavailable.',
+      );
+      setStatus('error');
+    }
+  };
+
+  const analyze = async () => {
+    if (!file) return;
+    setStatus('analyzing');
+    setError('');
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('contractId', String(contract.id));
+      const response = await fetch('/api/amendments/analyze', {
+        method: 'POST',
+        body: form,
+      });
+      const body = (await response.json()) as AmendmentAnalysisResponse & {
+        error?: string;
+      };
+      if (!response.ok)
+        throw new Error(body.error || 'The amendment could not be analyzed.');
+      setResult(body);
+      setConfirmed(false);
+      setOverrideReasons({});
+      setStatus('ready');
+    } catch (analysisError) {
+      setError(
+        analysisError instanceof Error
+          ? analysisError.message
+          : 'The amendment could not be analyzed.',
+      );
+      setStatus('error');
+    }
+  };
+
+  const updateField = (
+    fieldName: AmendmentFieldKey,
+    value: string | number | null,
+  ) => {
+    setResult((current) => {
+      if (!current) return current;
+      const field = current.analysis[fieldName] as ExtractedField;
+      return {
+        ...current,
+        analysis: {
+          ...current.analysis,
+          [fieldName]: { ...field, value },
+        },
+      };
+    });
+    setConfirmed(false);
+  };
+
+  const save = async () => {
+    if (!result || !confirmed) return;
+    setStatus('saving');
+    setError('');
+    try {
+      const response = await fetch('/api/amendments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contractId: contract.id,
+          analysisRunId: result.analysisRunId,
+          document: result.document,
+          analysis: result.analysis,
+          review: { confirmed: true, overrideReasons },
+        }),
+      });
+      const body = (await response.json()) as {
+        saved?: boolean;
+        error?: string;
+      };
+      if (!response.ok || !body.saved)
+        throw new Error(body.error || 'The amendment could not be applied.');
+      await onApplied();
+      setStatus('saved');
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : 'The amendment could not be applied.',
+      );
+      setStatus('error');
+    }
+  };
+
+  if (!open) return null;
+  const numberFromField = (fieldName: AmendmentFieldKey) => {
+    const value = result?.analysis[fieldName]?.value;
+    if (typeof value === 'number') return value;
+    const parsed = Number(String(value ?? '').replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const valueChange = numberFromField('valueChange') ?? 0;
+  const statedResult = numberFromField('resultingContractValue');
+  const proposedValueCents =
+    statedResult === null
+      ? Number(contract.current_value_cents ?? 0) +
+        Math.round(valueChange * 100)
+      : Math.round(statedResult * 100);
+  const proposedExpiration =
+    result?.analysis.newExpirationDate.value || contract.expiration_date;
+  const missingAmendmentOverrideCount = result
+    ? amendmentExtractionFields.filter(
+        ([fieldName]) =>
+          needsSourceOverride(
+            fieldName,
+            result.analysis[fieldName] as ExtractedField,
+          ) && (overrideReasons[fieldName]?.trim().length ?? 0) < 12,
+      ).length
+    : 0;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-[2px]"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && status !== 'saving')
+          closeDialog();
+      }}
+    >
+      <dialog
+        open
+        aria-modal="true"
+        aria-labelledby="amendment-dialog-title"
+        className="relative m-0 grid h-[88vh] min-h-[660px] w-[96vw] max-w-[1440px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl bg-white p-0 text-sm shadow-2xl ring-1 ring-slate-900/10"
+      >
+        <button
+          type="button"
+          onClick={closeDialog}
+          disabled={status === 'saving'}
+          aria-label="Close amendment workspace"
+          className="absolute right-4 top-4 z-10 flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+        >
+          ×
+        </button>
+        <header className="border-b border-[#e1e7ea] px-6 py-4 pr-14">
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
+            <Sparkles className="size-3.5" /> AI-assisted contract versioning
+          </div>
+          <h2 id="amendment-dialog-title" className="mt-1">
+            Add amendment to {valueText(contract.contract_number)}
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Extract only the signed changes, verify them against the source,
+            then update current effective terms and monitoring dates.
+          </p>
+        </header>
+
+        {status === 'saved' ? (
+          <div className="flex min-h-0 flex-col items-center justify-center px-6 text-center">
+            <span className="flex size-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+              <Check className="size-6" />
+            </span>
+            <h3 className="mt-4">Amendment applied and versioned</h3>
+            <p className="mt-2 max-w-lg text-xs leading-5 text-slate-500">
+              The source file and verified changes are retained. Current terms,
+              Contract Register values, and renewal monitoring have been
+              updated.
+            </p>
+          </div>
+        ) : (
+          <div className="grid min-h-0 overflow-hidden xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <section className="min-h-0 overflow-y-auto border-b border-[#e1e7ea] bg-[#f8fafb] p-5 xl:border-b-0 xl:border-r">
+              <div className="rounded-xl border-2 border-dashed border-[#c9d8de] bg-white p-4">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.txt,application/pdf,text/plain"
+                  className="sr-only"
+                  onChange={(event) =>
+                    selectFile(event.target.files?.[0] ?? null)
+                  }
+                />
+                <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:text-left">
+                  <span className="flex size-10 items-center justify-center rounded-lg bg-[#e4f2f6] text-[#287693]">
+                    <Upload className="size-5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-[#203845]">
+                      {file?.name ??
+                        'Choose a signed amendment or change order'}
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      Text-based PDF or TXT · maximum 8 MB
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={loadDemoAmendment}
+                    >
+                      Use demo PDF
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      Browse files
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 overflow-hidden rounded-xl border border-[#d7e1e6] bg-[#eef2f4]">
+                <div className="border-b border-[#d7e1e6] bg-white px-4 py-3">
+                  <h3>Amendment source document</h3>
+                  <p className="mt-1 text-[10px] text-slate-500">
+                    Read the signed language beside the extracted changes.
+                  </p>
+                </div>
+                {previewUrl ? (
+                  <iframe
+                    title={file?.name ?? 'Amendment source'}
+                    src={previewUrl}
+                    className="h-[56vh] min-h-[460px] w-full bg-white"
+                  />
+                ) : (
+                  <div className="flex min-h-[380px] flex-col items-center justify-center px-6 text-center">
+                    <FileText className="size-7 text-slate-300" />
+                    <p className="mt-3 text-xs text-slate-500">
+                      Select an amendment to preview and analyze it.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="min-h-0 overflow-y-auto p-5">
+              {error ? (
+                <Alert variant="destructive" className="mb-4">
+                  <AlertCircle />
+                  <AlertTitle>Amendment needs attention</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              ) : null}
+              {status === 'analyzing' ? (
+                <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-[#dce3e8] bg-[#f8fafb] text-center">
+                  <LoaderCircle className="size-7 animate-spin text-[#287d9b]" />
+                  <p className="mt-3 text-sm font-medium">
+                    Extracting amendment deltas…
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Comparing the source against verified current contract
+                    terms.
+                  </p>
+                </div>
+              ) : result ? (
+                <div className="space-y-4">
+                  <DocumentQualitySummary report={result.qualityReport} />
+                  <div className="grid gap-3 rounded-xl border border-[#bdd7e0] bg-[#f1f8fa] p-4 sm:grid-cols-2">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-[0.1em] text-slate-500">
+                        Current value
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-[#203845]">
+                        {moneyFromCents(contract.current_value_cents)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-[0.1em] text-[#2d788f]">
+                        Resulting value
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-[#1d718f]">
+                        {moneyFromCents(proposedValueCents)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-500">
+                        Current expiration
+                      </p>
+                      <p className="mt-1 text-xs font-semibold text-[#203845]">
+                        {usDateText(contract.expiration_date)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-[#2d788f]">
+                        Resulting expiration
+                      </p>
+                      <p className="mt-1 text-xs font-semibold text-[#1d718f]">
+                        {usDateText(proposedExpiration)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {amendmentExtractionFields.map(([fieldName, label]) => (
+                      <AmendmentFieldControl
+                        key={fieldName}
+                        fieldName={fieldName}
+                        label={label}
+                        field={result.analysis[fieldName] as ExtractedField}
+                        onChange={(value) => updateField(fieldName, value)}
+                        overrideReason={overrideReasons[fieldName] ?? ''}
+                        onOverrideReasonChange={(reason) =>
+                          setOverrideReasons((current) => ({
+                            ...current,
+                            [fieldName]: reason,
+                          }))
+                        }
+                      />
+                    ))}
+                  </div>
+                  {result.analysis.warnings.length ? (
+                    <Alert>
+                      <AlertTriangle />
+                      <AlertTitle>AI extraction warnings</AlertTitle>
+                      <AlertDescription>
+                        {result.analysis.warnings.join(' ')}
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (missingAmendmentOverrideCount) {
+                        setError(
+                          `Add a reviewer override reason for ${missingAmendmentOverrideCount} critical field${missingAmendmentOverrideCount === 1 ? '' : 's'} without source evidence.`,
+                        );
+                        return;
+                      }
+                      setConfirmed((current) => !current);
+                    }}
+                    className={`flex w-full items-start gap-3 rounded-xl border p-4 text-left ${confirmed ? 'border-emerald-300 bg-emerald-50' : 'border-[#cbd7dd] bg-white'}`}
+                  >
+                    <span
+                      className={`mt-0.5 flex size-5 items-center justify-center rounded border ${confirmed ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300'}`}
+                    >
+                      {confirmed ? <Check className="size-3.5" /> : null}
+                    </span>
+                    <span>
+                      <span className="block text-xs font-semibold text-[#203845]">
+                        Human verification complete
+                      </span>
+                      <span className="mt-1 block text-[10px] leading-4 text-slate-500">
+                        I compared these changes with the source and approve
+                        updating the current effective terms and monitoring
+                        schedule.
+                      </span>
+                    </span>
+                  </button>
+                </div>
+              ) : (
+                <div className="flex min-h-[420px] flex-col items-center justify-center rounded-xl border border-dashed border-[#cbd7dd] bg-[#f8fafb] px-6 text-center">
+                  <Sparkles className="size-7 text-[#72a9ba]" />
+                  <p className="mt-3 text-xs font-semibold text-[#294354]">
+                    Upload the signed amendment first
+                  </p>
+                  <p className="mt-1 max-w-sm text-[10px] leading-4 text-slate-500">
+                    AI will extract only changed terms and preserve source-page
+                    evidence.
+                  </p>
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+
+        <footer className="flex flex-col-reverse gap-2 border-t border-[#e1e7ea] bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
+          {status === 'saved' ? (
+            <Button
+              onClick={closeDialog}
+              className="bg-[#1d718f] hover:bg-[#185f78]"
+            >
+              Return to contract
+            </Button>
+          ) : result ? (
+            <>
+              <Button variant="outline" onClick={() => selectFile(null)}>
+                Start over
+              </Button>
+              <Button
+                onClick={save}
+                disabled={
+                  !confirmed ||
+                  missingAmendmentOverrideCount > 0 ||
+                  status === 'saving'
+                }
+                className="bg-[#1d718f] hover:bg-[#185f78]"
+              >
+                {status === 'saving' ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <Database />
+                )}
+                {confirmed
+                  ? 'Apply verified amendment'
+                  : 'Confirm review to apply'}
+              </Button>
+            </>
+          ) : (
+            <Button
+              onClick={analyze}
+              disabled={!file || status === 'analyzing'}
+              className="bg-[#1d718f] hover:bg-[#185f78]"
+            >
+              <Sparkles /> Analyze amendment with DeepSeek
+            </Button>
+          )}
+        </footer>
+      </dialog>
+    </div>
+  );
+}
+
+function AmendmentFieldControl({
+  fieldName,
+  label,
+  field,
+  onChange,
+  overrideReason,
+  onOverrideReasonChange,
+}: {
+  fieldName: AmendmentFieldKey;
+  label: string;
+  field: ExtractedField;
+  onChange: (value: string | number | null) => void;
+  overrideReason: string;
+  onOverrideReasonChange: (reason: string) => void;
+}) {
+  const stringValue = field.value === null ? '' : String(field.value);
+  const dateField = [
+    'signedDate',
+    'effectiveDate',
+    'newExpirationDate',
+  ].includes(fieldName);
+  const numberField = [
+    'valueChange',
+    'resultingContractValue',
+    'noticeDays',
+  ].includes(fieldName);
+  return (
+    <div
+      className={`rounded-lg border border-[#dce3e8] bg-white p-3 ${fieldName === 'scopeSummary' ? 'sm:col-span-2' : ''}`}
+    >
+      <span className="flex items-center justify-between gap-2 text-[10px] font-semibold text-[#294454]">
+        {label}
+        <span className="font-normal text-slate-400">
+          {Math.round(field.confidence * 100)}% · page {field.sourcePage ?? '—'}
+        </span>
+      </span>
+      {fieldName === 'amendmentType' ? (
+        <select
+          aria-label={label}
+          value={stringValue || 'amendment'}
+          onChange={(event) => onChange(event.target.value)}
+          className="mt-2 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
+        >
+          {[
+            'amendment',
+            'change_order',
+            'extension',
+            'renewal',
+            'termination',
+            'price_adjustment',
+            'sow_replacement',
+          ].map((option) => (
+            <option key={option} value={option}>
+              {titleCase(option)}
+            </option>
+          ))}
+        </select>
+      ) : fieldName === 'renewalType' ? (
+        <select
+          aria-label={label}
+          value={stringValue}
+          onChange={(event) => onChange(event.target.value || null)}
+          className="mt-2 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
+        >
+          <option value="">Unchanged</option>
+          <option value="automatic">Automatic</option>
+          <option value="optional">Optional</option>
+          <option value="none">None</option>
+        </select>
+      ) : fieldName === 'scopeSummary' ? (
+        <textarea
+          aria-label={label}
+          value={stringValue}
+          onChange={(event) => onChange(event.target.value)}
+          rows={3}
+          className="mt-2 w-full rounded-md border border-input bg-white px-3 py-2 text-xs outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
+        />
+      ) : dateField ? (
+        <USDateInput
+          key={stringValue || `${fieldName}-empty`}
+          value={stringValue}
+          onChange={(value) => onChange(value || null)}
+          ariaLabel={`${label} in month/day/year format`}
+          className="mt-2 h-9 bg-white text-xs"
+        />
+      ) : (
+        <Input
+          aria-label={label}
+          type={numberField ? 'number' : 'text'}
+          step={fieldName === 'noticeDays' ? '1' : '0.01'}
+          value={stringValue}
+          onChange={(event) =>
+            onChange(
+              numberField
+                ? event.target.value === ''
+                  ? null
+                  : Number(event.target.value)
+                : event.target.value,
+            )
+          }
+          className="mt-2 h-9 bg-white text-xs"
+        />
+      )}
+      {field.sourceQuote ? (
+        <span className="mt-2 block line-clamp-2 text-[9px] leading-4 text-slate-400">
+          “{field.sourceQuote}”
+        </span>
+      ) : null}
+      {needsSourceOverride(fieldName, field) ? (
+        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2">
+          <label
+            htmlFor={`amendment-override-${fieldName}`}
+            className="text-[9px] font-semibold text-amber-800"
+          >
+            Required source override reason
+          </label>
+          <Input
+            id={`amendment-override-${fieldName}`}
+            value={overrideReason}
+            onChange={(event) => onOverrideReasonChange(event.target.value)}
+            placeholder="Explain independent verification"
+            className="mt-1 h-8 bg-white text-[10px]"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -7243,9 +10537,26 @@ function storedReviewValue(value: unknown) {
 }
 
 function AIReviewTrail({ items }: { items: RecordDetails['aiReviews'] }) {
+  const grouped = new Map<string, RecordDetails['aiReviews']>();
+  items.forEach((item) => {
+    const key = String(item.analysis_run_id);
+    grouped.set(key, [...(grouped.get(key) ?? []), item]);
+  });
+
+  return (
+    <div className="space-y-4">
+      {[...grouped.entries()].map(([analysisRunId, runItems]) => (
+        <AIReviewRunTrail key={analysisRunId} items={runItems} />
+      ))}
+    </div>
+  );
+}
+
+function AIReviewRunTrail({ items }: { items: RecordDetails['aiReviews'] }) {
   const run = items[0];
   const labelByField: Record<string, string> = {
     ...Object.fromEntries(extractionFields),
+    ...Object.fromEntries(amendmentExtractionFields),
     supplierLegalName: 'Supplier legal name',
     documentType: 'Document type',
     issuer: 'Issuer / authority',
@@ -7257,6 +10568,7 @@ function AIReviewTrail({ items }: { items: RecordDetails['aiReviews'] }) {
   const orderedItems = [...items].sort((a, b) => {
     const order = [
       ...extractionFields.map(([fieldName]) => fieldName),
+      ...amendmentExtractionFields.map(([fieldName]) => fieldName),
       'documentType',
       'issuer',
       'documentNumber',
@@ -7277,7 +10589,9 @@ function AIReviewTrail({ items }: { items: RecordDetails['aiReviews'] }) {
             <h3 className="text-sm font-semibold text-[#1b3442]">
               {run.stage === 'supplier_document'
                 ? 'AI supplier-document audit trail'
-                : 'AI contract extraction audit trail'}
+                : run.stage === 'amendment'
+                  ? 'AI amendment delta audit trail'
+                  : 'AI contract extraction audit trail'}
             </h3>
             <StatusBadge
               tone={Number(run.correction_count ?? 0) ? 'amber' : 'green'}
@@ -7333,6 +10647,9 @@ function AIReviewTrail({ items }: { items: RecordDetails['aiReviews'] }) {
                 <TableCell className="max-w-[280px] pr-5 text-[10px] leading-4 text-slate-500">
                   {item.source_page ? `Page ${item.source_page}` : 'No page'}
                   {item.source_quote ? ` · “${item.source_quote}”` : ''}
+                  {item.override_reason
+                    ? ` · Override: ${valueText(item.override_reason)}`
+                    : ''}
                 </TableCell>
               </TableRow>
             ))}
@@ -7364,6 +10681,21 @@ function SupplierDocumentUpload({
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [sourceOverrideReason, setSourceOverrideReason] = useState('');
+
+  const supplierCriticalFields = aiResult
+    ? (
+        [
+          ['supplierLegalName', aiResult.analysis.supplierLegalName],
+          ['documentType', aiResult.analysis.documentType],
+          ['effectiveDate', aiResult.analysis.effectiveDate],
+          ['expirationDate', aiResult.analysis.expirationDate],
+        ] satisfies Array<[string, ExtractedField]>
+      ).filter(([fieldName, field]) => needsSourceOverride(fieldName, field))
+    : [];
+  const supplierOverrideMissing =
+    supplierCriticalFields.length > 0 &&
+    sourceOverrideReason.trim().length < 12;
 
   const analyze = async () => {
     if (!file) return setMessage('Choose a PDF, PNG, or JPEG file.');
@@ -7417,6 +10749,10 @@ function SupplierDocumentUpload({
 
   const upload = async () => {
     if (!file) return setMessage('Choose a PDF, PNG, or JPEG file.');
+    if (supplierOverrideMissing)
+      return setMessage(
+        'Add a reviewer override reason of at least 12 characters for critical values without source evidence.',
+      );
     setSaving(true);
     setMessage('');
     try {
@@ -7429,6 +10765,7 @@ function SupplierDocumentUpload({
       form.append('issuer', issuer);
       form.append('documentNumber', documentNumber);
       form.append('coverageSummary', coverageSummary);
+      form.append('overrideReason', sourceOverrideReason);
       form.append('file', file);
       const response = await fetch('/api/supplier-documents', {
         method: 'POST',
@@ -7445,6 +10782,7 @@ function SupplierDocumentUpload({
       setEffectiveDate('');
       setExpirationDate('');
       setCoverageSummary('');
+      setSourceOverrideReason('');
       await onUploaded();
     } catch (error) {
       setMessage(
@@ -7468,9 +10806,9 @@ function SupplierDocumentUpload({
       <p className="mt-1 text-[11px] text-slate-500">
         Store tax, insurance, business registration, licensing, risk, safety,
         diversity, and other supplier evidence. AI extracts metadata, updates
-        blank supplier fields, archives the file, and flags missing, expired,
-        or inconsistent information for follow-up. It does not approve or
-        reject the supplier.
+        blank supplier fields, archives the file, and flags missing, expired, or
+        inconsistent information for follow-up. It does not approve or reject
+        the supplier.
       </p>
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <select
@@ -7522,6 +10860,7 @@ function SupplierDocumentUpload({
           onChange={(event) => {
             setFile(event.target.files?.[0] ?? null);
             setAiResult(null);
+            setSourceOverrideReason('');
             setMessage('');
           }}
           className="h-9 bg-white text-xs file:mr-3 file:border-0 file:bg-transparent"
@@ -7541,7 +10880,11 @@ function SupplierDocumentUpload({
             )}
             Analyze with AI
           </Button>
-          <Button size="sm" onClick={upload} disabled={saving || analyzing}>
+          <Button
+            size="sm"
+            onClick={upload}
+            disabled={saving || analyzing || supplierOverrideMissing}
+          >
             {saving ? <LoaderCircle className="animate-spin" /> : <Upload />}
             Upload reviewed file
           </Button>
@@ -7552,6 +10895,29 @@ function SupplierDocumentUpload({
           result={aiResult}
           supplierName={supplierName}
         />
+      ) : null}
+      {supplierCriticalFields.length ? (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <label
+            htmlFor="supplier-document-source-override"
+            className="text-[10px] font-semibold text-amber-900"
+          >
+            Required source override reason
+          </label>
+          <p className="mt-1 text-[9px] text-amber-700">
+            Critical fields without page-and-quote support:{' '}
+            {supplierCriticalFields
+              .map(([fieldName]) => titleCase(String(fieldName)))
+              .join(', ')}
+          </p>
+          <Input
+            id="supplier-document-source-override"
+            value={sourceOverrideReason}
+            onChange={(event) => setSourceOverrideReason(event.target.value)}
+            placeholder="Explain how the values were independently verified"
+            className="mt-2 h-8 bg-white text-[10px]"
+          />
+        </div>
       ) : null}
       {message ? (
         <p
@@ -7625,6 +10991,9 @@ function SupplierDocumentAIReview({
           {result.model}
         </Badge>
       </div>
+      <div className="mt-3">
+        <DocumentQualitySummary report={result.qualityReport} />
+      </div>
       <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
         {fields.map(([label, field]) => (
           <div
@@ -7685,20 +11054,27 @@ function AnalysisReview({
   originalAnalysis,
   stage,
   fieldReviews,
+  fieldOverrideReasons,
   onFieldChange,
   onConfirmField,
   onConfirmAll,
+  onOverrideReasonChange,
 }: {
   result: AnalysisResponse;
   originalAnalysis: ContractAnalysis | null;
   stage: IntakeStage;
   fieldReviews: Partial<Record<ExtractionFieldKey, FieldReviewStatus>>;
+  fieldOverrideReasons: Partial<Record<ExtractionFieldKey, string>>;
   onFieldChange: (
     fieldName: ExtractionFieldKey,
     value: string | number | null,
   ) => void;
   onConfirmField: (fieldName: ExtractionFieldKey) => void;
   onConfirmAll: () => void;
+  onOverrideReasonChange: (
+    fieldName: ExtractionFieldKey,
+    reason: string,
+  ) => void;
 }) {
   const confirmedCount = extractionFields.filter(
     ([fieldName]) =>
@@ -7711,6 +11087,7 @@ function AnalysisReview({
 
   return (
     <div className="space-y-5">
+      <DocumentQualitySummary report={result.qualityReport} />
       <div className="rounded-xl border border-[#bdd7e0] bg-[#f0f8fa] p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -7767,6 +11144,10 @@ function AnalysisReview({
             field) as ExtractedField;
           const reviewStatus = fieldReviews[key] ?? 'pending';
           const lowConfidence = field.confidence < 0.75;
+          const sourceOverrideRequired = needsSourceOverride(key, {
+            ...originalField,
+            value: field.value,
+          });
           const inputValue = field.value === null ? '' : String(field.value);
           const updateValue = (rawValue: string) => {
             if (key === 'contractValue' || key === 'noticeDays') {
@@ -7855,6 +11236,29 @@ function AnalysisReview({
                     : ' · No supporting quote found'}
                 </span>
               </div>
+              {sourceOverrideRequired ? (
+                <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2">
+                  <label
+                    htmlFor={`source-override-${key}`}
+                    className="text-[9px] font-semibold uppercase tracking-[0.06em] text-amber-800"
+                  >
+                    Required source override reason
+                  </label>
+                  <Input
+                    id={`source-override-${key}`}
+                    value={fieldOverrideReasons[key] ?? ''}
+                    onChange={(event) =>
+                      onOverrideReasonChange(key, event.target.value)
+                    }
+                    placeholder="Explain how this value was independently verified"
+                    className="mt-1 h-8 bg-white text-[10px]"
+                  />
+                  <p className="mt-1 text-[9px] text-amber-700">
+                    At least 12 characters. This reason is retained in the AI
+                    review audit trail.
+                  </p>
+                </div>
+              ) : null}
               <div className="mt-3 flex justify-end">
                 <Button
                   type="button"

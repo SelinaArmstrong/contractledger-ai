@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { evaluateAIResults } from '@/lib/ai-evaluation';
+import { AI_EVALUATION_CASES, evaluateAIResults } from '@/lib/ai-evaluation';
 
 const field = (value: string | number, sourcePage = 1) => ({
   value,
@@ -44,7 +44,7 @@ describe('AI evaluation scoring', () => {
   it('does not treat a page-zero citation as source-backed', () => {
     const result = evaluateAIResults([
       {
-        caseId: 'supplier-coi',
+        caseId: 'supplier-harbor-coi',
         model: 'test-model',
         analysis: {
           supplierLegalName: field('Harbor Technology Solutions Inc.', 0),
@@ -62,5 +62,36 @@ describe('AI evaluation scoring', () => {
         { caseId: 'client-supplied-case', model: 'test-model', analysis: {} },
       ]),
     ).toThrow('Unknown AI evaluation case.');
+  });
+
+  it('publishes a locked 15-document manifest with no duplicate IDs', () => {
+    expect(AI_EVALUATION_CASES).toHaveLength(15);
+    expect(new Set(AI_EVALUATION_CASES.map((item) => item.id)).size).toBe(15);
+    expect(
+      AI_EVALUATION_CASES.some((item) => item.difficulty === 'negative'),
+    ).toBe(true);
+  });
+
+  it('blocks promotion when critical accuracy regresses beyond the gate', () => {
+    const result = evaluateAIResults(
+      [
+        {
+          caseId: 'negative-incomplete-note',
+          model: 'candidate-model',
+          promptVersion: 'candidate-prompt',
+          analysis: {
+            contractNumber: field('invented-contract'),
+            contractValue: field(999999),
+          },
+        },
+      ],
+      { id: 'aieval-approved', criticalAccuracyPercent: 100 },
+    );
+
+    expect(result).toMatchObject({
+      criticalAccuracyPercent: 66.7,
+      regressionDelta: -33.3,
+      promotionStatus: 'blocked',
+    });
   });
 });

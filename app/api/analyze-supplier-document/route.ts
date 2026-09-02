@@ -1,5 +1,4 @@
 import { env } from 'cloudflare:workers';
-import { extractText, getDocumentProxy } from 'unpdf';
 import { z } from 'zod';
 
 import { ensureWorkspaceDatabase } from '@/db/bootstrap';
@@ -14,10 +13,17 @@ import {
   enforceRateLimit,
 } from '@/lib/server/request-security';
 import { assertSupplierFileSignature } from '@/lib/server/file-validation';
+import {
+  DocumentQualityError,
+  imageQualityReport,
+  preflightPdf,
+  qualityWarnings,
+} from '@/lib/document-quality';
 
 const MAX_PAGES = 20;
 const MAX_TEXT_CHARS = 40_000;
-const PROMPT_VERSION = 'us-supplier-qualification-profile-2026.2';
+export const SUPPLIER_PROMPT_VERSION =
+  'us-supplier-qualification-profile-2026.2';
 
 const extractedFieldSchema = z.object({
   value: z.union([z.string(), z.number(), z.null()]),
@@ -80,32 +86,21 @@ async function withTimeout<T>(
 }
 
 async function extractPdfText(file: File) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const pdf = await withTimeout(
-    getDocumentProxy(bytes, { maxImageSize: 16_777_216 }),
-    12_000,
-    'PDF parsing',
-  );
-  if (pdf.numPages > MAX_PAGES)
-    throw new Error(`Supplier PDFs may contain up to ${MAX_PAGES} pages.`);
-  const extracted = await withTimeout(
-    extractText(pdf, { mergePages: false }),
-    18_000,
-    'PDF text extraction',
-  );
-  const pages = Array.isArray(extracted.text)
-    ? extracted.text
-    : [extracted.text];
+  const preflight = await preflightPdf(file, {
+    maximumPages: MAX_PAGES,
+    timeout: withTimeout,
+    minimumUsableCharacters: 50,
+  });
+  const pages = preflight.pages;
   const text = pages
     .map((page, index) => `=== PAGE ${index + 1} ===\n${page}`)
     .join('\n\n')
     .slice(0, MAX_TEXT_CHARS);
-  if (text.replace(/=== PAGE \d+ ===/g, '').trim().length < 50) {
-    throw new Error(
-      'No usable text layer was found. Upload a PNG or JPEG image for AI visual extraction, or use a text-based PDF.',
-    );
-  }
-  return { totalPages: extracted.totalPages, text };
+  return {
+    totalPages: preflight.report.totalPages,
+    text,
+    qualityReport: preflight.report,
+  };
 }
 
 function imageDataUrl(file: File, bytes: Uint8Array) {
@@ -174,6 +169,7 @@ export async function analyzeSupplierFile(
   const prompt = buildPrompt(expectedType);
   const isImage = file.type === 'image/png' || file.type === 'image/jpeg';
   let totalPages = 1;
+  let qualityReport = imageQualityReport(file);
   let input: unknown;
   let model = 'deepseek-v4-flash';
   if (isImage) {
@@ -191,6 +187,7 @@ export async function analyzeSupplierFile(
   } else {
     const extracted = await extractPdfText(file);
     totalPages = extracted.totalPages;
+    qualityReport = extracted.qualityReport;
     input = `${prompt}\n\nDOCUMENT\n${extracted.text}`;
   }
 
@@ -235,17 +232,25 @@ export async function analyzeSupplierFile(
   const content = response.output
     ?.find((item) => item.type === 'message')
     ?.content?.find((item) => item.type === 'output_text')?.text;
-  if (!content) throw new Error('DeepSeek returned an empty supplier extraction.');
+  if (!content)
+    throw new Error('DeepSeek returned an empty supplier extraction.');
 
+  const parsed = analysisSchema.parse(parseModelJson(content));
   return {
-    analysis: analysisSchema.parse(parseModelJson(content)),
+    analysis: {
+      ...parsed,
+      warnings: [...qualityWarnings(qualityReport), ...parsed.warnings],
+    },
     totalPages,
+    qualityReport,
     model: response.model ?? model,
   };
 }
 
 export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, { write: true });
+  const access = await authorizeApiRequest(request, {
+    permission: 'submit_documents',
+  });
   if (!access.ok) return access.response;
 
   try {
@@ -286,15 +291,16 @@ export async function POST(request: Request) {
     try {
       await env.DB.prepare(`INSERT INTO ai_analysis_runs
         (id, stage, file_name, storage_key, model, prompt_version,
-         original_result_json, status, created_at)
-        VALUES (?, 'supplier_document', ?, ?, ?, ?, ?, 'pending_review', ?)`)
+         original_result_json, quality_report_json, status, created_at)
+        VALUES (?, 'supplier_document', ?, ?, ?, ?, ?, ?, 'pending_review', ?)`)
         .bind(
           analysisRunId,
           file.name,
           storageKey,
           resolvedModel,
-          PROMPT_VERSION,
+          SUPPLIER_PROMPT_VERSION,
           JSON.stringify(analysis),
+          JSON.stringify(result.qualityReport),
           new Date().toISOString(),
         )
         .run();
@@ -311,9 +317,16 @@ export async function POST(request: Request) {
         storageKey,
         mimeType: file.type,
       },
+      qualityReport: result.qualityReport,
       model: resolvedModel,
     });
   } catch (error) {
+    if (error instanceof DocumentQualityError) {
+      return Response.json(
+        { error: error.message, qualityReport: error.report },
+        { status: 422 },
+      );
+    }
     const message =
       error instanceof z.ZodError
         ? 'DeepSeek returned an incomplete supplier extraction.'

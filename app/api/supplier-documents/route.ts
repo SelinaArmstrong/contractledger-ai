@@ -13,6 +13,7 @@ import {
 import { authorizeApiRequest } from '@/lib/server/request-security';
 import { assertSupplierFileSignature } from '@/lib/server/file-validation';
 import { isoDateSchema } from '@/lib/validation';
+import { validatedOverrideReason } from '@/lib/ai-governance';
 
 const fieldsSchema = z.object({
   supplierId: z.string().min(1),
@@ -23,10 +24,13 @@ const fieldsSchema = z.object({
   issuer: z.string().trim().max(160).optional().or(z.literal('')),
   documentNumber: z.string().trim().max(100).optional().or(z.literal('')),
   coverageSummary: z.string().trim().max(1000).optional().or(z.literal('')),
+  overrideReason: z.string().trim().max(500).optional().or(z.literal('')),
 });
 
 export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, { write: true });
+  const access = await authorizeApiRequest(request, {
+    permission: 'edit_supplier_records',
+  });
   if (!access.ok) return access.response;
 
   let newlyStoredKey: string | null = null;
@@ -42,6 +46,7 @@ export async function POST(request: Request) {
       issuer: form.get('issuer') ?? '',
       documentNumber: form.get('documentNumber') ?? '',
       coverageSummary: form.get('coverageSummary') ?? '',
+      overrideReason: form.get('overrideReason') ?? '',
     });
     const file = form.get('file');
     if (!(file instanceof File))
@@ -131,7 +136,8 @@ export async function POST(request: Request) {
       : null;
     const extractedText = (fieldName: string) => {
       const field = analyzedResult?.[fieldName];
-      if (!field || typeof field !== 'object' || Array.isArray(field)) return '';
+      if (!field || typeof field !== 'object' || Array.isArray(field))
+        return '';
       const value = (field as { value?: unknown }).value;
       return typeof value === 'string' ? value.trim() : '';
     };
@@ -142,10 +148,10 @@ export async function POST(request: Request) {
         normalizeSupplierName(supplier.legal_name);
     const analysisHasIssues = Boolean(
       analyzedResult &&
-        ((Array.isArray(analyzedResult.findings) &&
-          analyzedResult.findings.length) ||
-          (Array.isArray(analyzedResult.warnings) &&
-            analyzedResult.warnings.length)),
+      ((Array.isArray(analyzedResult.findings) &&
+        analyzedResult.findings.length) ||
+        (Array.isArray(analyzedResult.warnings) &&
+          analyzedResult.warnings.length)),
     );
     const documentReviewStatus =
       fields.expirationDate && fields.expirationDate < now.slice(0, 10)
@@ -241,10 +247,10 @@ export async function POST(request: Request) {
         ELSE 'complete'
       END,
       qualification_review_date = ?, updated_at = ? WHERE id = ?`).bind(
-        now.slice(0, 10),
-        now,
-        fields.supplierId,
-      );
+      now.slice(0, 10),
+      now,
+      fields.supplierId,
+    );
 
     const aiReviewStatements = [];
     let correctionCount = 0;
@@ -277,14 +283,19 @@ export async function POST(request: Request) {
         };
         const corrected =
           JSON.stringify(originalField.value) !== JSON.stringify(verifiedValue);
+        const overrideReason = validatedOverrideReason(
+          fieldName,
+          { ...originalField, value: verifiedValue },
+          fields.overrideReason,
+        );
         if (corrected) correctionCount += 1;
         verifiedResult[fieldName] = { ...originalField, value: verifiedValue };
         aiReviewStatements.push(
           env.DB.prepare(`INSERT INTO ai_field_reviews
             (id, analysis_run_id, field_name, original_value_json,
              verified_value_json, confidence, source_page, source_quote,
-             review_status, reviewed_by, reviewed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+             override_reason, review_status, reviewed_by, reviewed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
             `aifield-${crypto.randomUUID()}`,
             analysisRun.id,
             fieldName,
@@ -293,6 +304,7 @@ export async function POST(request: Request) {
             originalField.confidence,
             originalField.sourcePage,
             originalField.sourceQuote,
+            overrideReason,
             corrected ? 'corrected' : 'accepted',
             access.actor.name,
             now,
