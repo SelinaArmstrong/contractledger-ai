@@ -15,7 +15,6 @@ import {
   analyzeContractFile,
 } from '@/app/api/analyze/route';
 import { getWorkspace } from '@/app/api/workspace/route';
-import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import {
   AI_EVALUATION_DATASET_VERSION,
   AI_EVALUATION_EXECUTION_CASES,
@@ -23,10 +22,8 @@ import {
   evaluateAIResults,
   type EvaluationCaseInput,
 } from '@/lib/ai-evaluation';
-import {
-  authorizeApiRequest,
-  enforceRateLimit,
-} from '@/lib/server/request-security';
+import { enforceRateLimit } from '@/lib/server/request-security';
+import { withApiRoute } from '@/lib/server/route-handler';
 
 const actionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('run') }).strict(),
@@ -146,14 +143,14 @@ function csvCell(value: unknown) {
   return `"${text.replaceAll('"', '""')}"`;
 }
 
-export async function GET(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const GET = withApiRoute(
+  {
     permission: 'export_data',
-  });
-  if (!access.ok) return access.response;
-  try {
-    await ensureWorkspaceDatabase();
-    const requestedRunId = new URL(request.url).searchParams.get('runId');
+    errorStatus: 500,
+    fallbackError: 'Unable to export the validation report.',
+  },
+  async ({ url }) => {
+    const requestedRunId = url.searchParams.get('runId');
     if (requestedRunId && !/^aieval-[a-f0-9-]+$/.test(requestedRunId)) {
       return Response.json(
         { error: 'Invalid evaluation run.' },
@@ -265,27 +262,16 @@ export async function GET(request: Request) {
         'Cache-Control': 'no-store',
       },
     });
-  } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Unable to export the validation report.',
-      },
-      { status: 500 },
-    );
-  }
-}
+  },
+);
 
-export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const POST = withApiRoute(
+  {
     permission: 'manage_ai_governance',
-  });
-  if (!access.ok) return access.response;
-
-  try {
-    await ensureWorkspaceDatabase();
+    invalidPayloadError: 'Invalid evaluation action.',
+    fallbackError: 'Unable to complete the AI evaluation.',
+  },
+  async ({ request, actor }) => {
     const input = actionSchema.parse(
       request.headers.get('content-type')?.includes('application/json')
         ? await request.json()
@@ -320,7 +306,7 @@ export async function POST(request: Request) {
           VALUES (?, 'ai_evaluation', ?, 'baseline_approved', ?, ?, ?)`).bind(
           `audit-${crypto.randomUUID()}`,
           run.id,
-          access.actor.name,
+          actor.name,
           JSON.stringify({ datasetVersion: run.dataset_version }),
           now,
         ),
@@ -328,12 +314,7 @@ export async function POST(request: Request) {
       return Response.json({ saved: true, workspace: await getWorkspace() });
     }
 
-    const rateLimited = await enforceRateLimit(
-      access.actor,
-      'ai-evaluation',
-      2,
-      600,
-    );
+    const rateLimited = await enforceRateLimit(actor, 'ai-evaluation', 2, 600);
     if (rateLimited) return rateLimited;
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
@@ -462,7 +443,7 @@ export async function POST(request: Request) {
         VALUES (?, 'ai_evaluation', ?, 'evaluation_completed', ?, ?, ?)`).bind(
         `audit-${crypto.randomUUID()}`,
         id,
-        access.actor.name,
+        actor.name,
         JSON.stringify({
           datasetVersion: evaluation.datasetVersion,
           caseCount: evaluation.caseCount,
@@ -480,17 +461,5 @@ export async function POST(request: Request) {
       evaluation: { id, createdAt: now, ...evaluation },
       workspace: await getWorkspace(),
     });
-  } catch (error) {
-    const validationError = error instanceof z.ZodError;
-    return Response.json(
-      {
-        error: validationError
-          ? 'Invalid evaluation action.'
-          : error instanceof Error
-            ? error.message
-            : 'Unable to complete the AI evaluation.',
-      },
-      { status: validationError ? 400 : 400 },
-    );
-  }
-}
+  },
+);

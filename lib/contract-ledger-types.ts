@@ -271,7 +271,13 @@ export type Workspace = {
     active_suppliers: number;
     pending_suppliers: number;
     records_to_verify: number;
+    total_contracts: number;
+    total_suppliers: number;
+    total_intakes: number;
+    total_key_dates: number;
   };
+  /** Row cap applied to each register snapshot in this payload. */
+  registerLimit: number;
   contracts: Array<Record<string, string | number | null>>;
   suppliers: Array<Record<string, string | number | null>>;
   supplierRiskProfiles?: Record<string, SupplierRiskProfile>;

@@ -2,7 +2,6 @@ import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 
 import { getWorkspace } from '@/app/api/workspace/route';
-import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import {
   IMPORT_FIELDS,
   IMPORT_MAPPING_VERSION,
@@ -21,8 +20,8 @@ import {
 } from '@/lib/bulk-import';
 import { assertImportFileSignature } from '@/lib/server/file-validation';
 import { importFileHash, parseImportFile } from '@/lib/server/import-file';
-import { authorizeApiRequest } from '@/lib/server/request-security';
 import { supplierDocumentationStatus } from '@/lib/supplier-qualification';
+import { withApiRoute } from '@/lib/server/route-handler';
 
 const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 const MAX_IMPORT_ROWS = 150;
@@ -254,17 +253,16 @@ async function correctionResponse(batchId: string) {
   return csvResponse(lines.join('\r\n'), `import-${batchId}-corrections.csv`);
 }
 
-export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const access = await authorizeApiRequest(request, {
-    permission:
+export const GET = withApiRoute(
+  {
+    permission: (url) =>
       url.searchParams.get('format') === 'corrections'
         ? 'export_data'
         : 'view_workspace',
-  });
-  if (!access.ok) return access.response;
-  try {
-    await ensureWorkspaceDatabase();
+    errorStatus: 500,
+    fallbackError: 'Unable to load imports.',
+  },
+  async ({ url }) => {
     const query = getSchema.parse({
       id: url.searchParams.get('id') || undefined,
       template: url.searchParams.get('template') || undefined,
@@ -310,24 +308,15 @@ export async function GET(request: Request) {
       ),
     );
     return Response.json({ batches: batches.results, metrics });
-  } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof Error ? error.message : 'Unable to load imports.',
-      },
-      { status: error instanceof z.ZodError ? 400 : 500 },
-    );
-  }
-}
+  },
+);
 
-export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const POST = withApiRoute(
+  {
     permission: 'manage_imports',
-  });
-  if (!access.ok) return access.response;
-  try {
-    await ensureWorkspaceDatabase();
+    fallbackError: 'Unable to preview the import.',
+  },
+  async ({ request, actor }) => {
     const form = await request.formData();
     const file = form.get('file');
     const target = z.enum(IMPORT_TARGETS).parse(form.get('target'));
@@ -373,7 +362,7 @@ export async function POST(request: Request) {
         summary.duplicate,
         summary.invalid,
         summary.normalizationIssues,
-        access.actor.name,
+        actor.name,
         now,
       ),
       ...preview.map((row) =>
@@ -397,24 +386,14 @@ export async function POST(request: Request) {
         VALUES (?, 'import_batch', ?, 'import_preview_created', ?, ?, ?)`).bind(
         `audit-${crypto.randomUUID()}`,
         batchId,
-        access.actor.name,
+        actor.name,
         JSON.stringify({ target, fileName: file.name, fileType, ...summary }),
         now,
       ),
     ]);
     return Response.json(await getBatch(batchId), { status: 201 });
-  } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Unable to preview the import.',
-      },
-      { status: error instanceof z.ZodError ? 400 : 400 },
-    );
-  }
-}
+  },
+);
 
 async function remapBatch(
   batchId: string,
@@ -827,41 +806,34 @@ async function rollbackBatch(batchId: string, actor: string, reason: string) {
   return { ...(await getBatch(batchId)), workspace: await getWorkspace() };
 }
 
-export async function PATCH(request: Request) {
-  const access = await authorizeApiRequest(request, {
+const IMPORT_CONFLICT_PATTERN =
+  /duplicate|changed after preview|linked records|documents or amendments/i;
+
+export const PATCH = withApiRoute(
+  {
     permission: 'manage_imports',
-  });
-  if (!access.ok) return access.response;
-  try {
-    await ensureWorkspaceDatabase();
+    fallbackError: 'Unable to update the import batch.',
+    // Dependency and staleness rejections are conflicts, not bad requests.
+    errorStatus: (error) =>
+      error instanceof Error && IMPORT_CONFLICT_PATTERN.test(error.message)
+        ? 409
+        : 400,
+  },
+  async ({ request, actor }) => {
     const input = actionSchema.parse(await request.json());
     const result =
       input.action === 'remap'
-        ? await remapBatch(input.batchId, input.mapping, access.actor.name)
+        ? await remapBatch(input.batchId, input.mapping, actor.name)
         : input.action === 'resolve'
           ? await resolveRows(
               input.batchId,
               input.rowIds,
               input.decision,
-              access.actor.name,
+              actor.name,
             )
           : input.action === 'commit'
-            ? await commitBatch(input.batchId, access.actor.name)
-            : await rollbackBatch(
-                input.batchId,
-                access.actor.name,
-                input.reason,
-              );
+            ? await commitBatch(input.batchId, actor.name)
+            : await rollbackBatch(input.batchId, actor.name, input.reason);
     return Response.json(result);
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : 'Unable to update the import batch.';
-    const conflict =
-      /duplicate|changed after preview|linked records|documents or amendments/i.test(
-        message,
-      );
-    return Response.json({ error: message }, { status: conflict ? 409 : 400 });
-  }
-}
+  },
+);

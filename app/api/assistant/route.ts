@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 import { getWorkspace } from '@/app/api/workspace/route';
-import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import {
   assistantEntities,
   assistantOperators,
@@ -10,11 +9,9 @@ import {
   type AssistantQueryExecution,
   type AssistantQueryPlan,
 } from '@/lib/ai-assistant';
-import {
-  authorizeApiRequest,
-  enforceRateLimit,
-} from '@/lib/server/request-security';
+import { enforceRateLimit } from '@/lib/server/request-security';
 import type { Workspace } from '@/lib/contract-ledger-types';
+import { withApiRoute } from '@/lib/server/route-handler';
 
 const MODEL = 'deepseek-v4-flash';
 const PLANNER_VERSION = 'contract-operations-assistant-2026.1';
@@ -276,13 +273,14 @@ function managementAnalysisRedirectAnswer(
   };
 }
 
-export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const POST = withApiRoute(
+  {
     permission: 'run_ai_assistant',
-  });
-  if (!access.ok) return access.response;
-
-  try {
+    errorStatus: 500,
+    invalidPayloadError: 'The assistant question or query plan was incomplete.',
+    fallbackError: 'The AI assistant could not complete this request.',
+  },
+  async ({ request, actor }) => {
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey)
       return Response.json(
@@ -294,9 +292,8 @@ export async function POST(request: Request) {
       );
 
     const input = requestSchema.parse(await request.json());
-    await ensureWorkspaceDatabase();
     const rateLimited = await enforceRateLimit(
-      access.actor,
+      actor,
       'contract-operations-assistant',
       30,
       600,
@@ -344,17 +341,5 @@ export async function POST(request: Request) {
       generatedAt: new Date().toISOString(),
       plannerVersion: PLANNER_VERSION,
     });
-  } catch (error) {
-    const validationError = error instanceof z.ZodError;
-    return Response.json(
-      {
-        error: validationError
-          ? 'The assistant question or query plan was incomplete.'
-          : error instanceof Error
-            ? error.message
-            : 'The AI assistant could not complete this request.',
-      },
-      { status: validationError ? 400 : 500 },
-    );
-  }
-}
+  },
+);

@@ -2,7 +2,6 @@ import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 
 import { getWorkspace } from '@/app/api/workspace/route';
-import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import {
   OBLIGATION_PRIORITIES,
   OBLIGATION_STATUSES,
@@ -14,12 +13,12 @@ import {
 } from '@/lib/obligation-workflow';
 import { buildOutboxEvent } from '@/lib/integration-outbox';
 import { assertSupplierFileSignature } from '@/lib/server/file-validation';
-import { authorizeApiRequest } from '@/lib/server/request-security';
 import {
   ALLOWED_SUPPLIER_DOCUMENT_MIME_TYPES,
   MAX_SUPPLIER_DOCUMENT_BYTES,
   safeSupplierFileName,
 } from '@/lib/supplier-qualification';
+import { withApiRoute } from '@/lib/server/route-handler';
 
 const obligationSchema = z.object({
   id: z.string().min(1),
@@ -126,18 +125,15 @@ async function assertEligibleEvidenceDocument(
   }
 }
 
-export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const access = await authorizeApiRequest(request, {
-    permission:
+export const GET = withApiRoute(
+  {
+    permission: (url) =>
       url.searchParams.get('format') === 'ics'
         ? 'export_data'
         : 'view_workspace',
-  });
-  if (!access.ok) return access.response;
-
-  try {
-    await ensureWorkspaceDatabase();
+    fallbackError: 'Unable to load the obligation.',
+  },
+  async ({ url }) => {
     if (url.searchParams.get('format') === 'ics') {
       const ids = [
         ...new Set(
@@ -217,221 +213,216 @@ export async function GET(request: Request) {
       events: events.results,
       eligibleDocuments: eligibleDocuments.results,
     });
-  } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Unable to load the obligation.',
-      },
-      { status: 400 },
-    );
-  }
-}
+  },
+);
 
-export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const POST = withApiRoute(
+  {
     permission: 'complete_obligations',
-  });
-  if (!access.ok) return access.response;
+    fallbackError: 'Unable to update the obligation.',
+  },
+  async ({ request, actor }) => {
+    let newlyStoredKey: string | null = null;
+    try {
+      const { input, evidenceFile } = await parseObligationRequest(request);
+      const current = await loadCurrentObligation(input.id);
+      if (!current)
+        return Response.json(
+          { error: 'Obligation not found.' },
+          { status: 404 },
+        );
 
-  let newlyStoredKey: string | null = null;
-  try {
-    await ensureWorkspaceDatabase();
-    const { input, evidenceFile } = await parseObligationRequest(request);
-    const current = await loadCurrentObligation(input.id);
-    if (!current)
-      return Response.json({ error: 'Obligation not found.' }, { status: 404 });
+      const currentStatus =
+        current.status === 'due' ? 'in_progress' : current.status;
+      if (!OBLIGATION_STATUSES.includes(currentStatus as ObligationStatus))
+        throw new Error('The saved obligation has an unsupported status.');
+      const nextStatus = nextObligationStatus(
+        currentStatus as ObligationStatus,
+        input.status,
+      );
+      const owner = input.owner || null;
+      const backupOwner = input.backupOwner || null;
+      if (nextStatus !== 'upcoming' && !owner)
+        throw new Error('Assign an owner before advancing this obligation.');
 
-    const currentStatus =
-      current.status === 'due' ? 'in_progress' : current.status;
-    if (!OBLIGATION_STATUSES.includes(currentStatus as ObligationStatus))
-      throw new Error('The saved obligation has an unsupported status.');
-    const nextStatus = nextObligationStatus(
-      currentStatus as ObligationStatus,
-      input.status,
-    );
-    const owner = input.owner || null;
-    const backupOwner = input.backupOwner || null;
-    if (nextStatus !== 'upcoming' && !owner)
-      throw new Error('Assign an owner before advancing this obligation.');
-
-    if (input.evidenceDocumentId)
-      await assertEligibleEvidenceDocument(input.evidenceDocumentId, current);
-    if (evidenceFile) {
-      if (evidenceFile.size > MAX_SUPPLIER_DOCUMENT_BYTES)
-        throw new Error('Evidence files must be 8 MB or smaller.');
-      if (
-        !ALLOWED_SUPPLIER_DOCUMENT_MIME_TYPES.includes(
-          evidenceFile.type as (typeof ALLOWED_SUPPLIER_DOCUMENT_MIME_TYPES)[number],
+      if (input.evidenceDocumentId)
+        await assertEligibleEvidenceDocument(input.evidenceDocumentId, current);
+      if (evidenceFile) {
+        if (evidenceFile.size > MAX_SUPPLIER_DOCUMENT_BYTES)
+          throw new Error('Evidence files must be 8 MB or smaller.');
+        if (
+          !ALLOWED_SUPPLIER_DOCUMENT_MIME_TYPES.includes(
+            evidenceFile.type as (typeof ALLOWED_SUPPLIER_DOCUMENT_MIME_TYPES)[number],
+          )
         )
-      )
-        throw new Error('Use a PDF, PNG, or JPEG evidence file.');
-      await assertSupplierFileSignature(evidenceFile);
-    }
+          throw new Error('Use a PDF, PNG, or JPEG evidence file.');
+        await assertSupplierFileSignature(evidenceFile);
+      }
 
-    const now = new Date().toISOString();
-    if (input.action === 'escalate') {
-      if (
-        current.status === 'completed' ||
-        current.due_date >= now.slice(0, 10)
-      )
-        throw new Error('Only overdue open obligations can be escalated.');
-      if (!backupOwner)
-        throw new Error('Assign a backup owner before escalating.');
-      if (!input.transitionNote)
-        throw new Error('Explain why this overdue obligation is escalated.');
-      const outboxEvent = buildOutboxEvent({
-        id: `outbox-${crypto.randomUUID()}`,
-        eventType: 'obligation.escalated',
-        aggregateType: 'obligation',
-        aggregateId: input.id,
-        occurredAt: now,
-        actor: access.actor.name,
-        payload: {
-          contractId: current.contract_id,
-          supplierId: current.supplier_id,
-          backupOwner,
-          escalationLevel: current.escalation_level + 1,
-        },
-      });
-      await env.DB.batch([
-        env.DB.prepare(`UPDATE key_dates SET owner = ?, backup_owner = ?,
+      const now = new Date().toISOString();
+      if (input.action === 'escalate') {
+        if (
+          current.status === 'completed' ||
+          current.due_date >= now.slice(0, 10)
+        )
+          throw new Error('Only overdue open obligations can be escalated.');
+        if (!backupOwner)
+          throw new Error('Assign a backup owner before escalating.');
+        if (!input.transitionNote)
+          throw new Error('Explain why this overdue obligation is escalated.');
+        const outboxEvent = buildOutboxEvent({
+          id: `outbox-${crypto.randomUUID()}`,
+          eventType: 'obligation.escalated',
+          aggregateType: 'obligation',
+          aggregateId: input.id,
+          occurredAt: now,
+          actor: actor.name,
+          payload: {
+            contractId: current.contract_id,
+            supplierId: current.supplier_id,
+            backupOwner,
+            escalationLevel: current.escalation_level + 1,
+          },
+        });
+        await env.DB.batch([
+          env.DB.prepare(`UPDATE key_dates SET owner = ?, backup_owner = ?,
           priority = ?, decision = ?, notes = ?, escalation_level = escalation_level + 1,
           escalated_at = ?, updated_at = ? WHERE id = ?`).bind(
-          owner,
-          backupOwner,
-          input.priority,
-          input.decision || null,
-          input.notes || null,
-          now,
-          now,
-          input.id,
-        ),
-        env.DB.prepare(`INSERT INTO obligation_events
+            owner,
+            backupOwner,
+            input.priority,
+            input.decision || null,
+            input.notes || null,
+            now,
+            now,
+            input.id,
+          ),
+          env.DB.prepare(`INSERT INTO obligation_events
           (id, key_date_id, event_type, from_status, to_status, actor, note,
            metadata_json, created_at)
           VALUES (?, ?, 'escalated', ?, ?, ?, ?, ?, ?)`).bind(
-          `obligation-event-${crypto.randomUUID()}`,
-          input.id,
-          currentStatus,
-          currentStatus,
-          access.actor.name,
-          input.transitionNote,
-          JSON.stringify({ backupOwner, level: current.escalation_level + 1 }),
-          now,
-        ),
-        env.DB.prepare(`INSERT INTO audit_logs
+            `obligation-event-${crypto.randomUUID()}`,
+            input.id,
+            currentStatus,
+            currentStatus,
+            actor.name,
+            input.transitionNote,
+            JSON.stringify({
+              backupOwner,
+              level: current.escalation_level + 1,
+            }),
+            now,
+          ),
+          env.DB.prepare(`INSERT INTO audit_logs
           (id, entity_type, entity_id, action, actor, details, created_at)
           VALUES (?, 'key_date', ?, 'obligation_escalated', ?, ?, ?)`).bind(
-          `audit-${crypto.randomUUID()}`,
-          input.id,
-          access.actor.name,
-          JSON.stringify({ backupOwner, reason: input.transitionNote }),
-          now,
-        ),
-        env.DB.prepare(`INSERT INTO integration_outbox
+            `audit-${crypto.randomUUID()}`,
+            input.id,
+            actor.name,
+            JSON.stringify({ backupOwner, reason: input.transitionNote }),
+            now,
+          ),
+          env.DB.prepare(`INSERT INTO integration_outbox
           (id, event_type, aggregate_type, aggregate_id, payload_json, status,
            attempt_count, occurred_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(
-          outboxEvent.id,
-          outboxEvent.eventType,
-          outboxEvent.aggregateType,
-          outboxEvent.aggregateId,
-          outboxEvent.payloadJson,
-          outboxEvent.status,
-          outboxEvent.attemptCount,
-          outboxEvent.occurredAt,
-        ),
-      ]);
-      return Response.json({ saved: true, workspace: await getWorkspace() });
-    }
+            outboxEvent.id,
+            outboxEvent.eventType,
+            outboxEvent.aggregateType,
+            outboxEvent.aggregateId,
+            outboxEvent.payloadJson,
+            outboxEvent.status,
+            outboxEvent.attemptCount,
+            outboxEvent.occurredAt,
+          ),
+        ]);
+        return Response.json({ saved: true, workspace: await getWorkspace() });
+      }
 
-    let uploadedDocumentId: string | null = null;
-    if (evidenceFile) {
-      uploadedDocumentId = `doc-${crypto.randomUUID()}`;
-      newlyStoredKey = `obligation-evidence/${input.id}/${crypto.randomUUID()}-${safeSupplierFileName(evidenceFile.name)}`;
-      await env.FILES.put(newlyStoredKey, await evidenceFile.arrayBuffer(), {
-        httpMetadata: { contentType: evidenceFile.type },
-        customMetadata: {
-          obligationId: input.id,
-          uploadedBy: access.actor.name,
+      let uploadedDocumentId: string | null = null;
+      if (evidenceFile) {
+        uploadedDocumentId = `doc-${crypto.randomUUID()}`;
+        newlyStoredKey = `obligation-evidence/${input.id}/${crypto.randomUUID()}-${safeSupplierFileName(evidenceFile.name)}`;
+        await env.FILES.put(newlyStoredKey, await evidenceFile.arrayBuffer(), {
+          httpMetadata: { contentType: evidenceFile.type },
+          customMetadata: {
+            obligationId: input.id,
+            uploadedBy: actor.name,
+          },
+        });
+      }
+      const evidenceDocumentId =
+        uploadedDocumentId ||
+        input.evidenceDocumentId ||
+        current.evidence_document_id ||
+        null;
+      const evidenceReference =
+        input.evidenceReference || current.evidence_reference || null;
+      const completionNote =
+        input.completionNote || current.completion_note || null;
+      if (nextStatus === 'completed')
+        assertCompletionEvidence({
+          completionNote,
+          evidenceDocumentId,
+          evidenceReference,
+        });
+
+      const statusChanged = currentStatus !== nextStatus;
+      const evidenceChanged = Boolean(
+        uploadedDocumentId ||
+        (input.evidenceDocumentId || null) !== current.evidence_document_id ||
+        (input.evidenceReference || null) !== current.evidence_reference,
+      );
+      const assignmentChanged = owner !== current.owner;
+      const eventType = statusChanged
+        ? 'status_changed'
+        : evidenceChanged
+          ? 'evidence_linked'
+          : assignmentChanged
+            ? 'assigned'
+            : 'details_updated';
+      const outboxEvent = buildOutboxEvent({
+        id: `outbox-${crypto.randomUUID()}`,
+        eventType:
+          nextStatus === 'completed'
+            ? 'obligation.completed'
+            : statusChanged
+              ? 'obligation.status_changed'
+              : 'obligation.updated',
+        aggregateType: 'obligation',
+        aggregateId: input.id,
+        occurredAt: now,
+        actor: actor.name,
+        payload: {
+          contractId: current.contract_id,
+          supplierId: current.supplier_id,
+          fromStatus: currentStatus,
+          toStatus: nextStatus,
+          owner,
+          evidenceDocumentId,
+          evidenceReference,
         },
       });
-    }
-    const evidenceDocumentId =
-      uploadedDocumentId ||
-      input.evidenceDocumentId ||
-      current.evidence_document_id ||
-      null;
-    const evidenceReference =
-      input.evidenceReference || current.evidence_reference || null;
-    const completionNote =
-      input.completionNote || current.completion_note || null;
-    if (nextStatus === 'completed')
-      assertCompletionEvidence({
-        completionNote,
-        evidenceDocumentId,
-        evidenceReference,
-      });
-
-    const statusChanged = currentStatus !== nextStatus;
-    const evidenceChanged = Boolean(
-      uploadedDocumentId ||
-      (input.evidenceDocumentId || null) !== current.evidence_document_id ||
-      (input.evidenceReference || null) !== current.evidence_reference,
-    );
-    const assignmentChanged = owner !== current.owner;
-    const eventType = statusChanged
-      ? 'status_changed'
-      : evidenceChanged
-        ? 'evidence_linked'
-        : assignmentChanged
-          ? 'assigned'
-          : 'details_updated';
-    const outboxEvent = buildOutboxEvent({
-      id: `outbox-${crypto.randomUUID()}`,
-      eventType:
-        nextStatus === 'completed'
-          ? 'obligation.completed'
-          : statusChanged
-            ? 'obligation.status_changed'
-            : 'obligation.updated',
-      aggregateType: 'obligation',
-      aggregateId: input.id,
-      occurredAt: now,
-      actor: access.actor.name,
-      payload: {
-        contractId: current.contract_id,
-        supplierId: current.supplier_id,
-        fromStatus: currentStatus,
-        toStatus: nextStatus,
-        owner,
-        evidenceDocumentId,
-        evidenceReference,
-      },
-    });
-    const statements: D1PreparedStatement[] = [];
-    if (evidenceFile && uploadedDocumentId && newlyStoredKey) {
-      statements.push(
-        env.DB.prepare(`INSERT INTO documents
+      const statements: D1PreparedStatement[] = [];
+      if (evidenceFile && uploadedDocumentId && newlyStoredKey) {
+        statements.push(
+          env.DB.prepare(`INSERT INTO documents
           (id, supplier_id, contract_id, file_name, file_type, lifecycle_stage,
            storage_key, mime_type, review_status, ai_status, uploaded_at)
           VALUES (?, ?, ?, ?, 'obligation_evidence', 'obligation_evidence', ?, ?,
             'approved', 'verified', ?)`).bind(
-          uploadedDocumentId,
-          current.supplier_id,
-          current.contract_id,
-          evidenceFile.name,
-          newlyStoredKey,
-          evidenceFile.type,
-          now,
-        ),
-      );
-    }
-    statements.push(
-      env.DB.prepare(`UPDATE key_dates SET status = ?, owner = ?,
+            uploadedDocumentId,
+            current.supplier_id,
+            current.contract_id,
+            evidenceFile.name,
+            newlyStoredKey,
+            evidenceFile.type,
+            now,
+          ),
+        );
+      }
+      statements.push(
+        env.DB.prepare(`UPDATE key_dates SET status = ?, owner = ?,
         backup_owner = ?, priority = ?, assigned_at = CASE
           WHEN ? IS NOT NULL AND (assigned_at IS NULL OR owner != ?) THEN ?
           ELSE assigned_at END,
@@ -441,108 +432,101 @@ export async function POST(request: Request) {
         completed_by = CASE WHEN ? = 'completed'
           THEN COALESCE(completed_by, ?) ELSE NULL END,
         updated_at = ? WHERE id = ?`).bind(
-        nextStatus,
-        owner,
-        backupOwner,
-        input.priority,
-        owner,
-        owner,
-        now,
-        input.decision || null,
-        input.notes || null,
-        completionNote,
-        evidenceDocumentId,
-        evidenceReference,
-        nextStatus,
-        now,
-        nextStatus,
-        access.actor.name,
-        now,
-        input.id,
-      ),
-      env.DB.prepare(`INSERT INTO obligation_events
+          nextStatus,
+          owner,
+          backupOwner,
+          input.priority,
+          owner,
+          owner,
+          now,
+          input.decision || null,
+          input.notes || null,
+          completionNote,
+          evidenceDocumentId,
+          evidenceReference,
+          nextStatus,
+          now,
+          nextStatus,
+          actor.name,
+          now,
+          input.id,
+        ),
+        env.DB.prepare(`INSERT INTO obligation_events
         (id, key_date_id, event_type, from_status, to_status, actor, note,
          evidence_document_id, metadata_json, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
-        `obligation-event-${crypto.randomUUID()}`,
-        input.id,
-        eventType,
-        currentStatus,
-        nextStatus,
-        access.actor.name,
-        input.transitionNote || completionNote || input.notes || null,
-        evidenceDocumentId,
-        JSON.stringify({
-          owner: { before: current.owner, after: owner },
-          backupOwner: { before: current.backup_owner, after: backupOwner },
-          priority: { before: current.priority, after: input.priority },
-          evidenceReference,
-        }),
-        now,
-      ),
-      env.DB.prepare(`INSERT INTO audit_logs
+          `obligation-event-${crypto.randomUUID()}`,
+          input.id,
+          eventType,
+          currentStatus,
+          nextStatus,
+          actor.name,
+          input.transitionNote || completionNote || input.notes || null,
+          evidenceDocumentId,
+          JSON.stringify({
+            owner: { before: current.owner, after: owner },
+            backupOwner: { before: current.backup_owner, after: backupOwner },
+            priority: { before: current.priority, after: input.priority },
+            evidenceReference,
+          }),
+          now,
+        ),
+        env.DB.prepare(`INSERT INTO audit_logs
         (id, entity_type, entity_id, action, actor, details, created_at)
         VALUES (?, 'key_date', ?, 'obligation_updated', ?, ?, ?)`).bind(
-        `audit-${crypto.randomUUID()}`,
-        input.id,
-        access.actor.name,
-        JSON.stringify({
-          before: {
-            status: currentStatus,
-            owner: current.owner,
-            priority: current.priority,
-          },
-          after: {
-            status: nextStatus,
-            owner,
-            backupOwner,
-            priority: input.priority,
-            evidenceDocumentId,
-            evidenceReference,
-          },
-        }),
-        now,
-      ),
-      env.DB.prepare(`INSERT INTO integration_outbox
+          `audit-${crypto.randomUUID()}`,
+          input.id,
+          actor.name,
+          JSON.stringify({
+            before: {
+              status: currentStatus,
+              owner: current.owner,
+              priority: current.priority,
+            },
+            after: {
+              status: nextStatus,
+              owner,
+              backupOwner,
+              priority: input.priority,
+              evidenceDocumentId,
+              evidenceReference,
+            },
+          }),
+          now,
+        ),
+        env.DB.prepare(`INSERT INTO integration_outbox
         (id, event_type, aggregate_type, aggregate_id, payload_json, status,
          attempt_count, occurred_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(
-        outboxEvent.id,
-        outboxEvent.eventType,
-        outboxEvent.aggregateType,
-        outboxEvent.aggregateId,
-        outboxEvent.payloadJson,
-        outboxEvent.status,
-        outboxEvent.attemptCount,
-        outboxEvent.occurredAt,
-      ),
-      ...(current.contract_id
-        ? [
-            env.DB.prepare(
-              'UPDATE contracts SET last_updated = ? WHERE id = ?',
-            ).bind(now, current.contract_id),
-          ]
-        : []),
-    );
-    await env.DB.batch(statements);
-    newlyStoredKey = null;
-    return Response.json({ saved: true, workspace: await getWorkspace() });
-  } catch (error) {
-    if (newlyStoredKey) {
-      try {
-        await env.FILES.delete(newlyStoredKey);
-      } catch {
-        // The database write remains rejected; cleanup can be retried operationally.
+          outboxEvent.id,
+          outboxEvent.eventType,
+          outboxEvent.aggregateType,
+          outboxEvent.aggregateId,
+          outboxEvent.payloadJson,
+          outboxEvent.status,
+          outboxEvent.attemptCount,
+          outboxEvent.occurredAt,
+        ),
+        ...(current.contract_id
+          ? [
+              env.DB.prepare(
+                'UPDATE contracts SET last_updated = ? WHERE id = ?',
+              ).bind(now, current.contract_id),
+            ]
+          : []),
+      );
+      await env.DB.batch(statements);
+      newlyStoredKey = null;
+      return Response.json({ saved: true, workspace: await getWorkspace() });
+    } catch (error) {
+      if (newlyStoredKey) {
+        try {
+          await env.FILES.delete(newlyStoredKey);
+        } catch {
+          // The database write remains rejected; cleanup can be retried operationally.
+        }
       }
+      throw error;
     }
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Unable to update the obligation.',
-      },
-      { status: 400 },
-    );
-  }
-}
+  },
+);

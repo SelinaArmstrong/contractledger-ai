@@ -7,12 +7,17 @@ import {
 import type { Workspace } from '@/lib/contract-ledger-types';
 
 const workspace: Workspace = {
+  registerLimit: 500,
   metrics: {
     active_contracts: 2,
     current_value_cents: 45_000_000,
     active_suppliers: 2,
     pending_suppliers: 0,
     records_to_verify: 0,
+    total_contracts: 0,
+    total_suppliers: 0,
+    total_intakes: 0,
+    total_key_dates: 0,
   },
   contracts: [
     {

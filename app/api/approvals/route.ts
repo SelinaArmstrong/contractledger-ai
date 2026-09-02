@@ -2,7 +2,6 @@ import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 
 import { getWorkspace } from '@/app/api/workspace/route';
-import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import {
   approvalActionRequiresReason,
   approvalActions,
@@ -10,7 +9,7 @@ import {
   nextApprovalStatus,
   type ApprovalRequestStatus,
 } from '@/lib/approval-workflow';
-import { authorizeApiRequest } from '@/lib/server/request-security';
+import { withApiRoute } from '@/lib/server/route-handler';
 
 const querySchema = z.object({ id: z.string().min(1).max(200) });
 
@@ -52,14 +51,15 @@ async function getApprovalDetails(id: string) {
   return { request, steps: steps.results, history: history.results };
 }
 
-export async function GET(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const GET = withApiRoute(
+  {
     permission: 'view_workspace',
-  });
-  if (!access.ok) return access.response;
-  try {
-    await ensureWorkspaceDatabase();
-    const url = new URL(request.url);
+    errorStatus: 500,
+    redactErrors: true,
+    invalidPayloadError: 'Choose a valid approval request.',
+    fallbackError: 'Unable to load the approval request.',
+  },
+  async ({ url }) => {
     const { id } = querySchema.parse({ id: url.searchParams.get('id') });
     const details = await getApprovalDetails(id);
     if (!details)
@@ -68,26 +68,16 @@ export async function GET(request: Request) {
         { status: 404 },
       );
     return Response.json(details);
-  } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof z.ZodError
-            ? 'Choose a valid approval request.'
-            : 'Unable to load the approval request.',
-      },
-      { status: error instanceof z.ZodError ? 400 : 500 },
-    );
-  }
-}
+  },
+);
 
-export async function PATCH(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const PATCH = withApiRoute(
+  {
     permission: 'approve_exceptions',
-  });
-  if (!access.ok) return access.response;
-  try {
-    await ensureWorkspaceDatabase();
+    invalidPayloadError: 'Approval action values are incomplete or invalid.',
+    fallbackError: 'Unable to record the approval decision.',
+  },
+  async ({ request, actor }) => {
     const input = actionSchema.parse(await request.json());
     if (approvalActionRequiresReason(input.action) && !input.reason) {
       return Response.json(
@@ -170,7 +160,7 @@ export async function PATCH(request: Request) {
       nextRequestStatus,
     );
     const assignedReviewer =
-      input.assignedReviewer || step.assigned_reviewer || access.actor.name;
+      input.assignedReviewer || step.assigned_reviewer || actor.name;
 
     await env.DB.batch([
       env.DB.prepare(`UPDATE approval_steps SET status = ?,
@@ -212,8 +202,8 @@ export async function PATCH(request: Request) {
         input.action,
         step.status,
         nextStepStatus,
-        access.actor.name,
-        access.actor.role,
+        actor.name,
+        actor.role,
         input.reason || null,
         now,
       ),
@@ -236,7 +226,7 @@ export async function PATCH(request: Request) {
         VALUES (?, 'contract_intake', ?, 'approval_decision_recorded', ?, ?, ?)`).bind(
         `audit-${crypto.randomUUID()}`,
         step.intake_id,
-        access.actor.name,
+        actor.name,
         JSON.stringify({
           requestId: step.request_id,
           stepId: step.id,
@@ -245,7 +235,7 @@ export async function PATCH(request: Request) {
           ruleVersion: step.rule_version,
           ruleName: step.rule_name,
           mandatory: Boolean(step.mandatory),
-          actorRole: access.actor.role,
+          actorRole: actor.role,
           accountableOwnerRole: step.owner_role,
           action: input.action,
           reason: input.reason || null,
@@ -267,17 +257,5 @@ export async function PATCH(request: Request) {
       details: await getApprovalDetails(step.request_id),
       workspace: await getWorkspace(),
     });
-  } catch (error) {
-    const validationError = error instanceof z.ZodError;
-    return Response.json(
-      {
-        error: validationError
-          ? 'Approval action values are incomplete or invalid.'
-          : error instanceof Error
-            ? error.message
-            : 'Unable to record the approval decision.',
-      },
-      { status: 400 },
-    );
-  }
-}
+  },
+);

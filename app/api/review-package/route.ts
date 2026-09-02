@@ -1,35 +1,43 @@
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 
-import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import {
   buildReviewPackagePdf,
   reviewPackageFileName,
   type ReviewPackageRecord,
 } from '@/lib/review-package';
-import { authorizeApiRequest } from '@/lib/server/request-security';
+import { withApiRoute } from '@/lib/server/route-handler';
 
 const inputSchema = z.object({ contractId: z.string().min(1).max(200) });
 
-export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, { permission: 'export_data' });
-  if (!access.ok) return access.response;
-
-  try {
-    await ensureWorkspaceDatabase();
+export const POST = withApiRoute(
+  {
+    permission: 'export_data',
+    errorStatus: 500,
+    invalidPayloadError: 'Choose a valid contract.',
+    fallbackError: 'Unable to generate the review package.',
+  },
+  async ({ request, actor }) => {
     const input = inputSchema.parse(await request.json());
-    const contract = await env.DB.prepare(`SELECT c.*, s.legal_name AS supplier_name
+    const contract =
+      await env.DB.prepare(`SELECT c.*, s.legal_name AS supplier_name
       FROM contracts c JOIN suppliers s ON s.id = c.supplier_id
-      WHERE c.id = ? LIMIT 1`).bind(input.contractId).first<ReviewPackageRecord>();
-    if (!contract) return Response.json({ error: 'Contract not found.' }, { status: 404 });
+      WHERE c.id = ? LIMIT 1`)
+        .bind(input.contractId)
+        .first<ReviewPackageRecord>();
+    if (!contract)
+      return Response.json({ error: 'Contract not found.' }, { status: 404 });
 
-    const [findings, approvals, versions, reviews] = await env.DB.batch<ReviewPackageRecord>([
-      env.DB.prepare(`SELECT f.*, d.file_name AS source_file_name
+    const [findings, approvals, versions, reviews] =
+      await env.DB.batch<ReviewPackageRecord>([
+        env.DB.prepare(`SELECT f.*, d.file_name AS source_file_name
         FROM contracts c JOIN review_findings f ON f.intake_id = c.intake_id
         LEFT JOIN approval_requests ar ON ar.source_finding_id = f.id
         LEFT JOIN documents d ON d.id = ar.source_document_id
-        WHERE c.id = ? ORDER BY CASE f.severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, f.rule_name`).bind(input.contractId),
-      env.DB.prepare(`SELECT ar.status AS request_status, ar.reason, ar.completed_at,
+        WHERE c.id = ? ORDER BY CASE f.severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, f.rule_name`).bind(
+          input.contractId,
+        ),
+        env.DB.prepare(`SELECT ar.status AS request_status, ar.reason, ar.completed_at,
           r.name AS rule_name, r.version AS rule_version, r.owner_role,
           ast.status AS step_status, ast.assigned_reviewer, ast.decision_reason,
           ast.source_page, latest.action, latest.actor, latest.actor_role,
@@ -42,17 +50,19 @@ export async function POST(request: Request) {
           SELECT h.id FROM approval_decision_history h
           WHERE h.request_id = ar.id ORDER BY h.created_at DESC LIMIT 1
         )
-        WHERE c.id = ? ORDER BY ar.generated_at, r.name`).bind(input.contractId),
-      env.DB.prepare(`SELECT * FROM amendments WHERE contract_id = ?
+        WHERE c.id = ? ORDER BY ar.generated_at, r.name`).bind(
+          input.contractId,
+        ),
+        env.DB.prepare(`SELECT * FROM amendments WHERE contract_id = ?
         ORDER BY version_number`).bind(input.contractId),
-      env.DB.prepare(`SELECT DISTINCT r.stage, r.file_name, r.model,
+        env.DB.prepare(`SELECT DISTINCT r.stage, r.file_name, r.model,
           r.prompt_version, r.correction_count, r.reviewed_by, r.reviewed_at
         FROM ai_analysis_runs r
         JOIN contracts c ON c.id = ?
         WHERE r.status = 'verified' AND (
           r.contract_id = c.id OR (c.intake_id IS NOT NULL AND r.intake_id = c.intake_id)
         ) ORDER BY r.reviewed_at`).bind(input.contractId),
-    ]);
+      ]);
     const now = new Date().toISOString();
     const pdf = buildReviewPackagePdf({
       contract,
@@ -61,7 +71,7 @@ export async function POST(request: Request) {
       versions: versions.results,
       reviews: reviews.results,
       generatedAt: now,
-      generatedBy: access.actor.name,
+      generatedBy: actor.name,
     });
     await env.DB.prepare(`INSERT INTO audit_logs
       (id, entity_type, entity_id, action, actor, details, created_at)
@@ -69,7 +79,7 @@ export async function POST(request: Request) {
       .bind(
         `audit-${crypto.randomUUID()}`,
         input.contractId,
-        access.actor.name,
+        actor.name,
         JSON.stringify({
           version: 'review-package-2026.1',
           findingCount: findings.results.length,
@@ -86,10 +96,5 @@ export async function POST(request: Request) {
         'Cache-Control': 'private, no-store',
       },
     });
-  } catch (error) {
-    return Response.json(
-      { error: error instanceof z.ZodError ? 'Choose a valid contract.' : error instanceof Error ? error.message : 'Unable to generate the review package.' },
-      { status: error instanceof z.ZodError ? 400 : 500 },
-    );
-  }
-}
+  },
+);

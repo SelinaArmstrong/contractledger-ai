@@ -1,16 +1,13 @@
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 
-import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import {
   buildManagementReport,
   type ManagementReport,
 } from '@/lib/management-insights';
 import { getWorkspace } from '@/app/api/workspace/route';
-import {
-  authorizeApiRequest,
-  enforceRateLimit,
-} from '@/lib/server/request-security';
+import { enforceRateLimit } from '@/lib/server/request-security';
+import { withApiRoute } from '@/lib/server/route-handler';
 
 const MODEL = 'deepseek-v4-flash';
 const PROMPT_VERSION = 'management-insights-2026.1';
@@ -125,13 +122,13 @@ function aiSafeReport(report: ManagementReport) {
   };
 }
 
-export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const POST = withApiRoute(
+  {
     permission: 'run_ai_assistant',
-  });
-  if (!access.ok) return access.response;
-
-  try {
+    errorStatus: 500,
+    fallbackError: 'Unable to generate management insights.',
+  },
+  async ({ request, actor }) => {
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey)
       return Response.json(
@@ -143,9 +140,8 @@ export async function POST(request: Request) {
       );
 
     const input = requestSchema.parse(await request.json());
-    await ensureWorkspaceDatabase();
     const rateLimited = await enforceRateLimit(
-      access.actor,
+      actor,
       'management-insights',
       12,
       600,
@@ -278,7 +274,7 @@ export async function POST(request: Request) {
         'management_insights',
         runId,
         'generated',
-        access.actor.name,
+        actor.name,
         JSON.stringify({
           scope: input.scope,
           recordCount: actualIds.size,
@@ -296,15 +292,5 @@ export async function POST(request: Request) {
       report,
       ai,
     });
-  } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Unable to generate management insights.',
-      },
-      { status: 500 },
-    );
-  }
-}
+  },
+);

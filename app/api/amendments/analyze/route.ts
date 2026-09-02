@@ -1,18 +1,14 @@
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 
-import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import { assertContractFileSignature } from '@/lib/server/file-validation';
 import {
-  DocumentQualityError,
   preflightPdf,
   preflightText,
   qualityWarnings,
 } from '@/lib/document-quality';
-import {
-  authorizeApiRequest,
-  enforceRateLimit,
-} from '@/lib/server/request-security';
+import { enforceRateLimit } from '@/lib/server/request-security';
+import { withApiRoute } from '@/lib/server/route-handler';
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_PAGES = 40;
@@ -216,16 +212,16 @@ ${extracted.text}`;
   };
 }
 
-export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const POST = withApiRoute(
+  {
     permission: 'apply_amendments',
-  });
-  if (!access.ok) return access.response;
-
-  try {
-    await ensureWorkspaceDatabase();
+    invalidPayloadError:
+      'DeepSeek returned an incomplete amendment extraction.',
+    fallbackError: 'Amendment analysis failed.',
+  },
+  async ({ request, actor }) => {
     const rateLimited = await enforceRateLimit(
-      access.actor,
+      actor,
       'amendment-analysis',
       12,
       600,
@@ -303,23 +299,5 @@ export async function POST(request: Request) {
       qualityReport: result.qualityReport,
       model: result.model,
     });
-  } catch (error) {
-    if (error instanceof DocumentQualityError) {
-      return Response.json(
-        { error: error.message, qualityReport: error.report },
-        { status: 422 },
-      );
-    }
-    return Response.json(
-      {
-        error:
-          error instanceof z.ZodError
-            ? 'DeepSeek returned an incomplete amendment extraction.'
-            : error instanceof Error
-              ? error.message
-              : 'Amendment analysis failed.',
-      },
-      { status: 400 },
-    );
-  }
-}
+  },
+);

@@ -1,25 +1,16 @@
-import { resetWorkspaceDatabase } from '@/db/bootstrap';
 import { getWorkspace } from '@/app/api/workspace/route';
-import { authorizeApiRequest } from '@/lib/server/request-security';
+import { resetWorkspaceDatabase } from '@/db/bootstrap';
+import { withApiRoute } from '@/lib/server/route-handler';
 
-export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const POST = withApiRoute(
+  {
     permission: 'reset_workspace',
-  });
-  if (!access.ok) return access.response;
-
-  try {
+    database: false,
+    errorStatus: 500,
+    fallbackError: 'Unable to reset the demo workspace.',
+  },
+  async () => {
     await resetWorkspaceDatabase();
     return Response.json({ reset: true, workspace: await getWorkspace() });
-  } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Unable to reset the demo workspace.',
-      },
-      { status: 500 },
-    );
-  }
-}
+  },
+);

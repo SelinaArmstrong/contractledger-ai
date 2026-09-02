@@ -1,24 +1,20 @@
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 
-import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import {
   ALLOWED_SUPPLIER_DOCUMENT_MIME_TYPES,
   MAX_SUPPLIER_DOCUMENT_BYTES,
   safeSupplierFileName,
   SUPPLIER_DOCUMENT_TYPES,
 } from '@/lib/supplier-qualification';
-import {
-  authorizeApiRequest,
-  enforceRateLimit,
-} from '@/lib/server/request-security';
+import { enforceRateLimit } from '@/lib/server/request-security';
 import { assertSupplierFileSignature } from '@/lib/server/file-validation';
 import {
-  DocumentQualityError,
   imageQualityReport,
   preflightPdf,
   qualityWarnings,
 } from '@/lib/document-quality';
+import { withApiRoute } from '@/lib/server/route-handler';
 
 const MAX_PAGES = 20;
 const MAX_TEXT_CHARS = 40_000;
@@ -247,16 +243,15 @@ export async function analyzeSupplierFile(
   };
 }
 
-export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const POST = withApiRoute(
+  {
     permission: 'submit_documents',
-  });
-  if (!access.ok) return access.response;
-
-  try {
-    await ensureWorkspaceDatabase();
+    invalidPayloadError: 'DeepSeek returned an incomplete supplier extraction.',
+    fallbackError: 'Supplier document analysis failed.',
+  },
+  async ({ request, actor }) => {
     const rateLimited = await enforceRateLimit(
-      access.actor,
+      actor,
       'supplier-analysis',
       20,
       600,
@@ -320,19 +315,5 @@ export async function POST(request: Request) {
       qualityReport: result.qualityReport,
       model: resolvedModel,
     });
-  } catch (error) {
-    if (error instanceof DocumentQualityError) {
-      return Response.json(
-        { error: error.message, qualityReport: error.report },
-        { status: 422 },
-      );
-    }
-    const message =
-      error instanceof z.ZodError
-        ? 'DeepSeek returned an incomplete supplier extraction.'
-        : error instanceof Error
-          ? error.message
-          : 'Supplier document analysis failed.';
-    return Response.json({ error: message }, { status: 400 });
-  }
-}
+  },
+);

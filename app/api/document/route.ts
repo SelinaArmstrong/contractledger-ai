@@ -1,17 +1,14 @@
 import { env } from 'cloudflare:workers';
+import { withApiRoute } from '@/lib/server/route-handler';
 
-import { ensureWorkspaceDatabase } from '@/db/bootstrap';
-import { authorizeApiRequest } from '@/lib/server/request-security';
-
-export async function GET(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const GET = withApiRoute(
+  {
     permission: 'view_documents',
-  });
-  if (!access.ok) return access.response;
-
-  try {
-    await ensureWorkspaceDatabase();
-    const id = new URL(request.url).searchParams.get('id');
+    errorStatus: 500,
+    fallbackError: 'Unable to open the document.',
+  },
+  async ({ url }) => {
+    const id = url.searchParams.get('id');
     if (!id)
       return Response.json(
         { error: 'Document id is required.' },
@@ -28,7 +25,7 @@ export async function GET(request: Request) {
 
     if (document.storage_key.startsWith('public:/demo-documents/')) {
       const publicPath = document.storage_key.slice('public:'.length);
-      const asset = await fetch(new URL(publicPath, request.url));
+      const asset = await fetch(new URL(publicPath, url));
       if (!asset.ok || !asset.body)
         return Response.json(
           { error: 'Demo file not found.' },
@@ -57,15 +54,5 @@ export async function GET(request: Request) {
         'Cache-Control': 'private, no-store',
       },
     });
-  } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Unable to open the document.',
-      },
-      { status: 500 },
-    );
-  }
-}
+  },
+);

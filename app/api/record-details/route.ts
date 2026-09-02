@@ -1,23 +1,22 @@
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 
-import { ensureWorkspaceDatabase } from '@/db/bootstrap';
-import { authorizeApiRequest } from '@/lib/server/request-security';
+import { withApiRoute } from '@/lib/server/route-handler';
 
 const querySchema = z.object({
   type: z.enum(['contract', 'supplier']),
   id: z.string().min(1).max(200),
 });
 
-export async function GET(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const GET = withApiRoute(
+  {
     permission: 'view_documents',
-  });
-  if (!access.ok) return access.response;
-
-  try {
-    await ensureWorkspaceDatabase();
-    const url = new URL(request.url);
+    errorStatus: 500,
+    redactErrors: true,
+    invalidPayloadError: 'Choose a valid record type and identifier.',
+    fallbackError: 'Unable to load record details.',
+  },
+  async ({ url }) => {
     const input = querySchema.parse({
       type: url.searchParams.get('type'),
       id: url.searchParams.get('id'),
@@ -113,15 +112,5 @@ export async function GET(request: Request) {
       approvalRequests: approvalRequests.results,
       approvalHistory: approvalHistory.results,
     });
-  } catch (error) {
-    const validationError = error instanceof z.ZodError;
-    return Response.json(
-      {
-        error: validationError
-          ? 'Choose a valid record type and identifier.'
-          : 'Unable to load record details.',
-      },
-      { status: validationError ? 400 : 500 },
-    );
-  }
-}
+  },
+);

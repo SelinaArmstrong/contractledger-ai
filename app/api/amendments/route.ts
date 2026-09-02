@@ -2,15 +2,14 @@ import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 
 import { getWorkspace } from '@/app/api/workspace/route';
-import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import {
   calculateResultingContractValue,
   formatAmendmentNumber,
   subtractCalendarDays,
 } from '@/lib/amendment-lifecycle';
-import { authorizeApiRequest } from '@/lib/server/request-security';
 import { isIsoDate } from '@/lib/validation';
 import { validatedOverrideReason } from '@/lib/ai-governance';
+import { withApiRoute } from '@/lib/server/route-handler';
 
 const fieldSchema = z.object({
   value: z.union([z.string(), z.number(), z.null()]),
@@ -100,14 +99,13 @@ function numberValue(field: z.infer<typeof fieldSchema>) {
   return null;
 }
 
-export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const POST = withApiRoute(
+  {
     permission: 'apply_amendments',
-  });
-  if (!access.ok) return access.response;
-
-  try {
-    await ensureWorkspaceDatabase();
+    invalidPayloadError: 'Review the amendment fields before saving.',
+    fallbackError: 'Unable to apply the amendment.',
+  },
+  async ({ request, actor }) => {
     const input = saveSchema.parse(await request.json());
     const db = env.DB;
     const now = new Date().toISOString();
@@ -334,7 +332,7 @@ export async function POST(request: Request) {
           previousNoticeDays,
           newNoticeDays,
           stringValue(input.analysis.scopeSummary) || null,
-          access.actor.name,
+          actor.name,
           now,
         ),
       db
@@ -363,7 +361,7 @@ export async function POST(request: Request) {
           documentId,
           JSON.stringify(input.analysis),
           correctionCount,
-          access.actor.name,
+          actor.name,
           now,
           input.analysisRunId,
         ),
@@ -390,7 +388,7 @@ export async function POST(request: Request) {
               JSON.stringify(verifiedField.value)
               ? 'accepted'
               : 'corrected',
-            access.actor.name,
+            actor.name,
             now,
           );
       }),
@@ -401,7 +399,7 @@ export async function POST(request: Request) {
         .bind(
           `audit-${crypto.randomUUID()}`,
           input.contractId,
-          access.actor.name,
+          actor.name,
           JSON.stringify({
             amendmentId,
             amendmentNumber,
@@ -443,14 +441,7 @@ export async function POST(request: Request) {
           .prepare(`UPDATE key_dates SET status = 'completed', completed_at = ?,
             completed_by = ?, completion_note = ?, evidence_document_id = ?,
             decision = 'not_applicable', updated_at = ? WHERE id = ?`)
-          .bind(
-            now,
-            access.actor.name,
-            duplicateNote,
-            documentId,
-            now,
-            duplicate.id,
-          ),
+          .bind(now, actor.name, duplicateNote, documentId, now, duplicate.id),
         db
           .prepare(`INSERT INTO obligation_events
             (id, key_date_id, event_type, from_status, to_status, actor,
@@ -460,7 +451,7 @@ export async function POST(request: Request) {
             `obligation-event-${crypto.randomUUID()}`,
             duplicate.id,
             duplicate.status,
-            access.actor.name,
+            actor.name,
             duplicateNote,
             documentId,
             JSON.stringify({ amendmentId, duplicateConsolidated: true }),
@@ -496,7 +487,7 @@ export async function POST(request: Request) {
               expirationObligation.id,
               expirationObligation.status,
               expirationObligation.status,
-              access.actor.name,
+              actor.name,
               `Due date updated by ${amendmentNumber}.`,
               documentId,
               JSON.stringify({
@@ -524,7 +515,7 @@ export async function POST(request: Request) {
               `Contract expiration — ${amendmentNumber}`,
               newExpirationDate,
               subtractCalendarDays(newExpirationDate, 30),
-              access.actor.name,
+              actor.name,
               now,
               documentId,
               input.analysis.newExpirationDate.sourceQuote,
@@ -542,7 +533,7 @@ export async function POST(request: Request) {
             decision = 'not_applicable', updated_at = ? WHERE id = ?`)
           .bind(
             now,
-            access.actor.name,
+            actor.name,
             supersededNote,
             documentId,
             now,
@@ -557,7 +548,7 @@ export async function POST(request: Request) {
             `obligation-event-${crypto.randomUUID()}`,
             expirationObligation.id,
             expirationObligation.status,
-            access.actor.name,
+            actor.name,
             supersededNote,
             documentId,
             JSON.stringify({ amendmentId }),
@@ -592,7 +583,7 @@ export async function POST(request: Request) {
               noticeObligation.id,
               noticeObligation.status,
               noticeObligation.status,
-              access.actor.name,
+              actor.name,
               `Due date updated by ${amendmentNumber}.`,
               documentId,
               JSON.stringify({
@@ -620,7 +611,7 @@ export async function POST(request: Request) {
               `Non-renewal notice — ${amendmentNumber}`,
               noticeDeadline,
               subtractCalendarDays(noticeDeadline, 30),
-              access.actor.name,
+              actor.name,
               now,
               documentId,
               input.analysis.noticeDays.sourceQuote,
@@ -638,7 +629,7 @@ export async function POST(request: Request) {
             decision = 'not_applicable', updated_at = ? WHERE id = ?`)
           .bind(
             now,
-            access.actor.name,
+            actor.name,
             supersededNote,
             documentId,
             now,
@@ -653,7 +644,7 @@ export async function POST(request: Request) {
             `obligation-event-${crypto.randomUUID()}`,
             noticeObligation.id,
             noticeObligation.status,
-            access.actor.name,
+            actor.name,
             supersededNote,
             documentId,
             JSON.stringify({ amendmentId }),
@@ -678,7 +669,7 @@ export async function POST(request: Request) {
             item.type,
             item.title,
             item.dueDate,
-            access.actor.name,
+            actor.name,
             now,
             documentId,
             item.sourceQuote,
@@ -703,17 +694,5 @@ export async function POST(request: Request) {
       },
       workspace: await getWorkspace(),
     });
-  } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof z.ZodError
-            ? 'Review the amendment fields before saving.'
-            : error instanceof Error
-              ? error.message
-              : 'Unable to apply the amendment.',
-      },
-      { status: 400 },
-    );
-  }
-}
+  },
+);

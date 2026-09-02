@@ -1,7 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 
-import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import {
   addApprovalDueDays,
   approvalGate,
@@ -17,9 +16,10 @@ import {
   calculateObligationMetrics,
   type ObligationMetricRecord,
 } from '@/lib/obligation-workflow';
-import { authorizeApiRequest } from '@/lib/server/request-security';
 import { calculateSupplierRiskProfile } from '@/lib/supplier-risk';
 import { isIsoDate } from '@/lib/validation';
+import { withApiRoute } from '@/lib/server/route-handler';
+import { WORKSPACE_REGISTER_LIMIT } from '@/lib/workspace-limits';
 
 const fieldSchema = z.object({
   value: z.union([z.string(), z.number(), z.null()]),
@@ -282,7 +282,11 @@ export async function getWorkspace() {
       (SELECT COALESCE(SUM(current_value_cents), 0) FROM contracts WHERE status IN ('executed','active')) AS current_value_cents,
       (SELECT COUNT(*) FROM suppliers WHERE status = 'active') AS active_suppliers,
       (SELECT COUNT(*) FROM suppliers WHERE status = 'pending') AS pending_suppliers,
-      (SELECT COUNT(*) FROM contract_intakes WHERE review_status != 'complete') AS records_to_verify`)
+      (SELECT COUNT(*) FROM contract_intakes WHERE review_status != 'complete') AS records_to_verify,
+      (SELECT COUNT(*) FROM contracts) AS total_contracts,
+      (SELECT COUNT(*) FROM suppliers) AS total_suppliers,
+      (SELECT COUNT(*) FROM contract_intakes) AS total_intakes,
+      (SELECT COUNT(*) FROM key_dates) AS total_key_dates`)
       .first(),
     db
       .prepare(`SELECT c.*, s.legal_name AS supplier_name,
@@ -295,7 +299,8 @@ export async function getWorkspace() {
       COALESCE((SELECT MAX(a.version_number) FROM amendments a
         WHERE a.contract_id = c.id), 1) AS current_version
       FROM contracts c JOIN suppliers s ON s.id = c.supplier_id
-      ORDER BY c.last_updated DESC`)
+      ORDER BY c.last_updated DESC
+      LIMIT ${WORKSPACE_REGISTER_LIMIT}`)
       .all(),
     db
       .prepare(`SELECT s.*,
@@ -337,7 +342,8 @@ export async function getWorkspace() {
         AND d.file_type IN ('business_license', 'professional_license', 'good_standing'))
         THEN 1 ELSE 0 END AS has_license_or_good_standing
       FROM suppliers s LEFT JOIN contracts c ON c.supplier_id = s.id
-      GROUP BY s.id ORDER BY s.legal_name`)
+      GROUP BY s.id ORDER BY s.legal_name
+      LIMIT ${WORKSPACE_REGISTER_LIMIT}`)
       .all(),
     db
       .prepare(`SELECT i.*,
@@ -364,7 +370,8 @@ export async function getWorkspace() {
         'No additional approval') AS required_approval
       FROM contract_intakes i
       LEFT JOIN suppliers s ON s.id = i.supplier_id
-      ORDER BY i.received_at DESC`)
+      ORDER BY i.received_at DESC
+      LIMIT ${WORKSPACE_REGISTER_LIMIT}`)
       .all(),
     db
       .prepare(`SELECT k.*,
@@ -384,7 +391,8 @@ export async function getWorkspace() {
       LEFT JOIN suppliers s ON s.id = k.supplier_id
       LEFT JOIN documents evidence ON evidence.id = k.evidence_document_id
       LEFT JOIN documents source ON source.id = k.source_document_id
-      ORDER BY CASE WHEN k.status = 'completed' THEN 1 ELSE 0 END, k.due_date`)
+      ORDER BY CASE WHEN k.status = 'completed' THEN 1 ELSE 0 END, k.due_date
+      LIMIT ${WORKSPACE_REGISTER_LIMIT}`)
       .all<ObligationMetricRecord & Record<string, string | number | null>>(),
     db
       .prepare(`SELECT * FROM (
@@ -612,6 +620,7 @@ export async function getWorkspace() {
     supplierRiskProfiles,
     intakes: intakeRows.results,
     keyDates: keyDateRows.results,
+    registerLimit: WORKSPACE_REGISTER_LIMIT,
     obligationMetrics: calculateObligationMetrics(keyDateRows.results),
     supplierAlerts: supplierAlertRows.results,
     supplierDocuments: supplierDocumentRows.results,
@@ -627,36 +636,21 @@ export async function getWorkspace() {
   };
 }
 
-export async function GET(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const GET = withApiRoute(
+  {
     permission: 'view_workspace',
-  });
-  if (!access.ok) return access.response;
+    errorStatus: 500,
+    fallbackError: 'Unable to load the workspace.',
+  },
+  async () => Response.json(await getWorkspace()),
+);
 
-  try {
-    await ensureWorkspaceDatabase();
-    return Response.json(await getWorkspace());
-  } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Unable to load the workspace.',
-      },
-      { status: 500 },
-    );
-  }
-}
-
-export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const POST = withApiRoute(
+  {
     permission: 'edit_verified_fields',
-  });
-  if (!access.ok) return access.response;
-
-  try {
-    await ensureWorkspaceDatabase();
+    fallbackError: 'Unable to save the verified record.',
+  },
+  async ({ request, actor }) => {
     const input = saveSchema.parse(await request.json());
     for (const fieldName of ['effectiveDate', 'expirationDate'] as const) {
       const value = stringValue(input.analysis[fieldName]);
@@ -915,7 +909,7 @@ export async function POST(request: Request) {
           documentId,
           JSON.stringify(input.analysis),
           correctionCount,
-          access.actor.name,
+          actor.name,
           now,
           input.analysisRunId,
         ),
@@ -944,7 +938,7 @@ export async function POST(request: Request) {
             originalField.sourceQuote,
             overrideReasons[fieldName],
             reviewStatus,
-            access.actor.name,
+            actor.name,
             now,
           );
       }),
@@ -1019,7 +1013,7 @@ export async function POST(request: Request) {
             title,
             contractType,
             valueCents || null,
-            access.actor.name,
+            actor.name,
             addDays(now.slice(0, 10), 5),
             approvalRequirements.length ? 'pending' : 'not_required',
             now.slice(0, 10),
@@ -1046,7 +1040,7 @@ export async function POST(request: Request) {
           .bind(
             `audit-${crypto.randomUUID()}`,
             id,
-            access.actor.name,
+            actor.name,
             JSON.stringify({
               source: input.document.fileName,
               model: analysisRun.model,
@@ -1130,7 +1124,7 @@ export async function POST(request: Request) {
             supplier.id,
             title,
             contractType,
-            access.actor.name,
+            actor.name,
             valueCents,
             valueCents,
             effectiveDate,
@@ -1165,7 +1159,7 @@ export async function POST(request: Request) {
           .bind(
             `audit-${crypto.randomUUID()}`,
             id,
-            access.actor.name,
+            actor.name,
             JSON.stringify({
               source: input.document.fileName,
               model: analysisRun.model,
@@ -1203,7 +1197,7 @@ export async function POST(request: Request) {
               item.type,
               item.title,
               item.dueDate,
-              access.actor.name,
+              actor.name,
               item.type === 'non_renewal_notice' ? 'high' : 'medium',
               now,
               item.type === 'non_renewal_notice' ? 'under_review' : null,
@@ -1224,15 +1218,5 @@ export async function POST(request: Request) {
       registeredContract,
       workspace: await getWorkspace(),
     });
-  } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Unable to save the verified record.',
-      },
-      { status: 400 },
-    );
-  }
-}
+  },
+);

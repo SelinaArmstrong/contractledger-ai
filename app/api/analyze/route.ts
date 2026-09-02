@@ -1,18 +1,14 @@
 import { z } from 'zod';
 import { env } from 'cloudflare:workers';
 
-import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import { assertContractFileSignature } from '@/lib/server/file-validation';
 import {
-  DocumentQualityError,
   preflightPdf,
   preflightText,
   qualityWarnings,
 } from '@/lib/document-quality';
-import {
-  authorizeApiRequest,
-  enforceRateLimit,
-} from '@/lib/server/request-security';
+import { enforceRateLimit } from '@/lib/server/request-security';
+import { withApiRoute } from '@/lib/server/route-handler';
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_PAGES = 40;
@@ -269,16 +265,16 @@ export async function analyzeContractFile(
   };
 }
 
-export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const POST = withApiRoute(
+  {
     permission: 'submit_documents',
-  });
-  if (!access.ok) return access.response;
-
-  try {
-    await ensureWorkspaceDatabase();
+    invalidPayloadError:
+      'DeepSeek returned an incomplete extraction. Please try the analysis again.',
+    fallbackError: 'Document analysis failed.',
+  },
+  async ({ request, actor }) => {
     const rateLimited = await enforceRateLimit(
-      access.actor,
+      actor,
       'contract-analysis',
       12,
       600,
@@ -351,19 +347,5 @@ export async function POST(request: Request) {
       qualityReport: result.qualityReport,
       model,
     });
-  } catch (error) {
-    if (error instanceof DocumentQualityError) {
-      return Response.json(
-        { error: error.message, qualityReport: error.report },
-        { status: 422 },
-      );
-    }
-    const message =
-      error instanceof z.ZodError
-        ? 'DeepSeek returned an incomplete extraction. Please try the analysis again.'
-        : error instanceof Error
-          ? error.message
-          : 'Document analysis failed.';
-    return Response.json({ error: message }, { status: 400 });
-  }
-}
+  },
+);

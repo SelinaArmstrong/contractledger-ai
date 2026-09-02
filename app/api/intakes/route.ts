@@ -1,10 +1,9 @@
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 
-import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import { getWorkspace } from '@/app/api/workspace/route';
-import { authorizeApiRequest } from '@/lib/server/request-security';
 import { isIsoDate } from '@/lib/validation';
+import { withApiRoute } from '@/lib/server/route-handler';
 
 const intakeStatuses = [
   'draft',
@@ -163,14 +162,15 @@ async function getIntakeDetails(id: string) {
   };
 }
 
-export async function GET(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const GET = withApiRoute(
+  {
     permission: 'view_workspace',
-  });
-  if (!access.ok) return access.response;
-  try {
-    await ensureWorkspaceDatabase();
-    const url = new URL(request.url);
+    errorStatus: 500,
+    redactErrors: true,
+    invalidPayloadError: 'Choose a valid review intake.',
+    fallbackError: 'Unable to load the review intake.',
+  },
+  async ({ url }) => {
     const { id } = querySchema.parse({ id: url.searchParams.get('id') });
     const details = await getIntakeDetails(id);
     if (!details)
@@ -179,26 +179,17 @@ export async function GET(request: Request) {
         { status: 404 },
       );
     return Response.json(details);
-  } catch (error) {
-    return Response.json(
-      {
-        error:
-          error instanceof z.ZodError
-            ? 'Choose a valid review intake.'
-            : 'Unable to load the review intake.',
-      },
-      { status: error instanceof z.ZodError ? 400 : 500 },
-    );
-  }
-}
+  },
+);
 
-export async function PATCH(request: Request) {
-  const access = await authorizeApiRequest(request, {
+export const PATCH = withApiRoute(
+  {
     permission: 'edit_verified_fields',
-  });
-  if (!access.ok) return access.response;
-  try {
-    await ensureWorkspaceDatabase();
+    errorStatus: 500,
+    invalidPayloadError: 'Review workflow values are incomplete or invalid.',
+    fallbackError: 'Unable to update the review workflow.',
+  },
+  async ({ request, actor }) => {
     const input = updateSchema.parse(await request.json());
     const existing = await env.DB.prepare(`SELECT id, approval_status
       FROM contract_intakes WHERE id = ? LIMIT 1`)
@@ -263,7 +254,7 @@ export async function PATCH(request: Request) {
         VALUES (?, 'contract_intake', ?, 'review_workflow_updated', ?, ?, ?)`).bind(
         `audit-${crypto.randomUUID()}`,
         input.id,
-        access.actor.name,
+        actor.name,
         JSON.stringify({
           status: input.status,
           owner: input.owner,
@@ -280,17 +271,5 @@ export async function PATCH(request: Request) {
       details: await getIntakeDetails(input.id),
       workspace: await getWorkspace(),
     });
-  } catch (error) {
-    const validationError = error instanceof z.ZodError;
-    return Response.json(
-      {
-        error: validationError
-          ? 'Review workflow values are incomplete or invalid.'
-          : error instanceof Error
-            ? error.message
-            : 'Unable to update the review workflow.',
-      },
-      { status: validationError ? 400 : 500 },
-    );
-  }
-}
+  },
+);

@@ -1,10 +1,6 @@
-import { authorizeApiRequest } from '@/lib/server/request-security';
+import { withApiRoute } from '@/lib/server/route-handler';
 
-export async function POST(request: Request) {
-  const access = await authorizeApiRequest(request, {
-    permission: 'export_data',
-  });
-  if (!access.ok) return access.response;
-
-  return Response.json({ authorized: true });
-}
+export const POST = withApiRoute(
+  { permission: 'export_data', database: false },
+  async () => Response.json({ authorized: true }),
+);
