@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "phase-execution-2026.1",
+  "phaseId": "replace-with-kebab-case-id",
+  "title": "Phase title",
+  "owner": "Accountable product or engineering owner",
+  "updatedAt": "YYYY-MM-DD",
+  "status": "draft",
+  "userStory": "As a contract-operations user, I can ... so that ...",
+  "businessRules": ["State the deterministic rule this phase must enforce."],
+  "nonGoals": ["State one adjacent capability this phase intentionally excludes."],
+  "acceptanceCriteria": ["State one observable outcome required for completion."],
+  "startGate": {
+    "previousPhase": {
+      "phaseId": "previous-phase-id",
+      "status": "complete",
+      "evidence": "ROADMAP.md#previous-phase"
+    },
+    "unresolvedDataIntegrityDefects": [],
+    "unresolvedAuditTrailDefects": []
+  },
+  "steps": [
+    { "id": "define", "status": "pending" },
+    { "id": "fixture-first", "status": "pending" },
+    { "id": "model", "status": "pending" },
+    { "id": "business-logic", "status": "pending" },
+    { "id": "api", "status": "pending" },
+    { "id": "interface", "status": "pending" },
+    { "id": "test", "status": "pending" },
+    { "id": "measure", "status": "pending" },
+    { "id": "demonstrate", "status": "pending" },
+    { "id": "document", "status": "pending" }
+  ],
+  "metric": {
+    "name": "A useful, reproducible phase outcome",
+    "value": "Measured value with a unit or explicit boundary",
+    "sampleSize": 1,
+    "source": "repository/relative/evidence-path"
+  }
+}

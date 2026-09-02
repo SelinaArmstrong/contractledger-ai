@@ -1,6 +1,6 @@
 {
   "name": "contractledger-ai",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -11,6 +11,11 @@
     "start": "wrangler dev --config dist/server/wrangler.json",
     "lint": "oxlint app components/contract-ledger-app.tsx db lib scripts",
     "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit",
+    "check:dod": "node scripts/check-definition-of-done.mjs",
+    "check:phase": "node scripts/check-phase-execution.mjs",
+    "check:baseline": "node scripts/verify-release-baseline.mjs",
+    "quality": "npm run check:phase && npm run check:dod && npm test && npm run lint && npm run typecheck && npm run build",
     "format": "oxfmt",
     "db:generate": "drizzle-kit generate"
   },

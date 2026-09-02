@@ -6,6 +6,7 @@
 ## Before the interview
 
 - Start the application and reset the fictional workspace.
+- Run `npm run check:baseline`, `npm run check:phase`, and `npm run check:dod`, then retain their pass summaries alongside the full repository quality-gate result.
 - Confirm the draft and executed demo PDFs open.
 - If live model access is unavailable, use the saved reviewed records and explain that deterministic controls and saved evidence remain fully demonstrable.
 - Keep the Portfolio Case Study view open as the starting point.
@@ -26,6 +27,10 @@
 | 7:05–8:10  | AI Accuracy & Validation   | Open a completed validation run.                                                      | Fifteen controlled fictional cases produce field and critical accuracy, source coverage, failures, duration, correction, and regression evidence. |
 | 8:10–9:10  | Contract detail / exports  | Download or describe the review package, workbook, and calendar output.               | Current terms, approvals, sources, versions, and reviewer history can leave the system as controlled operational artifacts.                       |
 | 9:10–10:00 | Portfolio Case Study       | Close on evidence and limitations.                                                    | The portfolio claims implemented and measured controls—not unmeasured time savings, legal outcomes, or active external delivery.                  |
+
+If asked how “done” is governed, show `docs/definition-of-done/features/roadmap-14-definition-of-done.json`: all 16 roadmap criteria must be complete or explicitly not applicable, evidence paths must exist, and pending work prevents completion. Clarify that the automated gate verifies evidence structure and presence; human review still assesses evidence quality.
+
+If asked how phase scope is controlled, show `docs/execution-loop/phases/roadmap-15-standard-execution-loop.json`: all ten steps are recorded in order, the predecessor is complete, and the unresolved data-integrity and audit-defect lists are empty. Demonstrate that `npm run check:phase` reports 10 of 10 steps accounted for.
 
 ## Suggested opening
 

@@ -1,6 +1,6 @@
 # ContractLedger AI Portfolio Case Study
 
-**Version:** 1.0 candidate  
+**Version:** 1.0.0 portfolio-ready baseline
 **Evidence date:** 2026-09-02  
 **Target roles:** Contract Administrator, Contract Operations Analyst, Legal Operations Analyst, CLM Analyst, Procurement Operations, and Vendor Governance
 
@@ -73,7 +73,7 @@ The AI validation suite uses 15 server-controlled fictional cases with immutable
 
 A complete run may become the approved baseline. A later prompt or model is blocked from promotion when critical-field accuracy falls more than two percentage points below that baseline. Evaluation documents never enter operational registers.
 
-The repository quality gate includes deterministic tests, linting, TypeScript checking, and a production build. The 2026-09-02 portfolio baseline contains 85 passing automated tests.
+The repository quality gate includes versioned 16-criterion Definition of Done manifests, a ten-step phase-execution manifest, deterministic tests, linting, TypeScript checking, and a production build. The phase gate blocks reordered or premature work, incomplete predecessors, open data-integrity or audit defects, absent evidence paths, and metrics without a source or sample size. The 2026-09-02 portfolio baseline contains 101 passing automated tests, including seven Definition of Done and nine phase-execution validator tests.
 
 ## 7. Reproducible evidence
 
@@ -86,11 +86,12 @@ The repository quality gate includes deterministic tests, linting, TypeScript ch
 | v0.6    | Fifteen fictional benchmark cases produce field-level metrics and a two-percentage-point critical-accuracy regression gate.                                           |
 | v0.7    | Seven roles, thirteen permissions, document preflight, and denied-write tests demonstrate separation of duties and input-quality controls.                            |
 | v0.8    | A source-aware PDF review package, eight visible supplier-risk factors, and durable integration-outbox events support operational handoff.                            |
+| Governance | Two versioned repository gates account for 16 Definition of Done criteria and all ten ordered execution steps, including predecessor and defect controls.       |
 
 ## 8. Results, limitations, and next steps
 
-The completed system demonstrates a connected contract-operations lifecycle rather than isolated UI mockups. It can safely stage legacy data, review a draft, retain approval decisions, register an executed agreement, apply an amendment, assign obligations, show evidence, evaluate AI quality, and export operational artifacts from one resettable fictional workspace.
+The v1.0.0 system demonstrates a connected contract-operations lifecycle rather than isolated UI mockups. It can safely stage legacy data, review a draft, retain approval decisions, register an executed agreement, apply an amendment, assign obligations, show evidence, evaluate AI quality, and export operational artifacts from one resettable fictional workspace. Two consecutive reset snapshots are byte-for-byte equivalent, and the saved baseline checks all 15 fictional source files plus nine seeded document links.
 
-The evidence supports claims about implemented controls, reproducible scenarios, dataset size, test coverage, and saved workflow metrics. It does not yet support a claim about real-company time savings, production-scale duplicate precision, legal outcome quality, or external notification delivery.
+The evidence supports claims about implemented controls, reproducible scenarios, dataset size, test coverage, and saved workflow metrics. The governance gates check declared structure, sequence, start conditions, and file-backed evidence; they do not replace code review, accessibility review, substantive evidence review, or prove that a command ran on a particular commit. The evidence does not yet support a claim about real-company time savings, production-scale duplicate precision, legal outcome quality, or external notification delivery.
 
 The next evidence step is to record several timed, reset-to-reset demo runs and save the median completion time. Product expansion should remain secondary to restoring a stable hosted portfolio deployment and collecting repeated workflow evidence.

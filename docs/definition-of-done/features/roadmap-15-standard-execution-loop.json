@@ -1,0 +1,108 @@
+{
+  "schemaVersion": "dod-2026.1",
+  "featureId": "roadmap-15-standard-execution-loop",
+  "title": "Executable standard phase sequence and start gate",
+  "owner": "ContractLedger AI maintainers",
+  "userStory": "As a contract-operations product owner, I can verify that each phase follows the standard delivery sequence and does not begin over unresolved integrity or audit defects.",
+  "updatedAt": "2026-09-02",
+  "status": "complete",
+  "criteria": [
+    {
+      "id": "user-story",
+      "status": "complete",
+      "evidence": [{ "kind": "documentation", "ref": "docs/execution-loop/README.md#workflow" }]
+    },
+    {
+      "id": "happy-and-failure-paths",
+      "status": "complete",
+      "evidence": [{ "kind": "test", "ref": "lib/phase-execution.test.ts" }]
+    },
+    {
+      "id": "interaction-states",
+      "status": "not_applicable",
+      "rationale": "This repository and CI gate has no interactive application view; its command output explicitly labels passing and failing states."
+    },
+    {
+      "id": "server-validation",
+      "status": "not_applicable",
+      "rationale": "No browser-to-server workflow is introduced; the shared validator owns all local and pull-request phase checks."
+    },
+    {
+      "id": "transactional-writes",
+      "status": "not_applicable",
+      "rationale": "The phase checker is read-only and performs no database, object-storage, or other material runtime write."
+    },
+    {
+      "id": "auditability",
+      "status": "complete",
+      "evidence": [{ "kind": "file", "ref": "docs/execution-loop/phases/roadmap-15-standard-execution-loop.json" }]
+    },
+    {
+      "id": "migration-strategy",
+      "status": "not_applicable",
+      "rationale": "No D1 schema or existing operational data changes are included in this repository-governance feature."
+    },
+    {
+      "id": "r2-consistency",
+      "status": "not_applicable",
+      "rationale": "The checker neither creates nor deletes R2 objects and therefore cannot leave database and file state inconsistent."
+    },
+    {
+      "id": "unit-tests",
+      "status": "complete",
+      "evidence": [{ "kind": "test", "ref": "lib/phase-execution.test.ts" }]
+    },
+    {
+      "id": "api-tests",
+      "status": "not_applicable",
+      "rationale": "No HTTP API or authorization boundary is added; invalid manifest inputs and start-gate failures are covered by validator tests."
+    },
+    {
+      "id": "fictional-fixture",
+      "status": "complete",
+      "evidence": [{ "kind": "fixture", "ref": "docs/execution-loop/phase-template.json" }]
+    },
+    {
+      "id": "data-model-consumers",
+      "status": "not_applicable",
+      "rationale": "The official contract and supplier model is unchanged, so exports and assistant retrieval need no update."
+    },
+    {
+      "id": "accessibility",
+      "status": "complete",
+      "evidence": [{ "kind": "file", "ref": "scripts/check-phase-execution.mjs" }]
+    },
+    {
+      "id": "quality-gate",
+      "status": "complete",
+      "evidence": [
+        { "kind": "command", "ref": "npm test" },
+        { "kind": "command", "ref": "npm run lint" },
+        { "kind": "command", "ref": "npx tsc --noEmit" },
+        { "kind": "command", "ref": "npm run build" },
+        { "kind": "command", "ref": "npm run check:phase" }
+      ]
+    },
+    {
+      "id": "documentation",
+      "status": "complete",
+      "evidence": [
+        { "kind": "documentation", "ref": "README.md" },
+        { "kind": "documentation", "ref": "DEMO_RUNBOOK.md" },
+        { "kind": "documentation", "ref": "ROADMAP.md" },
+        { "kind": "documentation", "ref": "PORTFOLIO_CASE_STUDY.md#results-limitations-and-next-steps" }
+      ]
+    },
+    {
+      "id": "metric",
+      "status": "complete",
+      "evidence": [{ "kind": "metric", "ref": "10 of 10 roadmap execution steps explicitly accounted for" }]
+    }
+  ],
+  "metric": {
+    "name": "Roadmap 15 execution steps explicitly accounted for",
+    "value": "10 of 10 steps (100%); workflow evidence coverage only",
+    "sampleSize": 10,
+    "source": "docs/execution-loop/phases/roadmap-15-standard-execution-loop.json"
+  }
+}

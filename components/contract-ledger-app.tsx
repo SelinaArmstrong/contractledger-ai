@@ -3880,8 +3880,10 @@ function ContractRegisterView({
                     {valueText(item.expiration_date)}
                   </TableCell>
                   <TableCell className="text-xs">
-                    {titleCase(item.renewal_type)} ·{' '}
-                    {valueText(item.notice_days)} days
+                    {titleCase(item.renewal_type)}
+                    {item.notice_days === null || item.notice_days === undefined
+                      ? ''
+                      : ` · ${valueText(item.notice_days)} days`}
                   </TableCell>
                   <TableCell className="text-xs">
                     {valueText(item.notice_deadline)}
@@ -6012,7 +6014,7 @@ function PortfolioCaseStudyView({
               ['7', 'Lifecycle releases', 'v0.2–v0.8'],
               ['15', 'Evaluation cases', 'Fictional ground truth'],
               ['7 / 13', 'Roles / permissions', 'Server enforced'],
-              ['85', 'Passing tests', '2026-09-02 baseline'],
+              ['101', 'Passing tests', '2026-09-02 v1.0 baseline'],
             ].map(([value, label, note]) => (
               <div key={label} className="bg-[#f8fbfc] p-5 md:p-6">
                 <p className="text-2xl font-semibold text-[#14384d]">{value}</p>

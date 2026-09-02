@@ -1,6 +1,6 @@
 # ContractLedger AI Product Roadmap
 
-**Roadmap version:** 2026-09-01  
+**Roadmap version:** 2026-09-02 — v1.0 baseline complete
 **Primary objective:** turn ContractLedger AI into a practical, auditable contract-operations portfolio product that creates defensible resume and interview evidence.  
 **Primary target roles:** Contract Administrator, Contract Operations Analyst, Legal Operations Analyst, CLM Analyst, Procurement Operations, and Vendor Governance.
 
@@ -70,7 +70,7 @@ The current application already demonstrates:
 
 ### Current release state
 
-Amendment & Version Lifecycle (v0.2), Approval & Exception Workflow (v0.3), Bulk Import & Data Quality (v0.4), Obligation Execution & Evidence (v0.5), AI Quality & Governance (v0.6), Document Quality, OCR Readiness & Permissions (v0.7), and Review Package, Supplier Risk & Integrations (v0.8) now form a connected lifecycle: legacy data can enter through an isolated, reversible staging process; verified draft values create durable approval controls; incomplete mandatory controls block signature readiness and executed registration; approved decisions remain visible after execution; later amendments preserve the resulting official history and update open lifecycle obligations; post-execution dates become assigned, evidence-backed work with an immutable closeout record; model quality is measured against versioned fictional ground truth with human-correction and regression evidence; unreadable source files or unauthorized actors cannot silently enter or alter the workflow; and verified records can leave the system as a source-aware review package while visible supplier factors and durable outbox events support operational follow-up.
+Amendment & Version Lifecycle (v0.2), Approval & Exception Workflow (v0.3), Bulk Import & Data Quality (v0.4), Obligation Execution & Evidence (v0.5), AI Quality & Governance (v0.6), Document Quality, OCR Readiness & Permissions (v0.7), and Review Package, Supplier Risk & Integrations (v0.8) now form a connected lifecycle: legacy data can enter through an isolated, reversible staging process; verified draft values create durable approval controls; incomplete mandatory controls block signature readiness and executed registration; approved decisions remain visible after execution; later amendments preserve the resulting official history and update open lifecycle obligations; post-execution dates become assigned, evidence-backed work with an immutable closeout record; model quality is measured against versioned fictional ground truth with human-correction and regression evidence; unreadable source files or unauthorized actors cannot silently enter or alter the workflow; and verified records can leave the system as a source-aware review package while visible supplier factors and durable outbox events support operational follow-up. The v1.0 baseline adds deterministic reset verification, fixture privacy/link checks, a retained smoke-test record, and executable phase/release evidence.
 
 ## 4. Release sequence
 
@@ -83,11 +83,13 @@ Amendment & Version Lifecycle (v0.2), Approval & Exception Workflow (v0.3), Bulk
 | v0.6    | AI Quality & Governance                       | Complete  | Large           | Very high    |
 | v0.7    | Document Quality, OCR Readiness & Permissions | Complete  | Medium/Large    | Medium-high  |
 | v0.8    | Review Package, Supplier Risk & Integrations  | Complete  | Medium          | Medium-high  |
-| v1.0    | Portfolio-ready Contract Operations System    | Target    | —               | Maximum      |
+| v1.0    | Portfolio-ready Contract Operations System    | Complete  | —               | Maximum      |
 
 The recommended cadence is one coherent release at a time. For part-time development, plan approximately one to two focused weeks for a medium phase and two to three for a large phase, but release only when the exit criteria are satisfied.
 
 ## 5. Phase 0 — Stabilize the baseline
+
+**Status:** Complete — 2026-09-02
 
 **Purpose:** create a reliable foundation so future metrics and demonstrations are reproducible.
 
@@ -114,7 +116,17 @@ The recommended cadence is one coherent release at a time. For part-time develop
 - The core demo can be completed without manually repairing state.
 - A clean baseline release/tag can be created after the current uncommitted work is resolved.
 
+### Delivered evidence
+
+- Reset now uses a fixed fictional baseline timestamp; two consecutive reset responses are byte-for-byte equivalent instead of differing in generated creation/update times.
+- `npm run check:baseline` verifies the application home, exact reset identity/count/value invariants, 15 fixture files, nine seeded document links, amendment/approval/obligation/import reads, review-package and calendar exports, export authorization, two invalid-input paths, and a final cleanup reset.
+- Extracted fixture text confirms that every source visibly identifies itself as fictional and every email address uses a reserved example domain. This automated check supplements rather than replaces human privacy review.
+- `docs/releases/V1_SMOKE_TEST.md` retains the primary workflow and interface checklist; `docs/releases/v1.0-release-evidence.json` records schema version 20, fixture/data inventory, component versions, commands, metrics, and limitations.
+- The local interface walkthrough loaded the dashboard, portfolio evidence, bulk-import workspace, and seven-record contract register without manual state repair.
+
 ## 6. Phase 1 — Amendment & Version Lifecycle (v0.2)
+
+**Status:** Complete
 
 **Business problem:** signed contracts continue to change through amendments, change orders, extensions, renewals, price adjustments, SOW replacements, and terminations. A register that stores only the original agreement becomes unreliable.
 
@@ -355,6 +367,8 @@ The recommended cadence is one coherent release at a time. For part-time develop
 
 ## 10. Phase 5 — AI Quality & Governance (v0.6)
 
+**Status:** Complete
+
 **Business problem:** a portfolio project should not claim that AI works without measuring accuracy, traceability, correction behavior, and regression risk.
 
 **Outcome:** ContractLedger AI provides field-level, version-aware evidence for model quality and human oversight.
@@ -580,9 +594,11 @@ Do not update resume metrics until the corresponding release and evidence have p
 - `PORTFOLIO_CASE_STUDY.md` provides the interview narrative across the manual problem, lifecycle design, data-model and human-review decisions, security/privacy boundaries, validation method, reproducible results, limitations, and next evidence step.
 - `DEMO_RUNBOOK.md` turns the ten-step scenario into a timed walkthrough with an opening, close, evidence cue for every view, and recovery paths when live AI or an upload is unavailable.
 - `RESUME_EVIDENCE.md` records release-specific evidence locations, safe claim boundaries, candidate resume language, and the additional measurements required before making stronger productivity, accuracy, precision, or operational-outcome claims.
-- The portfolio baseline explicitly identifies 15 fictional evaluation cases, seven roles, thirteen permissions, seven completed lifecycle releases, and 85 passing automated tests as of 2026-09-02. It does not convert fictional fixtures into claims about real-company savings or legal outcomes.
+- The portfolio baseline explicitly identifies 15 fictional evaluation cases, seven roles, thirteen permissions, seven completed lifecycle releases, and 101 passing automated tests as of 2026-09-02. It does not convert fictional fixtures into claims about real-company savings or legal outcomes.
 
 ## 14. Definition of done for every major feature
+
+**Status:** Complete — 2026-09-02
 
 A feature is not complete until all applicable items are satisfied:
 
@@ -603,7 +619,19 @@ A feature is not complete until all applicable items are satisfied:
 - README, demo script, roadmap status, and limitations are updated.
 - At least one useful metric is captured without overstating results.
 
+### Delivered controls
+
+- `docs/definition-of-done/feature-template.json` makes every criterion explicit for each major feature; `complete`, `not_applicable`, and `pending` are the only valid states, and exclusions require a feature-specific rationale.
+- `npm run check:dod` fails closed on missing, duplicate, unknown, or pending criteria; missing evidence files; incomplete quality-command or documentation evidence; and metrics without a source and sample size.
+- The shared validator has deterministic tests for the successful path and failure paths covering omitted criteria, pending work, weak not-applicable rationales, missing evidence, and incomplete quality commands.
+- `npm run quality` and the pull-request workflow combine the Definition of Done check with tests, lint, TypeScript, and the production build. The pull-request template carries the same review boundary.
+- The first manifest accounts for 16 of 16 roadmap criteria for the release-governance feature. Seven criteria are explicitly not applicable because the gate is read-only, introduces no runtime UI/API/data-model/storage change, and therefore should not invent operational evidence.
+- Seven deterministic validator tests bring the repository suite to 92 passing tests and cover both the valid manifest and the gate's material failure modes, including unsupported evidence kinds and repository-path escape attempts.
+- This automation verifies checklist structure and evidence presence, not the quality of human review, universal accessibility, or historical command execution; those remain code-review and CI responsibilities.
+
 ## 15. Standard execution loop for each phase
+
+**Status:** Complete — 2026-09-02
 
 Use the same implementation sequence to control scope:
 
@@ -619,6 +647,16 @@ Use the same implementation sequence to control scope:
 10. **Document:** update README, case study, roadmap status, limitations, and resume evidence ledger.
 
 Do not start the next major phase while the previous phase still has unresolved data-integrity or audit-trail defects.
+
+### Delivered controls
+
+- `docs/execution-loop/phase-template.json` turns the ten roadmap steps into a versioned phase record with definition fields, ordered states, evidence, an explicit predecessor, integrity/audit defect lists, and a bounded metric.
+- `npm run check:phase` fails closed on missing or reordered steps, later steps completed prematurely, multiple active steps, missing evidence paths, unsupported evidence types, weak exclusions, incomplete predecessors, open integrity/audit defects on started phases, and metrics without a source or sample size.
+- A started phase cannot pass unless its predecessor is recorded as complete with existing repository evidence and both unresolved-defect lists are empty. A complete phase must account for all ten steps.
+- Nine deterministic tests cover the successful path and failure paths for order, premature progression, predecessor status, both defect classes, evidence, exclusions, metrics, and draft-state behavior.
+- `npm run quality` and the pull-request workflow now run the phase gate before the Definition of Done, test, lint, TypeScript, and production-build gates.
+- The first completed phase manifest accounts for 10 of 10 roadmap steps: seven are evidenced as complete and three are explicitly not applicable because this read-only governance feature adds no D1 model, HTTP API, R2 write, or application interface.
+- The combined suite now has 101 passing automated tests. The phase gate validates declared sequence and evidence presence; human review still owns substantive evidence quality and confirmation that historical commands ran on the reviewed commit.
 
 ## 16. Explicit non-goals
 
@@ -637,6 +675,8 @@ The following are outside the near-term roadmap:
 
 ## 17. v1.0 portfolio-ready exit criteria
 
+**Status:** Complete — 2026-09-02
+
 ContractLedger AI is ready to present as a mature portfolio project when:
 
 - one fictional agreement can move through draft review, exception approval, executed registration, amendment, obligation completion, and audit review;
@@ -653,3 +693,14 @@ ContractLedger AI is ready to present as a mature portfolio project when:
 At that point, the strongest positioning is not “built an AI website.” It is:
 
 > Designed and validated a human-in-the-loop contract operations system that controls how contract and supplier data are extracted, verified, approved, amended, monitored, measured, and audited.
+
+### Completion evidence
+
+- The lifecycle traceability record maps reviewed intake, approval controls, executed registration, amendment lineage, obligation completion, and audit/review-package evidence to resettable fictional records and deterministic tests.
+- The four-row import preview exercises mapping, normalization, duplicate review, invalid-input reporting, and the reversible staging boundary.
+- Original, amendment, and current values remain separately visible; lifecycle tests reproduce positive/negative deltas and dependent-date recalculation.
+- Five obligations retain owners, status history, overdue calculation, and completion evidence; the metrics expose their small fictional sample.
+- Dataset `contractledger-fictional-2026.09` contains 15 versioned fixtures with field ground truth, document mix, source coverage, correction evidence, regression boundaries, and explicit claim limitations.
+- Seven roles and thirteen named permissions are enforced at material server routes and covered by denied-write tests.
+- The deterministic baseline, full quality gate, case study, runbook, resume ledger, release note, and versioned release evidence all pass their executable manifests.
+- The resulting release is package version `1.0.0`. Its evidence supports a portfolio-ready claim, not real-company savings, legal outcomes, production availability, or external notification delivery.

@@ -1,7 +1,8 @@
 # ContractLedger AI Resume Evidence Ledger
 
 **Evidence baseline:** 2026-09-02  
-**Repository quality gate:** 85 automated tests passing, lint passing, TypeScript passing, production build passing
+**Repository quality gate:** 101 automated tests passing, phase-execution and Definition of Done gates passing, lint passing, TypeScript passing, production build passing
+**Release:** v1.0.0 portfolio-ready fictional baseline
 
 ## Claim rules
 
@@ -22,6 +23,9 @@
 | v0.6    | AI governance           | Fifteen server-controlled fictional fixtures, field-level results, source coverage, correction evidence, version labels, and a two-point critical-accuracy regression gate. | AI Accuracy view, CSV appendix, evaluation tests             | Quote achieved accuracy only from a named completed run with dataset and sample size.       |
 | v0.7    | Quality and permissions | Seven roles, thirteen named permissions, server-side denied-write coverage, page-level document preflight.                                                                  | Role policy, preflight reports, authorization tests          | Claim separation-of-duties implementation, not enterprise IAM certification.                |
 | v0.8    | Operational handoff     | Source-aware PDF review package, eight-factor explainable supplier risk, versioned integration outbox.                                                                      | Contract PDF export, supplier profile, outbox records, tests | Say integration-ready; do not imply external delivery is active.                            |
+| DoD     | Release governance      | Sixteen versioned criteria, evidence-path validation, explicit applicability decisions, and one combined quality command enforced in pull requests.                           | Definition of Done manifest, validator tests, CI workflow    | Claim an implemented repository gate, not proof of review quality or production outcomes.   |
+| Loop    | Phase governance        | Ten ordered execution steps, predecessor completion evidence, explicit integrity/audit start gates, and bounded phase metrics.                                                | Phase manifest, validator tests, CI workflow                 | Claim sequence and evidence enforcement, not substantive evidence quality.                   |
+| v1.0    | Release baseline        | Two byte-identical reset snapshots, 15 privacy-marked fixtures, nine verified document links, retained smoke evidence, and 10/10 exit criteria.                              | v1.0 release evidence and smoke checklist                    | Claim a portfolio-ready fictional baseline, not production availability or business impact. |
 
 ## Candidate resume bullets
 
@@ -31,6 +35,7 @@
 - Created a 15-document fictional AI validation suite with field-level ground truth, source-coverage metrics, operational correction evidence, and a regression gate for critical-field accuracy.
 - Enforced seven contract-operations roles across thirteen server permissions and added document-quality preflight to block unreadable or unsupported source files before analysis.
 - Produced operational handoff artifacts including an audited review-package PDF, current-register workbook, obligation calendar export, and explainable eight-factor supplier-risk profile.
+- Built versioned release controls that enforce 16 Definition of Done criteria and a ten-step phase sequence with predecessor, integrity-defect, audit-defect, evidence, and metric gates.
 
 ## Evidence still needed before stronger claims
 

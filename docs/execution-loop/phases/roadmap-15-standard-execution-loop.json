@@ -1,0 +1,93 @@
+{
+  "schemaVersion": "phase-execution-2026.1",
+  "phaseId": "roadmap-15-standard-execution-loop",
+  "title": "Executable standard phase sequence and start gate",
+  "owner": "ContractLedger AI maintainers",
+  "updatedAt": "2026-09-02",
+  "status": "complete",
+  "userStory": "As a contract-operations product owner, I can verify that each phase follows the same evidence-backed sequence and cannot start over unresolved integrity or audit defects.",
+  "businessRules": [
+    "All ten execution steps remain ordered and a later step cannot finish before an earlier step.",
+    "An active or complete phase requires a completed predecessor and no unresolved data-integrity or audit-trail defects."
+  ],
+  "nonGoals": [
+    "The gate does not judge the substantive quality of evidence or prove that a command ran on a particular commit.",
+    "The gate does not add contract runtime schema, API, storage, or interface behavior."
+  ],
+  "acceptanceCriteria": [
+    "Malformed, incomplete, reordered, prematurely advanced, or blocked phase manifests fail with a non-zero exit code.",
+    "A complete phase with all ten steps accounted for, existing evidence, and a clear start gate passes locally and in pull requests."
+  ],
+  "startGate": {
+    "previousPhase": {
+      "phaseId": "roadmap-14-definition-of-done",
+      "status": "complete",
+      "evidence": "ROADMAP.md#14-definition-of-done-for-every-major-feature"
+    },
+    "unresolvedDataIntegrityDefects": [],
+    "unresolvedAuditTrailDefects": []
+  },
+  "steps": [
+    {
+      "id": "define",
+      "status": "complete",
+      "evidence": [{ "kind": "documentation", "ref": "docs/execution-loop/README.md#workflow" }]
+    },
+    {
+      "id": "fixture-first",
+      "status": "complete",
+      "evidence": [{ "kind": "fixture", "ref": "docs/execution-loop/phase-template.json" }]
+    },
+    {
+      "id": "model",
+      "status": "not_applicable",
+      "rationale": "This repository-governance phase adds a manifest schema but makes no D1 contract-data schema or migration change."
+    },
+    {
+      "id": "business-logic",
+      "status": "complete",
+      "evidence": [{ "kind": "file", "ref": "lib/phase-execution.mjs" }]
+    },
+    {
+      "id": "api",
+      "status": "not_applicable",
+      "rationale": "The checker is local and CI-only, introduces no HTTP endpoint, and performs no database or object-storage write."
+    },
+    {
+      "id": "interface",
+      "status": "not_applicable",
+      "rationale": "The phase introduces a non-interactive repository gate whose accessible output is plain text with explicit pass and fail labels."
+    },
+    {
+      "id": "test",
+      "status": "complete",
+      "evidence": [{ "kind": "test", "ref": "lib/phase-execution.test.ts" }]
+    },
+    {
+      "id": "measure",
+      "status": "complete",
+      "evidence": [{ "kind": "metric", "ref": "10 of 10 execution steps explicitly accounted for" }]
+    },
+    {
+      "id": "demonstrate",
+      "status": "complete",
+      "evidence": [{ "kind": "documentation", "ref": "DEMO_RUNBOOK.md" }]
+    },
+    {
+      "id": "document",
+      "status": "complete",
+      "evidence": [
+        { "kind": "documentation", "ref": "README.md" },
+        { "kind": "documentation", "ref": "ROADMAP.md" },
+        { "kind": "documentation", "ref": "PORTFOLIO_CASE_STUDY.md" },
+        { "kind": "documentation", "ref": "RESUME_EVIDENCE.md" }
+      ]
+    }
+  ],
+  "metric": {
+    "name": "Roadmap 15 execution steps explicitly accounted for",
+    "value": "10 of 10 steps (100%); workflow evidence coverage, not production outcome quality",
+    "sampleSize": 10,
+    "source": "docs/execution-loop/phases/roadmap-15-standard-execution-loop.json"
+  }
+}

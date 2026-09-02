@@ -1,0 +1,116 @@
+{
+  "schemaVersion": "phase-execution-2026.1",
+  "phaseId": "v1-portfolio-ready",
+  "title": "Portfolio-ready Contract Operations System",
+  "owner": "ContractLedger AI maintainers",
+  "updatedAt": "2026-09-02",
+  "status": "complete",
+  "userStory": "As a contract-operations candidate, I can demonstrate a connected and auditable fictional lifecycle with bounded evidence and no unsupported outcome claims.",
+  "businessRules": [
+    "All ten v1.0 exit criteria require file-backed or command-backed evidence before release.",
+    "Official values remain human verified, current terms remain reproducible, and every portfolio metric states its sample boundary."
+  ],
+  "nonGoals": [
+    "v1.0 does not add e-signature, autonomous legal advice, billing, multi-tenant administration, or active external delivery.",
+    "v1.0 does not convert fictional fixture results into real-company productivity or legal-outcome claims."
+  ],
+  "acceptanceCriteria": [
+    "The lifecycle, import, amendment, obligation, AI evaluation, permission, reset, quality, and portfolio-evidence exit criteria are traceable.",
+    "The baseline and full repository quality commands pass and a clean v1.0.0 release record can be created."
+  ],
+  "startGate": {
+    "previousPhase": {
+      "phaseId": "phase-0-stabilize-baseline",
+      "status": "complete",
+      "evidence": "docs/execution-loop/phases/phase-0-stabilize-baseline.json"
+    },
+    "unresolvedDataIntegrityDefects": [],
+    "unresolvedAuditTrailDefects": []
+  },
+  "steps": [
+    {
+      "id": "define",
+      "status": "complete",
+      "evidence": [{ "kind": "documentation", "ref": "ROADMAP.md#17-v10-portfolio-ready-exit-criteria" }]
+    },
+    {
+      "id": "fixture-first",
+      "status": "complete",
+      "evidence": [
+        { "kind": "fixture", "ref": "public/demo-documents/01_Draft_Professional_Services_Agreement.pdf" },
+        { "kind": "fixture", "ref": "public/demo-documents/15_Ambiguous_Incomplete_Supplier_Note.txt" }
+      ]
+    },
+    {
+      "id": "model",
+      "status": "complete",
+      "evidence": [
+        { "kind": "file", "ref": "db/schema.ts" },
+        { "kind": "migration", "ref": "drizzle/0016_white_stardust.sql" }
+      ]
+    },
+    {
+      "id": "business-logic",
+      "status": "complete",
+      "evidence": [
+        { "kind": "file", "ref": "lib/amendment-lifecycle.ts" },
+        { "kind": "file", "ref": "lib/approval-workflow.ts" },
+        { "kind": "file", "ref": "lib/obligation-workflow.ts" }
+      ]
+    },
+    {
+      "id": "api",
+      "status": "complete",
+      "evidence": [
+        { "kind": "file", "ref": "app/api/workspace/route.ts" },
+        { "kind": "file", "ref": "lib/server/request-security.ts" },
+        { "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }
+      ]
+    },
+    {
+      "id": "interface",
+      "status": "complete",
+      "evidence": [
+        { "kind": "file", "ref": "components/contract-ledger-app.tsx" },
+        { "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md#interface-walkthrough" }
+      ]
+    },
+    {
+      "id": "test",
+      "status": "complete",
+      "evidence": [
+        { "kind": "command", "ref": "npm run check:baseline" },
+        { "kind": "command", "ref": "npm test" }
+      ]
+    },
+    {
+      "id": "measure",
+      "status": "complete",
+      "evidence": [{ "kind": "metric", "ref": "101 tests and 15 fictional evaluation fixtures in the saved v1.0 baseline" }]
+    },
+    {
+      "id": "demonstrate",
+      "status": "complete",
+      "evidence": [
+        { "kind": "documentation", "ref": "DEMO_RUNBOOK.md" },
+        { "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md#core-lifecycle-traceability" }
+      ]
+    },
+    {
+      "id": "document",
+      "status": "complete",
+      "evidence": [
+        { "kind": "documentation", "ref": "README.md" },
+        { "kind": "documentation", "ref": "PORTFOLIO_CASE_STUDY.md" },
+        { "kind": "documentation", "ref": "RESUME_EVIDENCE.md" },
+        { "kind": "documentation", "ref": "docs/releases/v1.0.0.md" }
+      ]
+    }
+  ],
+  "metric": {
+    "name": "v1.0 portfolio exit criteria evidenced",
+    "value": "10 of 10 roadmap exit criteria with bounded repository evidence",
+    "sampleSize": 10,
+    "source": "docs/releases/v1.0-release-evidence.json"
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "schemaVersion": "dod-2026.1",
+  "featureId": "roadmap-14-definition-of-done",
+  "title": "Executable Definition of Done release gate",
+  "owner": "ContractLedger AI maintainers",
+  "userStory": "As a contract-operations product owner, I can verify that each major feature has complete, source-linked delivery evidence before it is declared done.",
+  "updatedAt": "2026-09-02",
+  "status": "complete",
+  "criteria": [
+    {
+      "id": "user-story",
+      "status": "complete",
+      "evidence": [{ "kind": "documentation", "ref": "docs/definition-of-done/README.md#workflow" }]
+    },
+    {
+      "id": "happy-and-failure-paths",
+      "status": "complete",
+      "evidence": [{ "kind": "test", "ref": "lib/definition-of-done.test.ts" }]
+    },
+    {
+      "id": "interaction-states",
+      "status": "not_applicable",
+      "rationale": "This feature is a non-interactive repository and CI gate; its CLI provides explicit pass and error output but introduces no loading or empty application view."
+    },
+    {
+      "id": "server-validation",
+      "status": "not_applicable",
+      "rationale": "The gate has no browser-to-server rule boundary; one shared validator owns both local and CI manifest validation."
+    },
+    {
+      "id": "transactional-writes",
+      "status": "not_applicable",
+      "rationale": "The checker is read-only and performs no database, object-storage, or other material runtime writes."
+    },
+    {
+      "id": "auditability",
+      "status": "complete",
+      "evidence": [{ "kind": "file", "ref": "docs/definition-of-done/features/roadmap-14-definition-of-done.json" }]
+    },
+    {
+      "id": "migration-strategy",
+      "status": "not_applicable",
+      "rationale": "No D1 schema or seeded production data changes are part of this repository-governance feature."
+    },
+    {
+      "id": "r2-consistency",
+      "status": "not_applicable",
+      "rationale": "The read-only gate neither creates nor deletes R2 objects and cannot leave database and file state inconsistent."
+    },
+    {
+      "id": "unit-tests",
+      "status": "complete",
+      "evidence": [{ "kind": "test", "ref": "lib/definition-of-done.test.ts" }]
+    },
+    {
+      "id": "api-tests",
+      "status": "not_applicable",
+      "rationale": "No HTTP API or authorization surface is introduced; malformed and incomplete manifest inputs are covered by validator tests."
+    },
+    {
+      "id": "fictional-fixture",
+      "status": "complete",
+      "evidence": [{ "kind": "fixture", "ref": "docs/definition-of-done/feature-template.json" }]
+    },
+    {
+      "id": "data-model-consumers",
+      "status": "not_applicable",
+      "rationale": "The official contract and supplier data model is unchanged, so exports and assistant retrieval require no update."
+    },
+    {
+      "id": "accessibility",
+      "status": "complete",
+      "evidence": [{ "kind": "file", "ref": "scripts/check-definition-of-done.mjs" }]
+    },
+    {
+      "id": "quality-gate",
+      "status": "complete",
+      "evidence": [
+        { "kind": "command", "ref": "npm test" },
+        { "kind": "command", "ref": "npm run lint" },
+        { "kind": "command", "ref": "npx tsc --noEmit" },
+        { "kind": "command", "ref": "npm run build" }
+      ]
+    },
+    {
+      "id": "documentation",
+      "status": "complete",
+      "evidence": [
+        { "kind": "documentation", "ref": "README.md" },
+        { "kind": "documentation", "ref": "DEMO_RUNBOOK.md" },
+        { "kind": "documentation", "ref": "ROADMAP.md" },
+        { "kind": "documentation", "ref": "PORTFOLIO_CASE_STUDY.md#results-limitations-and-next-steps" }
+      ]
+    },
+    {
+      "id": "metric",
+      "status": "complete",
+      "evidence": [{ "kind": "metric", "ref": "16 of 16 roadmap criteria explicitly accounted for" }]
+    }
+  ],
+  "metric": {
+    "name": "Roadmap 14 criteria explicitly accounted for",
+    "value": "16 of 16 criteria (100%); applicability only, not production outcome quality",
+    "sampleSize": 16,
+    "source": "docs/definition-of-done/features/roadmap-14-definition-of-done.json"
+  }
+}

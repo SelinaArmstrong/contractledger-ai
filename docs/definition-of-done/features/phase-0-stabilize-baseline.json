@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "dod-2026.1",
+  "featureId": "phase-0-stabilize-baseline",
+  "title": "Deterministic release baseline",
+  "owner": "ContractLedger AI maintainers",
+  "userStory": "As a portfolio maintainer, I can reset and verify the same fictional workspace before every demonstration so that release evidence remains reproducible.",
+  "updatedAt": "2026-09-02",
+  "status": "complete",
+  "criteria": [
+    {
+      "id": "user-story",
+      "status": "complete",
+      "evidence": [{ "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md" }]
+    },
+    {
+      "id": "happy-and-failure-paths",
+      "status": "complete",
+      "evidence": [{ "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }]
+    },
+    {
+      "id": "interaction-states",
+      "status": "complete",
+      "evidence": [{ "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md#interface-walkthrough" }]
+    },
+    {
+      "id": "server-validation",
+      "status": "complete",
+      "evidence": [{ "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }]
+    },
+    {
+      "id": "transactional-writes",
+      "status": "not_applicable",
+      "rationale": "The new baseline verifier adds no operational write path; it invokes the existing authorized demo-reset and export behavior, then restores the baseline."
+    },
+    {
+      "id": "auditability",
+      "status": "complete",
+      "evidence": [{ "kind": "file", "ref": "docs/releases/v1.0-release-evidence.json" }]
+    },
+    {
+      "id": "migration-strategy",
+      "status": "not_applicable",
+      "rationale": "The deterministic reset timestamp and release verifier require no D1 schema or existing-data migration."
+    },
+    {
+      "id": "r2-consistency",
+      "status": "complete",
+      "evidence": [{ "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }]
+    },
+    {
+      "id": "unit-tests",
+      "status": "complete",
+      "evidence": [{ "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }]
+    },
+    {
+      "id": "api-tests",
+      "status": "complete",
+      "evidence": [{ "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }]
+    },
+    {
+      "id": "fictional-fixture",
+      "status": "complete",
+      "evidence": [
+        { "kind": "fixture", "ref": "public/demo-documents/01_Draft_Professional_Services_Agreement.pdf" },
+        { "kind": "fixture", "ref": "public/demo-documents/15_Ambiguous_Incomplete_Supplier_Note.txt" }
+      ]
+    },
+    {
+      "id": "data-model-consumers",
+      "status": "not_applicable",
+      "rationale": "The official contract and supplier data model is unchanged, so exports and assistant retrieval need no schema update."
+    },
+    {
+      "id": "accessibility",
+      "status": "complete",
+      "evidence": [{ "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md#interface-walkthrough" }]
+    },
+    {
+      "id": "quality-gate",
+      "status": "complete",
+      "evidence": [
+        { "kind": "command", "ref": "npm test" },
+        { "kind": "command", "ref": "npm run lint" },
+        { "kind": "command", "ref": "npx tsc --noEmit" },
+        { "kind": "command", "ref": "npm run build" },
+        { "kind": "command", "ref": "npm run check:baseline" }
+      ]
+    },
+    {
+      "id": "documentation",
+      "status": "complete",
+      "evidence": [
+        { "kind": "documentation", "ref": "README.md" },
+        { "kind": "documentation", "ref": "DEMO_RUNBOOK.md" },
+        { "kind": "documentation", "ref": "ROADMAP.md" },
+        { "kind": "documentation", "ref": "PORTFOLIO_CASE_STUDY.md#results-limitations-and-next-steps" },
+        { "kind": "documentation", "ref": "docs/releases/v1.0.0.md#known-boundaries" }
+      ]
+    },
+    {
+      "id": "metric",
+      "status": "complete",
+      "evidence": [{ "kind": "metric", "ref": "2 of 2 reset snapshots byte-for-byte equivalent" }]
+    }
+  ],
+  "metric": {
+    "name": "Consecutive reset equivalence",
+    "value": "2 of 2 complete workspace snapshots byte-for-byte equivalent",
+    "sampleSize": 2,
+    "source": "docs/releases/v1.0-release-evidence.json"
+  }
+}

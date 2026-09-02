@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "phase-execution-2026.1",
+  "phaseId": "phase-0-stabilize-baseline",
+  "title": "Deterministic release baseline",
+  "owner": "ContractLedger AI maintainers",
+  "updatedAt": "2026-09-02",
+  "status": "complete",
+  "userStory": "As a portfolio maintainer, I can reset and verify the same fictional workspace before every demonstration so that release evidence remains reproducible.",
+  "businessRules": [
+    "Two consecutive resets must produce byte-for-byte equivalent workspace snapshots.",
+    "Every declared demo fixture and database-seeded document link must exist and open.",
+    "Baseline evidence must identify its schema, fixture inventory, sample size, commands, and limitations."
+  ],
+  "nonGoals": [
+    "This phase does not claim production availability, real-company productivity gains, or legal outcome quality.",
+    "This phase does not add a new contract-operations workflow or external integration."
+  ],
+  "acceptanceCriteria": [
+    "Reset determinism, seed counts, file links, primary reads, exports, and invalid-input paths pass from one command.",
+    "The complete repository quality gate passes and the baseline evidence is retained in release documentation."
+  ],
+  "startGate": {
+    "previousPhase": null,
+    "unresolvedDataIntegrityDefects": [],
+    "unresolvedAuditTrailDefects": []
+  },
+  "steps": [
+    {
+      "id": "define",
+      "status": "complete",
+      "evidence": [{ "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md" }]
+    },
+    {
+      "id": "fixture-first",
+      "status": "complete",
+      "evidence": [
+        { "kind": "fixture", "ref": "public/demo-documents/01_Draft_Professional_Services_Agreement.pdf" },
+        { "kind": "fixture", "ref": "public/demo-documents/15_Ambiguous_Incomplete_Supplier_Note.txt" }
+      ]
+    },
+    {
+      "id": "model",
+      "status": "not_applicable",
+      "rationale": "The release baseline changes no operational D1 schema; it records and verifies the existing schema version 20."
+    },
+    {
+      "id": "business-logic",
+      "status": "complete",
+      "evidence": [{ "kind": "file", "ref": "db/bootstrap.ts" }]
+    },
+    {
+      "id": "api",
+      "status": "complete",
+      "evidence": [
+        { "kind": "file", "ref": "app/api/workspace/reset/route.ts" },
+        { "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }
+      ]
+    },
+    {
+      "id": "interface",
+      "status": "complete",
+      "evidence": [{ "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md#interface-walkthrough" }]
+    },
+    {
+      "id": "test",
+      "status": "complete",
+      "evidence": [{ "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }]
+    },
+    {
+      "id": "measure",
+      "status": "complete",
+      "evidence": [{ "kind": "metric", "ref": "15 fixture files and 9 seeded document links verified across two identical resets" }]
+    },
+    {
+      "id": "demonstrate",
+      "status": "complete",
+      "evidence": [{ "kind": "documentation", "ref": "DEMO_RUNBOOK.md" }]
+    },
+    {
+      "id": "document",
+      "status": "complete",
+      "evidence": [
+        { "kind": "documentation", "ref": "docs/releases/v1.0.0.md" },
+        { "kind": "documentation", "ref": "docs/releases/v1.0-release-evidence.json" },
+        { "kind": "documentation", "ref": "ROADMAP.md" }
+      ]
+    }
+  ],
+  "metric": {
+    "name": "Consecutive reset equivalence",
+    "value": "2 of 2 complete workspace snapshots byte-for-byte equivalent",
+    "sampleSize": 2,
+    "source": "docs/releases/v1.0-release-evidence.json"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "release": "v1.0.0",
+  "verifiedAt": "2026-09-02",
+  "dataBoundary": "15 fictional portfolio fixtures; no real supplier or employer confidential data",
+  "schemaVersion": 20,
+  "versions": {
+    "evaluationDataset": "contractledger-fictional-2026.09",
+    "evaluationFixtures": "2026.09.1",
+    "aiExtraction": "field-schema-2026.3",
+    "supplierRisk": "supplier-risk-2026.1",
+    "reviewPackage": "review-package-2026.1",
+    "integrationOutbox": "integration-outbox-2026.1"
+  },
+  "resetInventory": {
+    "contracts": 7,
+    "suppliers": 8,
+    "intakes": 3,
+    "obligations": 5,
+    "approvalRecords": 5,
+    "supplierDocuments": 7,
+    "importPreviewBatches": 1,
+    "fixtureFiles": 15,
+    "seededDocumentLinks": 9,
+    "currentContractValueCents": 405500000
+  },
+  "verification": {
+    "consecutiveResetSnapshots": "byte-for-byte equivalent",
+    "fixturePrivacyCheck": "all files visibly identify themselves as fictional; extracted email addresses use reserved example domains",
+    "baselineCommand": "npm run check:baseline",
+    "qualityCommand": "npm run quality",
+    "testFiles": 19,
+    "tests": 101,
+    "phaseStepsAccountedFor": 30,
+    "definitionOfDoneCriteriaAccountedFor": 64
+  },
+  "limitations": [
+    "The checks verify repository evidence and a local resettable demonstration, not production operating outcomes.",
+    "No real-company time savings, legal outcomes, production duplicate precision, or external notification delivery are claimed.",
+    "The fixture privacy scan checks visible fictional labels and email domains; human review remains responsible for substantive privacy assessment."
+  ]
+}

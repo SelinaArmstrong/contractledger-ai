@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "dod-2026.1",
+  "featureId": "replace-with-kebab-case-id",
+  "title": "Feature title",
+  "owner": "Accountable product or engineering owner",
+  "userStory": "As a contract-operations user, I can ... so that ...",
+  "updatedAt": "YYYY-MM-DD",
+  "status": "draft",
+  "criteria": [
+    { "id": "user-story", "status": "pending" },
+    { "id": "happy-and-failure-paths", "status": "pending" },
+    { "id": "interaction-states", "status": "pending" },
+    { "id": "server-validation", "status": "pending" },
+    { "id": "transactional-writes", "status": "pending" },
+    { "id": "auditability", "status": "pending" },
+    { "id": "migration-strategy", "status": "pending" },
+    { "id": "r2-consistency", "status": "pending" },
+    { "id": "unit-tests", "status": "pending" },
+    { "id": "api-tests", "status": "pending" },
+    { "id": "fictional-fixture", "status": "pending" },
+    { "id": "data-model-consumers", "status": "pending" },
+    { "id": "accessibility", "status": "pending" },
+    { "id": "quality-gate", "status": "pending" },
+    { "id": "documentation", "status": "pending" },
+    { "id": "metric", "status": "pending" }
+  ],
+  "metric": {
+    "name": "A useful, reproducible outcome",
+    "value": "Measured value with a unit or explicit boundary",
+    "sampleSize": 1,
+    "source": "repository/relative/evidence-path"
+  }
+}

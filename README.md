@@ -1,5 +1,7 @@
 # ContractLedger AI
 
+**Current release:** v1.0.0 portfolio-ready baseline
+
 ContractLedger AI is a focused AI-assisted contract-administration portfolio application. It converts unstructured contract and supplier-qualification documents into human-verified register data, traceable playbook findings, compliance alerts, and auditable decisions. It addresses two recurring pain points from the creator's prior work: manual contract-register entry and manual supplier-register maintenance.
 
 This is intentionally **not** a full contract lifecycle management (CLM) platform. It does not attempt negotiation, e-signature, enterprise identity, or every legal workflow.
@@ -18,6 +20,8 @@ This is intentionally **not** a full contract lifecycle management (CLM) platfor
 10. **Registers and exports:** search and filter contracts, suppliers, approvals, obligations, and supplier-compliance alerts; export an audited workbook or selected obligation dates as `.ics`.
 11. **Document preflight and separation of duties:** inspect every PDF page before AI analysis, block unreadable/corrupted/password-protected input, flag sparse or rotated pages for human review, and enforce seven workspace roles at the server route that owns each material action.
 12. **Operational review and integration readiness:** export a source-aware PDF review package from an executed contract, inspect an eight-factor rules-based supplier risk profile, and retain versioned outbox events for future notification delivery without sending external messages.
+13. **Executable release governance:** record evidence for all 16 Definition of Done criteria in a versioned feature manifest; missing, pending, or unsupported claims fail the local and pull-request quality gate.
+14. **Controlled phase execution:** advance every major phase through the same ten evidence-backed steps; the gate blocks reordered or premature work and prevents a new phase from starting over an incomplete predecessor or unresolved data-integrity/audit defects.
 
 The fictional policy checks are operational review prompts, not legal advice. AI output must be verified against the source document before saving.
 
@@ -75,11 +79,20 @@ WORKSPACE_ROLE_ASSIGNMENTS='{"user_123":"contract_administrator","legal@example.
 Useful checks:
 
 ```bash
+npm run check:phase
+npm run check:dod
+npm run check:baseline # requires the local app to be running
 npm test
 npm run lint
-npx tsc --noEmit
+npm run typecheck
 npm run build
+# Or run every gate above:
+npm run quality
 ```
+
+For every major feature, copy `docs/definition-of-done/feature-template.json` into `docs/definition-of-done/features/`, attach repository evidence to every applicable criterion, and use a specific `not_applicable` rationale for the rest. `npm run check:dod` fails closed on missing criteria, pending work, missing evidence paths, incomplete documentation, or an unbounded metric.
+
+Before implementing a major phase, also copy `docs/execution-loop/phase-template.json` into `docs/execution-loop/phases/`. `npm run check:phase` enforces the roadmap's ten-step order, predecessor completion, explicit integrity/audit defect gate, evidence-backed exclusions, and a bounded metric.
 
 ## Architecture and data handling
 
@@ -116,6 +129,9 @@ The portfolio narrative and claim controls are maintained as three interview-rea
 - `PORTFOLIO_CASE_STUDY.md` — problem, product boundary, lifecycle decisions, controls, validation method, evidence, and limitations
 - `DEMO_RUNBOOK.md` — paced ten-minute walkthrough, opening and closing language, and recovery paths
 - `RESUME_EVIDENCE.md` — release-by-release evidence, safe claim boundaries, candidate resume bullets, and evidence still required
+- `docs/definition-of-done/` — executable major-feature checklist, evidence manifests, authoring template, and gate limitations
+- `docs/execution-loop/` — ordered phase manifests, predecessor and defect start gate, template, validator contract, and limitations
+- `docs/releases/` — v1.0 smoke checklist, bounded baseline evidence, release notes, schema/fixture inventory, and limitations
 
 - `app/api/analyze/route.ts` — contract PDF extraction and DeepSeek analysis
 - `app/api/analyze-supplier-document/route.ts` — supplier PDF/image extraction and qualification review

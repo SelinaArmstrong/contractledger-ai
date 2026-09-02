@@ -514,6 +514,7 @@ const schemaStatements = [
 ];
 
 const CURRENT_SCHEMA_VERSION = 20;
+const DEMO_RESET_TIMESTAMP = '2026-09-02T00:00:00.000Z';
 
 const runtimeMigrationStatements = [
   ...approvalSchemaStatements,
@@ -2342,5 +2343,5 @@ export async function resetWorkspaceDatabase() {
       'suppliers',
     ].map((table) => db.prepare(`DELETE FROM ${table}`)),
   );
-  await seedWorkspaceDatabase(db, isoNow());
+  await seedWorkspaceDatabase(db, DEMO_RESET_TIMESTAMP);
 }
