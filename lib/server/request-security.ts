@@ -11,8 +11,33 @@ export type RequestActor = {
   name: string;
   local: boolean;
   demo: boolean;
+  /** Unauthenticated visitor on the public portfolio demo. Always read-only. */
+  guest: boolean;
   role: WorkspaceRole;
 };
+
+export const GUEST_ACTOR_ID = 'guest-viewer';
+
+/**
+ * Public read-only browsing lets a reviewer open the hosted demo without
+ * credentials. It is opt-in per deployment because it exposes every read route
+ * to anonymous traffic; writes and AI calls stay behind a real identity.
+ */
+export function guestAccessEnabled() {
+  return process.env.DEMO_GUEST_ACCESS === 'true';
+}
+
+export function guestIdentity() {
+  return {
+    userId: GUEST_ACTOR_ID,
+    displayName: 'Guest viewer',
+    email: '',
+    fullName: 'Guest viewer',
+    local: false,
+    demo: false,
+    guest: true,
+  };
+}
 
 export const workspaceRoles = [
   'requester',
@@ -159,7 +184,9 @@ export function resolveWorkspaceRole(actor: {
   email: string;
   local: boolean;
   demo: boolean;
+  guest?: boolean;
 }): WorkspaceRole {
+  if (actor.guest) return 'read_only_auditor';
   if (actor.local || actor.demo || hostedAdminIds().has(actor.id)) {
     return 'administrator';
   }
@@ -195,7 +222,9 @@ export async function authorizeApiRequest(
         )
       : null;
 
-  if (!local && !id && !demoSession) {
+  const guest = !local && !id && !demoSession && guestAccessEnabled();
+
+  if (!local && !id && !demoSession && !guest) {
     return {
       ok: false,
       response: Response.json(
@@ -225,6 +254,7 @@ export async function authorizeApiRequest(
         name: 'Selina Armstrong',
         local: true,
         demo: false,
+        guest: false,
       }
     : demoSession
       ? {
@@ -233,17 +263,28 @@ export async function authorizeApiRequest(
           name: demoSession.displayName,
           local: false,
           demo: true,
+          guest: false,
         }
-      : {
-          id,
-          email,
-          name:
-            decodedDisplayName(request.headers) ||
-            email ||
-            'Authenticated user',
-          local: false,
-          demo: false,
-        };
+      : guest
+        ? {
+            id: GUEST_ACTOR_ID,
+            email: '',
+            name: 'Guest viewer',
+            local: false,
+            demo: false,
+            guest: true,
+          }
+        : {
+            id,
+            email,
+            name:
+              decodedDisplayName(request.headers) ||
+              email ||
+              'Authenticated user',
+            local: false,
+            demo: false,
+            guest: false,
+          };
 
   const actor: RequestActor = {
     ...actorWithoutRole,

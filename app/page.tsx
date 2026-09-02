@@ -7,6 +7,7 @@ import {
 } from '@/app/chatgpt-auth';
 import { ChatGPTSignIn } from '@/components/chatgpt-sign-in';
 import { ContractLedgerApp } from '@/components/contract-ledger-app';
+import { viewForSlug } from '@/components/workspace/view-routing';
 import {
   DEMO_SESSION_COOKIE,
   demoAuthConfigurationError,
@@ -14,6 +15,8 @@ import {
   verifyDemoSessionToken,
 } from '@/lib/demo-auth';
 import {
+  guestAccessEnabled,
+  guestIdentity,
   permissionsForRole,
   resolveWorkspaceRole,
 } from '@/lib/server/request-security';
@@ -24,6 +27,7 @@ async function currentUser(): Promise<
   | (ChatGPTUser & {
       local: boolean;
       demo: boolean;
+      guest: boolean;
       role: ReturnType<typeof resolveWorkspaceRole>;
       permissions: ReturnType<typeof permissionsForRole>;
     })
@@ -41,6 +45,7 @@ async function currentUser(): Promise<
       ...user,
       local: false,
       demo: false,
+      guest: false,
       role,
       permissions: permissionsForRole(role),
     };
@@ -58,6 +63,7 @@ async function currentUser(): Promise<
       fullName: demoSession.displayName,
       local: false,
       demo: true,
+      guest: false,
     };
     const role = resolveWorkspaceRole({
       id: identity.userId,
@@ -73,7 +79,24 @@ async function currentUser(): Promise<
   const hostname = host.startsWith('[')
     ? host.slice(1, host.indexOf(']'))
     : host.split(':', 1)[0];
-  if (!['localhost', '127.0.0.1', '::1'].includes(hostname ?? '')) return null;
+  if (!['localhost', '127.0.0.1', '::1'].includes(hostname ?? '')) {
+    // A public portfolio deployment can let reviewers browse without an
+    // account. The guest role carries read permissions only.
+    if (!guestAccessEnabled()) return null;
+    const guest = guestIdentity();
+    const guestRole = resolveWorkspaceRole({
+      id: guest.userId,
+      email: guest.email,
+      local: false,
+      demo: false,
+      guest: true,
+    });
+    return {
+      ...guest,
+      role: guestRole,
+      permissions: permissionsForRole(guestRole),
+    };
+  }
 
   const identity = {
     userId: 'local-demo-user',
@@ -82,6 +105,7 @@ async function currentUser(): Promise<
     fullName: 'Selina Armstrong',
     local: true,
     demo: false,
+    guest: false,
   };
   const role = resolveWorkspaceRole({
     id: identity.userId,
@@ -95,11 +119,14 @@ async function currentUser(): Promise<
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ auth_error?: string | string[] }>;
+  searchParams: Promise<{
+    auth_error?: string | string[];
+    view?: string | string[];
+  }>;
 }) {
   const user = await currentUser();
+  const params = await searchParams;
   if (!user) {
-    const params = await searchParams;
     return (
       <ChatGPTSignIn
         signInPath={chatGPTSignInPath('/')}
@@ -119,10 +146,14 @@ export default async function Home({
         email: user.email,
         local: user.local,
         demo: user.demo,
+        guest: user.guest,
         role: user.role,
         permissions: user.permissions,
       }}
-      signOutPath={user.local ? null : '/api/auth/logout'}
+      signOutPath={user.local || user.guest ? null : '/api/auth/logout'}
+      initialView={viewForSlug(
+        Array.isArray(params.view) ? params.view[0] : params.view,
+      )}
     />
   );
 }

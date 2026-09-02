@@ -114,11 +114,15 @@ export function ChatGPTSignIn({
                 method="post"
                 className="mt-6 space-y-4"
               >
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium text-[#294454]">
+                <div className="block">
+                  <label
+                    htmlFor="demo-username"
+                    className="mb-1.5 block text-xs font-medium text-[#294454]"
+                  >
                     Username
-                  </span>
+                  </label>
                   <Input
+                    id="demo-username"
                     name="username"
                     type="text"
                     autoComplete="username"
@@ -126,12 +130,16 @@ export function ChatGPTSignIn({
                     maxLength={100}
                     className="h-10 bg-white"
                   />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium text-[#294454]">
+                </div>
+                <div className="block">
+                  <label
+                    htmlFor="demo-password"
+                    className="mb-1.5 block text-xs font-medium text-[#294454]"
+                  >
                     Password
-                  </span>
+                  </label>
                   <Input
+                    id="demo-password"
                     name="password"
                     type="password"
                     autoComplete="current-password"
@@ -139,7 +147,7 @@ export function ChatGPTSignIn({
                     maxLength={300}
                     className="h-10 bg-white"
                   />
-                </label>
+                </div>
                 <button
                   type="submit"
                   className={cn(

@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('cloudflare:workers', () => ({ env: {} }));
 
 import {
+  GUEST_ACTOR_ID,
   authorizeApiRequest,
+  guestAccessEnabled,
+  guestIdentity,
   permissionsForRole,
   resolveWorkspaceRole,
   roleCan,
@@ -98,5 +101,69 @@ describe('workspace role authorization', () => {
 
   it('grants administrators the complete permission catalog', () => {
     expect(permissionsForRole('administrator')).toHaveLength(13);
+  });
+});
+
+describe('guest access', () => {
+  const original = process.env.DEMO_GUEST_ACCESS;
+  afterEach(() => {
+    if (original === undefined) delete process.env.DEMO_GUEST_ACCESS;
+    else process.env.DEMO_GUEST_ACCESS = original;
+  });
+
+  it('is disabled unless the deployment opts in', () => {
+    delete process.env.DEMO_GUEST_ACCESS;
+    expect(guestAccessEnabled()).toBe(false);
+    process.env.DEMO_GUEST_ACCESS = 'false';
+    expect(guestAccessEnabled()).toBe(false);
+    process.env.DEMO_GUEST_ACCESS = 'true';
+    expect(guestAccessEnabled()).toBe(true);
+  });
+
+  it('gives a guest the read-only auditor role', () => {
+    const guest = guestIdentity();
+    expect(
+      resolveWorkspaceRole({
+        id: guest.userId,
+        email: guest.email,
+        local: false,
+        demo: false,
+        guest: true,
+      }),
+    ).toBe('read_only_auditor');
+  });
+
+  it('never elevates a guest, even one listed as a hosted admin', () => {
+    process.env.DEMO_ADMIN_USER_IDS = GUEST_ACTOR_ID;
+    expect(
+      resolveWorkspaceRole({
+        id: GUEST_ACTOR_ID,
+        email: '',
+        local: true,
+        demo: true,
+        guest: true,
+      }),
+    ).toBe('read_only_auditor');
+    delete process.env.DEMO_ADMIN_USER_IDS;
+  });
+
+  it('withholds every write and AI permission from a guest', () => {
+    const granted = permissionsForRole('read_only_auditor');
+    for (const permission of [
+      'submit_documents',
+      'edit_verified_fields',
+      'edit_supplier_records',
+      'approve_exceptions',
+      'apply_amendments',
+      'complete_obligations',
+      'manage_imports',
+      'run_ai_assistant',
+      'manage_ai_governance',
+      'reset_workspace',
+    ] as const) {
+      expect(granted).not.toContain(permission);
+    }
+    expect(granted).toContain('view_workspace');
+    expect(granted).toContain('view_documents');
   });
 });

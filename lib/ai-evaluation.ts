@@ -576,6 +576,23 @@ export const AI_EVALUATION_EXECUTION_CASES = evaluationDefinitions.map(
   ({ fields: _fields, ...definition }) => definition,
 );
 
+/**
+ * Exposes the per-field ground truth so a deterministic report can be replayed
+ * from it. The `matches` predicates stay private; only the expected values and
+ * labels are needed to rebuild an analysis payload.
+ */
+export function evaluationCaseGroundTruth() {
+  return evaluationDefinitions.map((definition) => ({
+    id: definition.id,
+    fields: definition.fields.map((field) => ({
+      fieldName: field.fieldName,
+      label: field.label,
+      expected: field.expected,
+      critical: Boolean(field.critical),
+    })),
+  }));
+}
+
 export type EvaluationBaseline = {
   id: string;
   criticalAccuracyPercent: number;

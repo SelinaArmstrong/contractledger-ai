@@ -1,6 +1,10 @@
 import { env } from 'cloudflare:workers';
 
 import { APPROVAL_RULES_V1, addApprovalDueDays } from '@/lib/approval-workflow';
+import {
+  DEMO_EVALUATION_RUN_ID,
+  buildDemoEvaluationRun,
+} from '@/lib/ai-evaluation-demo-run';
 
 const approvalSchemaStatements = [
   `CREATE TABLE IF NOT EXISTS approval_rules (
@@ -418,6 +422,16 @@ const schemaStatements = [
     reviewed_at TEXT NOT NULL,
     FOREIGN KEY (analysis_run_id) REFERENCES ai_analysis_runs(id)
   )`,
+  `CREATE TABLE IF NOT EXISTS workflow_timings (
+    id TEXT PRIMARY KEY NOT NULL,
+    scenario TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    duration_ms INTEGER NOT NULL,
+    note TEXT,
+    actor TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_workflow_timings_scenario ON workflow_timings(scenario, mode)',
   `CREATE TABLE IF NOT EXISTS ai_evaluation_runs (
     id TEXT PRIMARY KEY NOT NULL,
     model TEXT NOT NULL,
@@ -513,7 +527,7 @@ const schemaStatements = [
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_contracts_intake_id_unique ON contracts(intake_id) WHERE intake_id IS NOT NULL',
 ];
 
-const CURRENT_SCHEMA_VERSION = 20;
+const CURRENT_SCHEMA_VERSION = 21;
 const DEMO_RESET_TIMESTAMP = '2026-09-02T00:00:00.000Z';
 
 const runtimeMigrationStatements = [
@@ -1341,6 +1355,127 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
   await syncObligationDemoScenario(db);
   await syncApprovalDemoScenario(db);
   await seedBulkImportDemo(db, now);
+  await seedDemonstrationEvaluationRun(db, now);
+}
+
+/**
+ * Stores one replayed validation report so the AI accuracy view has evidence
+ * to render before anyone configures a model key. The run is explicitly not an
+ * approved baseline: it must never gate a real regression check, and the view
+ * labels it as a seeded demonstration rather than a measurement.
+ *
+ * Every identifier is derived, not random, so two consecutive resets produce a
+ * byte-identical report. The writes replace rather than insert because this
+ * runs from the demo-scenario sync, which is re-entrant across migrations.
+ */
+async function seedDemonstrationEvaluationRun(db: D1Database, now: string) {
+  const evaluation = buildDemoEvaluationRun();
+  const runId = DEMO_EVALUATION_RUN_ID;
+
+  const caseStatements = evaluation.details.map((detail, index) =>
+    db
+      .prepare(`INSERT OR REPLACE INTO ai_evaluation_case_results
+        (id, run_id, case_id, title, file_name, document_type, difficulty,
+         fixture_version, model, prompt_version, extraction_version, status,
+         duration_ms, failure_reason, total_fields, correct_fields, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(
+        `aievalcase-seeded-${String(index + 1).padStart(2, '0')}`,
+        runId,
+        detail.caseId,
+        detail.title,
+        detail.fileName,
+        detail.documentType,
+        detail.difficulty,
+        detail.fixtureVersion,
+        detail.model,
+        detail.promptVersion,
+        detail.extractionVersion,
+        detail.status,
+        detail.durationMs,
+        detail.failureReason,
+        detail.totalFields,
+        detail.correctFields,
+        now,
+      ),
+  );
+
+  let fieldIndex = 0;
+  const fieldStatements = evaluation.details.flatMap((detail) =>
+    detail.fields.map((item) => {
+      fieldIndex += 1;
+      return db
+        .prepare(`INSERT OR REPLACE INTO ai_evaluation_field_results
+          (id, run_id, case_id, document_type, field_name, label,
+           expected_json, actual_json, critical, correct, confidence,
+           source_backed, unsupported, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(
+          `aievalfield-seeded-${String(fieldIndex).padStart(3, '0')}`,
+          runId,
+          detail.caseId,
+          detail.documentType,
+          item.fieldName,
+          item.label,
+          JSON.stringify(item.expected),
+          JSON.stringify(item.actual),
+          item.critical ? 1 : 0,
+          item.correct ? 1 : 0,
+          item.confidence,
+          item.sourceBacked ? 1 : 0,
+          item.unsupported ? 1 : 0,
+          now,
+        );
+    }),
+  );
+
+  await db.batch([
+    db
+      .prepare(`INSERT OR REPLACE INTO ai_evaluation_runs
+        (id, model, case_count, total_fields, correct_fields,
+         source_backed_fields, accuracy_percent, source_coverage_percent,
+         average_confidence, dataset_version, fixture_version, prompt_version,
+         extraction_version, critical_fields, correct_critical_fields,
+         critical_accuracy_percent, unsupported_fields,
+         unsupported_value_percent, successful_cases, failed_cases,
+         processing_success_percent, median_duration_ms, baseline_run_id,
+         regression_delta, regression_threshold, promotion_status,
+         is_approved_baseline, details_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, 0, ?, ?)`)
+      .bind(
+        runId,
+        evaluation.model,
+        evaluation.caseCount,
+        evaluation.totalFields,
+        evaluation.correctFields,
+        evaluation.sourceBackedFields,
+        evaluation.accuracyPercent,
+        evaluation.sourceCoveragePercent,
+        evaluation.averageConfidence,
+        evaluation.datasetVersion,
+        evaluation.fixtureVersion,
+        evaluation.promptVersion,
+        evaluation.extractionVersion,
+        evaluation.criticalFields,
+        evaluation.correctCriticalFields,
+        evaluation.criticalAccuracyPercent,
+        evaluation.unsupportedFields,
+        evaluation.unsupportedValuePercent,
+        evaluation.successfulCases,
+        evaluation.failedCases,
+        evaluation.processingSuccessPercent,
+        evaluation.medianDurationMs,
+        evaluation.baselineRunId,
+        evaluation.regressionDelta,
+        evaluation.regressionThreshold,
+        evaluation.promotionStatus,
+        JSON.stringify(evaluation.details),
+        now,
+      ),
+    ...caseStatements,
+    ...fieldStatements,
+  ]);
 }
 
 async function syncObligationDemoScenario(db: D1Database) {
@@ -2319,6 +2454,7 @@ export async function resetWorkspaceDatabase() {
   }
   await db.batch(
     [
+      'workflow_timings',
       'ai_evaluation_field_results',
       'ai_evaluation_case_results',
       'ai_field_reviews',
