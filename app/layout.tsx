@@ -20,13 +20,13 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'ContractLedger AI',
     description: 'AI-assisted contract & supplier register automation',
-    images: ['/og.png'],
+    images: ['/og.jpg'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'ContractLedger AI',
     description: 'AI-assisted contract & supplier register automation',
-    images: ['/og.png'],
+    images: ['/og.jpg'],
   },
 };
 
@@ -37,7 +37,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
         {children}
       </body>
     </html>
