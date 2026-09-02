@@ -1,153 +1,403 @@
 # ContractLedger AI
 
-**Current release:** v1.0.0 portfolio-ready baseline
+> 面向合同运营与供应商治理的 AI 辅助工作台：把非结构化合同和资质文件转化为经过人工核验、可追溯、可审批、可审计的业务记录。
 
-ContractLedger AI is a focused AI-assisted contract-administration portfolio application. It converts unstructured contract and supplier-qualification documents into human-verified register data, traceable playbook findings, compliance alerts, and auditable decisions. It addresses two recurring pain points from the creator's prior work: manual contract-register entry and manual supplier-register maintenance.
+![ContractLedger AI social preview](public/og.png)
 
-This is intentionally **not** a full contract lifecycle management (CLM) platform. It does not attempt negotiation, e-signature, enterprise identity, or every legal workflow.
+**当前版本：** `v1.0.0`（Portfolio-ready baseline，2026-09-02）
 
-## Workflow boundary
+**项目状态：** 当前路线图已完成，核心业务闭环、演示数据、自动化测试和发布证据均已落库。
 
-1. **Draft review (pre-execution):** upload a draft PDF; DeepSeek extracts traceable fields and compares selected terms with a versioned fictional U.S. company playbook.
-2. **Human verification:** every extracted field can be corrected and must be confirmed before saving. The system preserves the AI original value, verified value, confidence, source page, source quote, reviewer, and review time.
-3. **Approval and exception control:** verified values generate versioned approval requirements for financial thresholds, governing law, automatic renewal, supplier insurance, and high-risk supplier classification. Reviewers can approve, decline, request revision, approve an exception with a reason, or escalate; every transition is immutable and source-linked.
-4. **Executed registration (post-execution):** upload a signed PDF from the Contract Register. Server-side gates block registration until every mandatory approval on the linked intake is approved. A successful save updates the official contract register, activates or matches the supplier, and creates obligation and renewal dates transactionally.
-5. **Supplier-document intelligence:** analyze W-9s, insurance certificates, business licenses, registrations, and other qualification evidence. AI suggests the document type, supplier name, issuer, number, dates, and coverage/qualification summary before human-reviewed upload.
-6. **Dynamic draft-to-executed comparison:** after both stages are verified for the same supplier, the dashboard calculates actual changes from the saved analyses instead of displaying a hard-coded comparison.
-7. **Obligation execution and evidence:** assign owners and backups, prioritize contract work, move obligations through a controlled status flow, surface overdue work automatically, link completion evidence, preserve event history, and export selected dates to a calendar.
-8. **Three distinct AI layers:** use AI Assistant for natural-language factual retrieval (including the approval queue), Management Insights for register-level trends and recommended actions, and AI Accuracy & Validation for a versioned 15-document ground-truth suite that never adds evaluation files to operational registers.
-9. **Controlled legacy-data migration:** download CSV/XLSX templates, map common legacy headers, normalize and deduplicate every row in isolated staging tables, explicitly accept or skip each result, and commit or roll back the audited batch.
-10. **Registers and exports:** search and filter contracts, suppliers, approvals, obligations, and supplier-compliance alerts; export an audited workbook or selected obligation dates as `.ics`.
-11. **Document preflight and separation of duties:** inspect every PDF page before AI analysis, block unreadable/corrupted/password-protected input, flag sparse or rotated pages for human review, and enforce seven workspace roles at the server route that owns each material action.
-12. **Operational review and integration readiness:** export a source-aware PDF review package from an executed contract, inspect an eight-factor rules-based supplier risk profile, and retain versioned outbox events for future notification delivery without sending external messages.
-13. **Executable release governance:** record evidence for all 16 Definition of Done criteria in a versioned feature manifest; missing, pending, or unsupported claims fail the local and pull-request quality gate.
-14. **Controlled phase execution:** advance every major phase through the same ten evidence-backed steps; the gate blocks reordered or premature work and prevents a new phase from starting over an incomplete predecessor or unresolved data-integrity/audit defects.
+ContractLedger AI 聚焦合同签署前后的运营管理：合同条款提取、人工核验、例外审批、已签合同登记、修订版本、供应商资质、履约义务、管理洞察和审计导出。它解决的是“合同与供应商台账依赖人工录入、审批依据分散、履约证据难以追踪”的问题。
 
-The fictional policy checks are operational review prompts, not legal advice. AI output must be verified against the source document before saving.
+本项目是一个完整的作品集级合同运营系统，不是通用型 CLM（合同全生命周期管理）平台，也不是法律意见或自动法律决策工具。
 
-## Interview demo
+## 目录
 
-- Start on **Portfolio Case Study** and frame the operating problem, product boundary, verified release evidence, and ten-minute route. Use the companion [case study](PORTFOLIO_CASE_STUDY.md), [demo runbook](DEMO_RUNBOOK.md), and [resume evidence ledger](RESUME_EVIDENCE.md) when preparing for an interview.
-- Open **Portfolio Dashboard** and explain that only executed contracts count toward the official value.
-- Open **Bulk Import & Data Quality**, download a supplier or contract template, and open a prior dry run. Show automatic `Vendor Name → Supplier Legal Name` mapping, normalized values, duplicate candidates, row decisions, the correction report, and the reversible batch history.
-- Open **New Contract Review**, choose **Use demo PDF**, and run **Analyze with DeepSeek**. Correct or confirm every extracted field; point out confidence, source page, source quote, and playbook differences.
-- Save the reviewed draft and show that it remains a proposed-supplier intake while the Supplier Register and official contract total are unchanged.
-- Open **Approvals & Exceptions** and show the deterministic Finance, Legal, contract-owner, and Compliance controls, their deadlines, source evidence, and immutable event history. Record the required decisions and reasons.
-- Open **Contract Register**, select **Register executed contract**, analyze the signed demo, confirm the extracted values, and save. The server now permits registration because the linked intake's mandatory approvals are complete. Show the approval history retained on the executed contract.
-- Return to the Dashboard and show the newly generated **AI draft-to-executed comparison**.
-- Open **Supplier Register**, select a supplier, and walk through the explainable risk profile: every scored factor identifies its rule, points, and saved evidence. Then upload the demo insurance certificate and choose **Analyze with AI** to show supplier-name matching and human-reviewed metadata.
-- Open **Obligations & Evidence** and show the assigned work queue, calculated overdue item, priority and backup-owner controls, source clause, status history, completion-evidence requirement, measured workflow metrics, and selected `.ics` export.
-- Ask **AI Assistant** a factual question, then demonstrate how a broad portfolio-analysis request routes to the relevant register's **AI management insights**.
-- Open **AI Accuracy & Validation** under **Portfolio evidence** to show the 15-document dataset, field and critical-field accuracy, source coverage, failures, processing time, operational correction rates, and prompt/model regression gate. Export the latest CSV appendix or approve a complete run as the comparison baseline.
-- Open an executed contract and download its **Review package PDF** to show current terms, source-aware findings, accepted approvals, version history, and reviewer/model history in one operational handoff artifact.
-- Generate the current `.xlsx` handoff package from the live database, then point out the pending integration-outbox count beside the obligation metrics.
+- [核心能力](#核心能力)
+- [业务流程](#业务流程)
+- [快速开始](#快速开始)
+- [使用方法](#使用方法)
+- [技术架构](#技术架构)
+- [环境变量](#环境变量)
+- [常用命令](#常用命令)
+- [项目结构](#项目结构)
+- [数据与安全](#数据与安全)
+- [质量与发布基线](#质量与发布基线)
+- [部署](#部署)
+- [已知边界](#已知边界)
+- [相关文档](#相关文档)
 
-The two sample agreements form one realistic, fictional U.S. transaction: a ten-page draft and a thirteen-page executed version for the same supplier and project. The signed version reflects negotiated changes to payment, governing law, insurance, liability, intellectual property, subcontracting, data security, change control, and termination rights. All seeded organizations are fictional and safe to use in an interview demonstration.
+## 核心能力
 
-## Local setup
+### 1. AI 合同审查与人工核验
 
-Requirements: Node.js 22.13 or newer.
+- 上传草案或已签 PDF，通过 DeepSeek 提取合同主体、金额、日期、付款条款、适用法律、续约方式等字段。
+- 使用版本化的虚构公司 playbook 识别条款偏差和审查事项。
+- 每个字段保存 AI 原始值、人工确认值、置信度、来源页码、来源引文、审核人和审核时间。
+- 对缺少来源证据的关键字段强制要求审核人填写覆盖理由。
+- 在模型调用前执行 PDF 页级预检，阻止损坏、加密、结构不完整或无法读取的文件。
+
+### 2. 审批与例外控制
+
+- 根据金额、适用法律、自动续约、保险状态和供应商风险等规则自动生成审批要求。
+- 支持批准、拒绝、要求修订、例外批准和升级处理。
+- 已签合同登记前，服务端会再次检查所有强制审批；未完成的审批无法绕过。
+- 审批规则以快照形式保存，后续规则变化不会改写历史决策。
+
+### 3. 合同与修订版本管理
+
+- 草案仅进入 intake 流程，不计入正式合同金额和供应商主数据。
+- 已签合同经核验和审批后，事务性写入合同台账、供应商台账及关键日期。
+- 支持 amendment、change order、extension、renewal、termination、price adjustment 和 SOW replacement。
+- 保留原始金额、修订增量、当前金额、版本沿革及条款变化，并同步更新开放中的履约日期。
+- 自动生成草案与已签版本的动态差异对比。
+
+### 4. 供应商资质与风险
+
+- 管理 W-9、保险证明、营业执照、专业许可、良好存续证明、安全评估和排除筛查等文件。
+- AI 提议文件类型、供应商名称、签发方、编号、有效期和资质摘要，再由人工确认。
+- 供应商风险采用确定性、因子级可解释评分；每个分项都展示规则、分值、说明和业务证据。
+- 风险画像不会使用不可解释的 AI 风险分数，也不会静默覆盖人工维护的主数据风险等级。
+
+### 5. 履约义务与证据闭环
+
+- 为合同义务设置负责人、备份负责人、优先级和内部复核日期。
+- 状态流为 `upcoming → in_progress → evidence_required → completed`；`overdue` 根据到期日实时计算，不能手动隐藏。
+- 完成义务必须附带说明和文件、现有文档或受限的外部证据引用。
+- 保存分配、状态、证据、升级和日期变更事件，并支持选择性导出 `.ics` 日历。
+
+### 6. 迁移、洞察与导出
+
+- 通过独立暂存区导入 CSV/XLSX，自动映射常见字段、规范化数据、识别重复项并逐行接受或跳过。
+- 导入批次支持审计、纠错报告和有约束的精确回滚。
+- AI Assistant 用于自然语言事实查询；Management Insights 用于组合级趋势、集中度和建议动作。
+- 导出合同、供应商、审批、履约和数据质量 `.xlsx` 工作簿，以及来源可追溯的合同 Review Package PDF。
+- 版本化 integration outbox 为未来通知或 webhook 投递保存事件，但当前不发送外部消息。
+
+### 7. AI 质量治理
+
+- 内置 15 份虚构评估文档，覆盖草案、已签合同、供应商文件、修订、模糊输入和负例。
+- 记录字段准确率、关键字段准确率、来源覆盖率、不受支持值比例、处理成功率和耗时。
+- 保存模型、提示词、提取 schema、fixture 和数据集版本。
+- 可批准完整评估作为基线；关键字段准确率相对基线下降超过 2 个百分点时阻止晋级。
+
+## 业务流程
+
+```mermaid
+flowchart LR
+    A[CSV / XLSX 历史数据] --> B[暂存、映射、去重与人工决策]
+    B --> H[合同与供应商台账]
+
+    C[合同草案 PDF] --> D[文档预检与 AI 提取]
+    D --> E[人工核验与来源确认]
+    E --> F[规则驱动的审批与例外]
+    F --> G[已签合同登记]
+    G --> H
+    H --> I[修订与版本沿革]
+    H --> J[履约义务、续约与证据]
+
+    K[供应商资质文件] --> L[AI 分类与人工确认]
+    L --> H
+
+    H --> M[Assistant / Management Insights]
+    H --> N[XLSX / PDF / ICS / 审计记录]
+```
+
+系统刻意把 AI 放在“提出建议”的位置，把人工核验、权限检查、业务规则和审计记录放在最终决策链上。
+
+## 快速开始
+
+### 前置条件
+
+- Node.js `22.13.0` 或更高版本
+- npm（仓库已提交 `package-lock.json`）
+- DeepSeek API Key（浏览种子数据不需要；执行 AI 分析、Assistant、Insights 或评估需要）
+
+### 安装与启动
 
 ```bash
+git clone <repository-url>
+cd SelinaVibeCoding
 npm install
 cp .env.example .env.local
-# Add your DeepSeek API key to .env.local
+```
+
+在 `.env.local` 中至少配置：
+
+```bash
+DEEPSEEK_API_KEY=your_deepseek_api_key
+SITE_URL=http://localhost:3000
+```
+
+启动开发环境：
+
+```bash
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+访问 [http://localhost:3000](http://localhost:3000)。本地开发环境会通过 Cloudflare Vite 插件提供项目级 D1 和 R2 绑定；无需另行安装 PostgreSQL 或启动外部数据库。
 
-On macOS, double-click `Start ContractLedger AI.command` for an interview-ready local launch. Keep the terminal window open while demonstrating the app and press Control-C when finished.
+macOS 也可以双击 `Start ContractLedger AI.command` 启动面试演示环境。演示期间请保持终端窗口开启，结束时按 `Control-C`。
 
-For a temporary single-user login on a public demo deployment, configure all four server-side variables below and redeploy. Do not expose them with a `NEXT_PUBLIC_` prefix or commit their real values.
+## 使用方法
 
-```bash
-DEMO_AUTH_USERNAME=your_demo_username
-DEMO_AUTH_PASSWORD=use_a_strong_password
-DEMO_AUTH_DISPLAY_NAME="Demo User"
-DEMO_AUTH_SESSION_SECRET=use_a_random_secret_of_at_least_32_characters
+### 浏览现有演示数据
+
+应用在 localhost 下自动使用本地管理员身份，并初始化一组完全虚构的合同、供应商、审批、义务和导入数据。即使尚未配置 DeepSeek Key，也可以浏览 Dashboard、各类 Register、审批历史、版本记录和作品集证据。
+
+### 跑通一条完整合同流程
+
+1. 进入 **New Contract Review**，选择 **Use demo PDF**。
+2. 点击 **Analyze with DeepSeek**，逐项确认字段、置信度、来源页码和来源引文。
+3. 保存草案。此时它只会成为 intake，不会进入正式合同金额或供应商主数据。
+4. 进入 **Approvals & Exceptions**，完成 Finance、Legal、Contract Owner 或 Compliance 要求的审批，并填写必要理由。
+5. 进入 **Contract Register**，选择 **Register executed contract**，分析并核验已签版本。
+6. 登记完成后，在 Dashboard 查看草案到已签版本的差异，在合同详情中查看审批历史和 Review Package。
+7. 对已登记合同添加 amendment，确认金额、期限、付款条款、续约和通知期变化。
+8. 进入 **Obligations & Evidence**，分配任务、推进状态并用证据完成关闭。
+
+### 供应商与数据质量流程
+
+1. 在 **Bulk Import & Data Quality** 下载合同或供应商模板，上传 CSV/XLSX 并检查自动映射。
+2. 审查规范化值、错误、警告和重复候选项，对每行选择接受或跳过，再提交批次。
+3. 在 **Supplier Register** 打开供应商，查看可解释风险因子和资质状态。
+4. 上传示例保险证明或其他资质文件，执行 AI 分析后人工确认元数据。
+5. 使用 **AI Assistant** 查询事实，或从合同/供应商台账打开 **Management Insights** 查看组合级分析。
+
+完整的十分钟演示路径和故障恢复方式见 [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md)。
+
+## 技术架构
+
+| 层级 | 主要技术 | 职责 |
+| --- | --- | --- |
+| 界面 | React 19、Vinext、Next.js App Router API、Tailwind CSS 4、shadcn/Base UI | 单页工作台、表格、对话框、图表和响应式交互 |
+| 服务端接口 | `app/api/**/route.ts` | 身份解析、授权、输入验证、业务编排和响应输出 |
+| 领域逻辑 | `lib/*.ts` | 审批、修订、义务、导入、AI 治理、风险、洞察、导出和安全策略 |
+| 数据访问 | Drizzle ORM、Cloudflare D1（SQLite） | 台账、事件、评估、审计、限流和 schema 迁移 |
+| 文件存储 | Cloudflare R2 | 上传合同、供应商资质和履约证据 |
+| AI | DeepSeek API、Zod 严格结构化输出 | 合同/文档提取、Assistant、Management Insights 和评估运行 |
+| 导出 | ExcelJS、自有 PDF/ICS 生成逻辑 | 工作簿、运营审查包和日历文件 |
+| 运行与托管 | Vite 8、Cloudflare Workers、OpenAI Sites | 本地 Workers 兼容环境、D1/R2 注入和托管 |
+| 质量 | Vitest、Oxlint、TypeScript、Definition of Done / Phase gates | 单元与集成测试、静态检查和证据门禁 |
+
+核心请求路径如下：
+
+```text
+React 工作台
+  └─ Next/Vinext API Routes
+       ├─ 身份与角色授权 / 同源写保护 / D1 限流
+       ├─ 文件签名、大小、文本与 PDF 页面预检
+       ├─ 领域规则与事务编排
+       ├─ DeepSeek（仅 AI 请求）
+       ├─ D1：结构化业务数据、事件与审计
+       └─ R2：原始文档与完成证据
 ```
 
-This mode issues a signed, HttpOnly, same-site session cookie that expires after 12 hours. It is intended for a controlled trial or portfolio demonstration, not as a replacement for managed multi-user identity.
+### 主要数据域
 
-Authenticated hosted users can be assigned a minimal workspace role with a server-side JSON mapping. Keys may be the authenticated user ID or email address; values must be `requester`, `contract_administrator`, `legal_reviewer`, `procurement_compliance_reviewer`, `approver`, `read_only_auditor`, or `administrator`. Unmapped hosted users default to `read_only_auditor`; localhost and the temporary single-user demo account remain administrators so the self-contained interview workflow still works.
+- 合同：`contract_intakes`、`contracts`、`amendments`、`documents`、`review_findings`
+- 审批：`approval_rules`、`approval_requests`、`approval_steps`、`approval_decision_history`
+- 履约：`key_dates`、`obligation_events`
+- 供应商：`suppliers` 与供应商关联文档
+- AI 治理：`ai_analysis_runs`、`ai_field_reviews`、`ai_evaluation_*`、`management_insight_runs`
+- 数据迁移：`import_batches`、`import_rows`
+- 平台控制：`audit_logs`、`integration_outbox`、`api_rate_limits`、`schema_migrations`
+
+## 环境变量
+
+所有变量均为服务端变量，不要添加 `NEXT_PUBLIC_` 前缀，也不要提交真实凭据。
+
+| 变量 | 必填 | 用途 |
+| --- | --- | --- |
+| `DEEPSEEK_API_KEY` | AI 功能必填 | 合同/供应商文档分析、Assistant、Insights 和评估 |
+| `SITE_URL` | 否 | Open Graph 等站点元数据的规范 URL，默认 `http://localhost:3000` |
+| `DEMO_ADMIN_USER_IDS` | 否 | 允许重置托管演示数据的 Sites 用户 ID，逗号分隔 |
+| `WORKSPACE_ROLE_ASSIGNMENTS` | 托管角色控制时必填 | 将 Sites 用户 ID 或邮箱映射到工作区角色的 JSON 对象 |
+| `DEMO_AUTH_USERNAME` | 临时演示登录时必填 | 公共/自定义域名上的单用户演示账号 |
+| `DEMO_AUTH_PASSWORD` | 临时演示登录时必填 | 单用户演示密码，请使用强密码 |
+| `DEMO_AUTH_DISPLAY_NAME` | 否 | 演示用户显示名 |
+| `DEMO_AUTH_SESSION_SECRET` | 临时演示登录时必填 | 至少 32 个字符的随机会话签名密钥 |
+
+角色映射示例：
 
 ```bash
 WORKSPACE_ROLE_ASSIGNMENTS='{"user_123":"contract_administrator","legal@example.com":"legal_reviewer"}'
 ```
 
-Useful checks:
+支持的七种角色：
+
+- `requester`
+- `contract_administrator`
+- `legal_reviewer`
+- `procurement_compliance_reviewer`
+- `approver`
+- `read_only_auditor`
+- `administrator`
+
+未映射的托管用户默认是 `read_only_auditor`；localhost 和临时演示账号保持管理员权限，以保证自包含演示流程可运行。
+
+## 常用命令
+
+| 命令 | 说明 |
+| --- | --- |
+| `npm run dev` | 启动本地开发环境 |
+| `npm run build` | 生成 Cloudflare Workers 兼容的生产构建 |
+| `npm run start` | 使用 Wrangler 启动已生成的 `dist/server` 构建 |
+| `npm test` | 运行 Vitest 测试套件 |
+| `npm run lint` | 运行 Oxlint |
+| `npm run typecheck` | 运行 TypeScript 类型检查 |
+| `npm run format` | 使用 Oxfmt 格式化代码 |
+| `npm run db:generate` | 根据 `db/schema.ts` 生成 Drizzle migration |
+| `npm run check:phase` | 验证阶段执行顺序和证据 |
+| `npm run check:dod` | 验证 Definition of Done 清单和证据 |
+| `npm run check:baseline` | 对正在运行的本地应用执行确定性发布基线检查 |
+| `npm run quality` | 依次执行 phase、DoD、测试、lint、类型检查和构建 |
+
+推荐在提交前执行：
 
 ```bash
-npm run check:phase
-npm run check:dod
-npm run check:baseline # requires the local app to be running
-npm test
-npm run lint
-npm run typecheck
-npm run build
-# Or run every gate above:
 npm run quality
 ```
 
-For every major feature, copy `docs/definition-of-done/feature-template.json` into `docs/definition-of-done/features/`, attach repository evidence to every applicable criterion, and use a specific `not_applicable` rationale for the rest. `npm run check:dod` fails closed on missing criteria, pending work, missing evidence paths, incomplete documentation, or an unbounded metric.
+如需验证 v1.0 演示数据与接口基线，请保持本地应用运行，并在另一个终端执行：
 
-Before implementing a major phase, also copy `docs/execution-loop/phase-template.json` into `docs/execution-loop/phases/`. `npm run check:phase` enforces the roadmap's ten-step order, predecessor completion, explicit integrity/audit defect gate, evidence-backed exclusions, and a bounded metric.
+```bash
+npm run check:baseline
+```
 
-## Architecture and data handling
+## 项目结构
 
-- Vinext/React interface for the local interview demo and authenticated Sites hosting
-- Cloudflare D1 database for registers, findings, dates, and audit events
-- Cloudflare R2 storage for uploaded documents
-- DeepSeek Responses API with a strict JSON schema for extraction and review
-- ExcelJS, loaded only when requested, for the one-click register workbook
+```text
+.
+├── app/
+│   ├── api/                     # 服务端路由与业务编排
+│   ├── chatgpt-auth.ts          # Sites 托管身份读取
+│   ├── layout.tsx               # 全局元数据与布局
+│   └── page.tsx                 # 登录边界与应用入口
+├── components/
+│   ├── contract-ledger-app.tsx  # 主工作台与业务视图
+│   ├── management-chart-card.tsx
+│   └── ui/                      # 可复用 UI 组件
+├── db/
+│   ├── schema.ts                # Drizzle 数据模型
+│   ├── bootstrap.ts             # 版本化迁移与虚构种子数据
+│   └── index.ts                 # D1 数据库入口
+├── drizzle/                     # 版本化 SQL migrations
+├── lib/                         # 领域规则、验证、安全、AI 与导出逻辑
+├── public/demo-documents/       # 15 份虚构演示/评估文件
+├── scripts/                     # 发布门禁、基线验证和 fixture 生成脚本
+├── docs/
+│   ├── definition-of-done/      # 功能完成定义及可执行证据
+│   ├── execution-loop/          # 标准阶段执行清单
+│   └── releases/                # v1.0 发布说明与 smoke test
+├── .openai/hosting.json         # Sites 项目及 D1/R2 逻辑绑定
+├── ROADMAP.md
+├── DEMO_RUNBOOK.md
+└── PORTFOLIO_CASE_STUDY.md
+```
 
-The API key is server-side only. Uploaded document text is treated as untrusted input, bounded by file size/page/text limits, and never allowed to override system instructions. File extensions, declared media types, UTF-8 text content, and PDF/image signatures are checked before parsing. PDF preflight then records page count, inspected-page count, text characters, blank or sparse pages, and page rotation. Corrupted, password-protected, structurally incomplete, or wholly unreadable PDFs are blocked before the model call. Partially sparse or rotated inputs remain visibly marked `needs_review`, their report is stored with the AI run, and every operational save still requires human verification. Images are marked OCR-ready/manual-review inputs; no OCR provider is claimed or silently invoked in v0.7.
+主要 API 按职责分组：
 
-Hosted API requests require either authenticated Sites user headers or a valid temporary demo session. Audit events use that identity and workspace role, state-changing requests are same-origin only, and AI endpoints have per-user D1-backed rate limits. Demo login attempts are limited to five per client address in a 15-minute window. A centralized role policy independently gates document submission, verified-field editing, supplier maintenance, exception approval, amendment application, obligation completion, bulk imports, AI/governance actions, exports, and reset. Export generation performs a server authorization check before creating the local workbook. Localhost and the temporary demo account use a clearly identified administrator actor; other hosted identities receive only their configured role and default to read-only.
+- 分析：`/api/analyze`、`/api/analyze-supplier-document`、`/api/amendments/analyze`
+- 业务记录：`/api/workspace`、`/api/intakes`、`/api/suppliers`、`/api/supplier-documents`、`/api/amendments`
+- 控制流程：`/api/approvals`、`/api/obligations`、`/api/imports`
+- AI 与治理：`/api/assistant`、`/api/management-insights`、`/api/evaluations`
+- 查询与导出：`/api/record-details`、`/api/document`、`/api/review-package`、`/api/exports/authorize`
+- 身份与演示：`/api/auth/*`、`/api/workspace/reset`
 
-D1 bootstrap is versioned with an application migration ledger: schema upgrades and fictional seed synchronization run only when the stored version is behind, rather than writing during every request. Approval requests use rule snapshots so later playbook versions cannot rewrite historical decisions. The workspace endpoint returns register and queue summaries; document metadata, approval decisions, and AI review history load only when a specific record is opened. Charting and workbook generation are lazy-loaded to keep them off the initial application path.
+## 数据与安全
 
-Bulk imports use separate `import_batches` and `import_rows` staging records. CSV/XLSX signatures, UTF-8 CSV content, a 5 MB file limit, 150-row batch limit, unique headers, and formula-injection characters are checked before commit. Mapping version `2026.1`, original row values, normalized values, issues, decisions, created record IDs, actors, and timestamps remain auditable. Contract imports require an exact supplier-master match; possible matches are never merged automatically. Rollback is blocked if a created supplier or contract has acquired dependent documents, intakes, amendments, or contracts.
+- DeepSeek Key 仅在服务端读取；原始文件内容和模型输出不会作为前端环境变量暴露。
+- 上传内容按不可信输入处理，校验扩展名、MIME、文件签名、大小、UTF-8 文本和 PDF 结构。
+- PDF 预检记录页数、检查页数、字符数、空白/稀疏页及旋转状态；有风险的文档被阻止或明确标记为需要人工复核。
+- 托管 API 需要 Sites 身份或有效的临时演示会话；状态变更请求执行同源检查。
+- 七角色、十三项服务端权限覆盖文档提交、字段核验、供应商维护、审批、修订、义务关闭、导入、AI 治理、导出和重置等动作。
+- AI 接口采用按用户、D1 持久化的限流；演示登录在 15 分钟内最多尝试 5 次。
+- 临时演示会话使用签名的 HttpOnly、SameSite Cookie，12 小时后过期。
+- 关键状态变化写入不可变事件或审计日志；导出操作也会进行服务端授权并留下记录。
 
-Obligations extend the existing `key_dates` register rather than creating a parallel task system. Durable workflow status follows `upcoming → in_progress → evidence_required → completed`; `overdue` is calculated from the due date and cannot be selected or hidden manually. Completion requires a note plus an existing related document, a safely uploaded PDF/image stored in R2, or a bounded external evidence reference. `obligation_events` retains assignment, status, evidence, escalation, and amendment-driven due-date changes. The queue derives on-time completion, overdue aging, evidence coverage, and median assignment/completion time directly from saved timestamps and always exposes the underlying sample through the visible records.
+## 质量与发布基线
 
-Supplier risk profile version `supplier-risk-2026.1` is deterministic and factor-level explainable. It combines the human-approved classification, W-9 and insurance controls, qualification completeness, visible screening/standing records, linked high-risk findings, active-value concentration, and overdue obligations. Each factor returns its rule result, points, explanation, and evidence. The calculated profile does not use an AI-generated risk score and does not silently overwrite the human-reviewed supplier master tier.
+`v1.0.0` 发布证据记录了以下可重复验证的状态：
 
-Review package version `review-package-2026.1` is generated server-side from current contract, finding, approval, amendment, source, and AI-review records. The authorized PDF response is private/no-store, uses a stable sanitized filename, states that it is an operational aid rather than legal advice, and writes an export audit event. `integration_outbox` records versioned obligation completion, status-change, update, and escalation events transactionally for future webhook or notification delivery; no external delivery provider is configured or claimed.
+| 项目 | 当前基线 |
+| --- | ---: |
+| Schema 版本 | 20 |
+| 自动化测试 | 19 个测试文件 / 101 项测试 |
+| 虚构评估文件 | 15 |
+| 重置后合同 | 7 |
+| 重置后供应商 | 8 |
+| 重置后 intake | 3 |
+| 重置后履约义务 | 5 |
+| 重置后审批记录 | 5 |
+| 重置后当前合同总额 | USD 4,055,000 |
 
-Approval history records both the authenticated actor's actual workspace role and the rule's accountable owner role. Contract administrators can verify operational data but cannot approve their own exceptions through the approval route; Legal, Procurement/Compliance, and Approver roles can decide exceptions but cannot edit verified contract fields. The policy is intentionally workspace-scoped rather than a full multi-tenant identity administration system.
+仓库使用两类“失败即阻断”的工程治理：
 
-AI Accuracy & Validation is server-controlled. The server loads 15 fixed fictional fixtures spanning draft and executed contracts, supplier records, an amendment, ambiguous inputs, and a negative case. It performs fresh analysis with bounded concurrency; persists run, case, and field-level results; records model, prompt, extraction, fixture and dataset versions, duration and failures; calculates critical-field accuracy, source coverage, unsupported-value rate, processing success, and regression delta; and never accepts client-submitted case IDs or model results. Complete runs can be approved as the dataset baseline, while a critical-accuracy regression beyond two points blocks promotion. Operational `ai_field_reviews` supply correction-rate evidence, and unsupported critical saved values require an explicit reviewer override reason retained in the audit trail. The latest validation appendix exports as CSV with achieved metrics and sample/version labels.
+- `docs/definition-of-done/`：每个重大功能必须覆盖业务规则、权限、测试、可访问性、文档、指标和限制等完成标准。
+- `docs/execution-loop/`：每个重大阶段必须按 define → fixture → model → business logic → API → interface → test → measure → demonstrate → document 的顺序推进。
 
-## Source structure
+门禁能验证清单结构、证据路径、执行顺序和有界指标，但不能替代人工代码审查、证据质量判断或真实生产验证。
 
-The implementation sequence, release gates, metrics, and portfolio evidence plan are maintained in the [product roadmap](ROADMAP.md).
+## 部署
 
-The portfolio narrative and claim controls are maintained as three interview-ready artifacts:
+项目面向 OpenAI Sites / Cloudflare Workers 运行，逻辑资源绑定位于 `.openai/hosting.json`：
 
-- `PORTFOLIO_CASE_STUDY.md` — problem, product boundary, lifecycle decisions, controls, validation method, evidence, and limitations
-- `DEMO_RUNBOOK.md` — paced ten-minute walkthrough, opening and closing language, and recovery paths
-- `RESUME_EVIDENCE.md` — release-by-release evidence, safe claim boundaries, candidate resume bullets, and evidence still required
-- `docs/definition-of-done/` — executable major-feature checklist, evidence manifests, authoring template, and gate limitations
-- `docs/execution-loop/` — ordered phase manifests, predecessor and defect start gate, template, validator contract, and limitations
-- `docs/releases/` — v1.0 smoke checklist, bounded baseline evidence, release notes, schema/fixture inventory, and limitations
+```json
+{
+  "d1": "DB",
+  "r2": "FILES"
+}
+```
 
-- `app/api/analyze/route.ts` — contract PDF extraction and DeepSeek analysis
-- `app/api/analyze-supplier-document/route.ts` — supplier PDF/image extraction and qualification review
-- `app/api/evaluations/route.ts`, `lib/ai-evaluation.ts`, and `lib/ai-governance.ts` — versioned 15-document ground truth, field-level results, regression gates, validation CSV export, and source-override controls
-- `app/api/workspace/route.ts` — stage-aware save workflow
-- `app/api/approvals/route.ts` and `lib/approval-workflow.ts` — deterministic rules, state transitions, approval actions, execution gates, and decision history
-- `app/api/imports/route.ts`, `lib/bulk-import.ts`, and `lib/server/import-file.ts` — CSV/XLSX templates and parsing, versioned mapping, normalization, duplicate review, staged commit, correction reports, and precise rollback
-- `app/api/obligations/route.ts` and `lib/obligation-workflow.ts` — controlled obligation transitions, completion evidence, overdue escalation, immutable history, workflow metrics, and calendar export
-- `app/api/review-package/route.ts` and `lib/review-package.ts` — authorized, audited operational-review PDF generation with source, approval, version, and reviewer history
-- `lib/supplier-risk.ts` and `lib/integration-outbox.ts` — transparent supplier factor scoring and versioned future-delivery event envelopes
-- `lib/document-quality.ts` — page-level PDF preflight, OCR-readiness signals, and clear blocked/manual-review states shared by contract, amendment, and supplier analysis
-- `app/api/auth/` and `lib/demo-auth.ts` — temporary server-side demo login and signed sessions
-- `app/api/record-details/route.ts` — on-demand document metadata and AI review history
-- `db/schema.ts` and `db/bootstrap.ts` — D1 schema and fictional seed data
-- `components/contract-ledger-app.tsx` — interview-ready application interface
-- `components/management-chart-card.tsx` — lazy-loaded management chart bundle
-- `lib/server/request-security.ts` — authenticated actor, seven-role permission policy, same-origin write protection, and rate limiting
-- `lib/export-registers.ts` — current register, data-quality, supplier-document, approval-queue, and obligation-evidence Excel export
-- `public/demo-documents/` — fictional draft and executed agreements
+生产构建：
+
+```bash
+npm run build
+```
+
+本地检查生产构建：
+
+```bash
+npm run start
+```
+
+托管环境变量应通过 Sites 的运行时配置管理，不要写入仓库。仓库没有定义通用的公开发布脚本；正式发布由已关联的 Sites 项目完成，并由平台注入真实 D1、R2 和身份信息。
+
+## 已知边界
+
+- 这是合同运营作品集应用，不覆盖合同谈判、电子签名、企业级身份生命周期或全部法律工作流。
+- 内置 playbook、企业、人员、地址、签名、金额和业务结果全部是虚构内容；规则提示不是法律意见。
+- 图片文件只会被标记为 OCR-ready / 需要人工复核；当前没有配置或宣称 OCR 服务。
+- `integration_outbox` 只保留待投递事件，目前没有外部邮件、Slack、webhook 或日历同步提供商。
+- 权限策略以单一工作区为边界，不是完整的多租户身份管理系统。
+- 重复项识别、AI 准确率和效率指标仅针对受控虚构样本，不代表真实企业规模或生产结果。
+- 本地基线验证 D1/R2 支持的可重置演示环境；托管健康状态仍需按实际部署单独验证。
+
+## 参与开发
+
+新增重大功能前：
+
+1. 从 `docs/execution-loop/phase-template.json` 创建阶段清单，定义用户故事、规则、非目标、验收标准和前置缺陷门禁。
+2. 从 `docs/definition-of-done/feature-template.json` 创建功能证据清单。
+3. 先补充虚构 fixture 和数据模型，再实现领域逻辑、API 与界面。
+4. 为所有适用标准附上仓库内证据；`not_applicable` 必须说明具体理由。
+5. 更新 README、Roadmap、演示路径、限制和有界指标。
+6. 运行 `npm run quality`，需要时再运行本地 `npm run check:baseline`。
+
+## 相关文档
+
+- [产品路线图](ROADMAP.md)：阶段顺序、发布范围、验收标准和当前完成状态
+- [作品集案例](PORTFOLIO_CASE_STUDY.md)：问题、产品边界、设计决策、证据和诚实声明
+- [演示手册](DEMO_RUNBOOK.md)：十分钟演示流程、讲解重点和恢复方案
+- [履历证据账本](RESUME_EVIDENCE.md)：可安全使用的项目成果表述与证据边界
+- [v1.0 发布说明](docs/releases/v1.0.0.md)：发布内容与已知限制
+- [v1.0 Smoke Test](docs/releases/V1_SMOKE_TEST.md)：自动化基线和界面核验清单
+- [发布证据清单](docs/releases/v1.0-release-evidence.json)：版本、fixture、指标和重置库存
+- [Definition of Done](docs/definition-of-done/README.md)：功能完成门禁规则
+- [Phase Execution Gate](docs/execution-loop/README.md)：标准阶段执行和证据规则
+
+## 许可证
+
+仓库当前未声明开源许可证。在获得项目所有者明确授权前，请勿假定可以复制、分发或用于商业用途。
