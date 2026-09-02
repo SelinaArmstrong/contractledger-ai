@@ -134,6 +134,7 @@ type ViewName =
   | 'Contract Register'
   | 'Supplier Register'
   | 'Obligations & Evidence'
+  | 'Portfolio Case Study'
   | 'AI Accuracy & Validation';
 
 type IntakeStage = 'draft' | 'executed';
@@ -210,7 +211,132 @@ const navigationGroups: Array<{
   },
   {
     label: 'Portfolio evidence',
-    items: [{ label: 'AI Accuracy & Validation', icon: FlaskConical }],
+    items: [
+      { label: 'Portfolio Case Study', icon: BookOpenCheck },
+      { label: 'AI Accuracy & Validation', icon: FlaskConical },
+    ],
+  },
+];
+
+const portfolioReleaseEvidence = [
+  {
+    release: 'v0.2',
+    capability: 'Amendment lifecycle',
+    evidence:
+      'USD 475,000 original + USD 75,000 verified amendment = USD 550,000 current value, with the original preserved.',
+    boundary: 'Reproducible fictional scenario; no legal-outcome claim.',
+  },
+  {
+    release: 'v0.3',
+    capability: 'Approval controls',
+    evidence:
+      'Five versioned rules, immutable decisions, accountable owners, deadlines, and an executed-registration gate.',
+    boundary: 'The seeded 26-hour turnaround is fixture evidence.',
+  },
+  {
+    release: 'v0.4',
+    capability: 'Legacy migration',
+    evidence:
+      'CSV/XLSX staging, mapping, normalization, duplicate review, correction export, transactional commit, and audited rollback.',
+    boundary: 'No real-company time-savings or duplicate-precision claim.',
+  },
+  {
+    release: 'v0.5',
+    capability: 'Obligation execution',
+    evidence:
+      'Five seeded obligations cover upcoming, overdue, evidence-required, and evidence-backed completion states.',
+    boundary: 'Completion metrics expose their small sample.',
+  },
+  {
+    release: 'v0.6',
+    capability: 'AI governance',
+    evidence:
+      'Fifteen controlled fictional cases, field-level ground truth, source coverage, correction evidence, and a regression gate.',
+    boundary: 'Accuracy must name its run, version, and sample size.',
+  },
+  {
+    release: 'v0.7',
+    capability: 'Quality and permissions',
+    evidence:
+      'Seven workspace roles, thirteen named permissions, denied-write coverage, and page-level document preflight.',
+    boundary: 'Demonstrates policy controls, not enterprise IAM certification.',
+  },
+  {
+    release: 'v0.8',
+    capability: 'Operational handoff',
+    evidence:
+      'Source-aware review PDF, eight-factor supplier risk, and durable integration-outbox events.',
+    boundary: 'Integration-ready; external delivery is not active.',
+  },
+] as const;
+
+const portfolioDemoChapters: Array<{
+  time: string;
+  view: ViewName;
+  title: string;
+  proof: string;
+}> = [
+  {
+    time: '0:00',
+    view: 'Portfolio Case Study',
+    title: 'Frame the operating problem',
+    proof: 'Operational review aid, fictional data, and explicit non-goals.',
+  },
+  {
+    time: '0:45',
+    view: 'Bulk Import & Data Quality',
+    title: 'Stage legacy data safely',
+    proof:
+      'Mapping, normalization, duplicate decisions, and reversible commit.',
+  },
+  {
+    time: '1:35',
+    view: 'New Contract Review',
+    title: 'Verify AI-assisted extraction',
+    proof: 'Model and reviewer values remain separate and source-linked.',
+  },
+  {
+    time: '2:40',
+    view: 'Approvals & Exceptions',
+    title: 'Control policy exceptions',
+    proof: 'Versioned rules, accountable decisions, and execution gates.',
+  },
+  {
+    time: '3:30',
+    view: 'Contract Register',
+    title: 'Show official lifecycle data',
+    proof: 'Executed-only totals, draft comparison, and preserved approvals.',
+  },
+  {
+    time: '4:20',
+    view: 'Contract Register',
+    title: 'Reproduce effective terms',
+    proof: 'Original agreement, amendment delta, and current value lineage.',
+  },
+  {
+    time: '5:10',
+    view: 'Supplier Register',
+    title: 'Explain supplier risk',
+    proof: 'Eight visible factors expose rules, points, and evidence.',
+  },
+  {
+    time: '6:05',
+    view: 'Obligations & Evidence',
+    title: 'Close work with evidence',
+    proof: 'Calculated overdue state and immutable completion history.',
+  },
+  {
+    time: '7:05',
+    view: 'AI Accuracy & Validation',
+    title: 'Measure AI quality',
+    proof:
+      'Fifteen cases, field metrics, source coverage, and regression gate.',
+  },
+  {
+    time: '8:10',
+    view: 'Portfolio Case Study',
+    title: 'Export and close honestly',
+    proof: 'Review package, workbook, calendar, evidence, and limitations.',
   },
 ];
 
@@ -1220,6 +1346,12 @@ export function ContractLedgerApp({
               onRefresh={loadWorkspace}
               onSelectContract={(id) => setDetail({ type: 'contract', id })}
               onSelectSupplier={(id) => setDetail({ type: 'supplier', id })}
+            />
+          ) : null}
+          {activeView === 'Portfolio Case Study' ? (
+            <PortfolioCaseStudyView
+              workspace={workspace}
+              onNavigate={setActiveView}
             />
           ) : null}
           {activeView === 'AI Accuracy & Validation' ? (
@@ -5812,6 +5944,263 @@ type EvaluationDetail = {
   }>;
 };
 
+function PortfolioCaseStudyView({
+  workspace,
+  onNavigate,
+}: {
+  workspace: Workspace | null;
+  onNavigate: (view: ViewName) => void;
+}) {
+  const liveEvidence = [
+    {
+      label: 'Active contracts',
+      value: valueText(workspace?.metrics.active_contracts),
+      note: 'Executed records only',
+    },
+    {
+      label: 'Active suppliers',
+      value: valueText(workspace?.metrics.active_suppliers),
+      note: `${valueText(workspace?.metrics.pending_suppliers)} pending onboarding`,
+    },
+    {
+      label: 'Open obligations',
+      value: valueText(workspace?.obligationMetrics.open_obligations),
+      note: `${valueText(workspace?.obligationMetrics.overdue_obligations)} calculated overdue`,
+    },
+    {
+      label: 'Open approvals',
+      value: valueText(workspace?.approvalMetrics.open_requests),
+      note: `${valueText(workspace?.approvalMetrics.blocked_intakes)} blocked intakes`,
+    },
+  ];
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="Portfolio-ready evidence"
+        title="Contract Operations Case Study"
+        description="A concise interview narrative, ten-minute demonstration path, and claim-safe evidence ledger for the complete ContractLedger AI lifecycle."
+        action={
+          <Button
+            variant="outline"
+            onClick={() => onNavigate('AI Accuracy & Validation')}
+          >
+            <FlaskConical className="size-4" /> Open validation evidence
+          </Button>
+        }
+      />
+
+      <Panel className="mb-5 overflow-hidden border-[#bfd4dd]">
+        <div className="grid gap-0 xl:grid-cols-[1.15fr_0.85fr]">
+          <div className="bg-[#0f3044] px-6 py-7 text-white md:px-8 md:py-9">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#79c6dd]">
+              Portfolio thesis
+            </p>
+            <h2 className="mt-3 max-w-3xl text-2xl font-semibold tracking-[-0.025em] md:text-3xl">
+              Turn unstructured agreements into verified operational records
+              without hiding the human decisions.
+            </h2>
+            <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-300">
+              ContractLedger AI stages legacy data, separates drafts from
+              official records, routes exceptions, reproduces effective terms,
+              and converts dates into accountable work. Every material result
+              remains tied to its source, reviewer, rule, and history.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-px bg-[#dce6ea]">
+            {[
+              ['7', 'Lifecycle releases', 'v0.2–v0.8'],
+              ['15', 'Evaluation cases', 'Fictional ground truth'],
+              ['7 / 13', 'Roles / permissions', 'Server enforced'],
+              ['85', 'Passing tests', '2026-09-02 baseline'],
+            ].map(([value, label, note]) => (
+              <div key={label} className="bg-[#f8fbfc] p-5 md:p-6">
+                <p className="text-2xl font-semibold text-[#14384d]">{value}</p>
+                <p className="mt-2 text-[11px] font-semibold text-slate-700">
+                  {label}
+                </p>
+                <p className="mt-1 text-[9px] text-slate-500">{note}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Panel>
+
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {liveEvidence.map((item) => (
+          <article
+            key={item.label}
+            className="rounded-xl border border-[#dce3e8] bg-white p-4 shadow-sm"
+          >
+            <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+              Current demo state
+            </p>
+            <div className="mt-2 flex items-end justify-between gap-3">
+              <div>
+                <p className="text-xl font-semibold text-[#183040]">
+                  {item.value}
+                </p>
+                <p className="mt-1 text-[10px] font-medium text-slate-700">
+                  {item.label}
+                </p>
+              </div>
+              <CircleCheck className="mb-1 size-4 text-[#2d8a72]" />
+            </div>
+            <p className="mt-2 text-[9px] text-slate-500">{item.note}</p>
+          </article>
+        ))}
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+        <div className="space-y-5">
+          <Panel>
+            <PanelHeader
+              title="Case-study decisions"
+              description="The product choices that make the workflow defensible rather than merely automated."
+            />
+            <div className="grid gap-3 p-5 md:grid-cols-2">
+              {[
+                [
+                  'Draft ≠ official record',
+                  'Reviewed proposals remain intakes. Only authorized executed agreements enter official totals and registers.',
+                ],
+                [
+                  'Source before confidence',
+                  'Critical fields require a supporting page and quote or an explicit reviewer override reason.',
+                ],
+                [
+                  'Rules own operational decisions',
+                  'Deterministic code controls approvals, arithmetic, overdue state, risk factors, and permissions.',
+                ],
+                [
+                  'History stays reproducible',
+                  'Original terms, amendments, decisions, obligation events, and exported evidence remain linked.',
+                ],
+              ].map(([title, description], index) => (
+                <article
+                  key={title}
+                  className="rounded-xl border border-[#dce3e8] bg-[#f8fafb] p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-[#dff0f5] text-[10px] font-semibold text-[#1d718f]">
+                      {index + 1}
+                    </span>
+                    <div>
+                      <h3 className="text-xs font-semibold text-[#203845]">
+                        {title}
+                      </h3>
+                      <p className="mt-1 text-[10px] leading-5 text-slate-600">
+                        {description}
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </Panel>
+
+          <Panel className="overflow-hidden">
+            <PanelHeader
+              title="Release evidence ledger"
+              description="Each claim is paired with reproducible evidence and an explicit boundary."
+            />
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="pl-5">Release</TableHead>
+                    <TableHead>Capability</TableHead>
+                    <TableHead>Verified evidence</TableHead>
+                    <TableHead className="pr-5">Claim boundary</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {portfolioReleaseEvidence.map((item) => (
+                    <TableRow key={item.release} className="align-top">
+                      <TableCell className="pl-5">
+                        <StatusBadge tone="green">{item.release}</StatusBadge>
+                      </TableCell>
+                      <TableCell className="text-[10px] font-semibold text-[#203845]">
+                        {item.capability}
+                      </TableCell>
+                      <TableCell className="min-w-72 text-[10px] leading-5 text-slate-600">
+                        {item.evidence}
+                      </TableCell>
+                      <TableCell className="min-w-56 pr-5 text-[9px] leading-4 text-slate-500">
+                        {item.boundary}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Panel>
+        </div>
+
+        <div className="space-y-5">
+          <Panel>
+            <PanelHeader
+              title="10-minute demo route"
+              description="A paced path from business problem to measured evidence."
+            />
+            <ol className="divide-y divide-[#e7ecef]">
+              {portfolioDemoChapters.map((chapter, index) => (
+                <li key={`${chapter.time}-${chapter.title}`} className="p-4">
+                  <button
+                    type="button"
+                    onClick={() => onNavigate(chapter.view)}
+                    className="group flex w-full items-start gap-3 text-left"
+                  >
+                    <span className="flex h-7 min-w-12 items-center justify-center rounded-lg bg-[#edf5f7] px-2 text-[9px] font-semibold text-[#276e87]">
+                      {chapter.time}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[11px] font-semibold text-[#203845]">
+                        {index + 1}. {chapter.title}
+                      </span>
+                      <span className="mt-1 block text-[9px] leading-4 text-slate-500">
+                        {chapter.proof}
+                      </span>
+                      <span className="mt-2 inline-flex items-center gap-1 text-[9px] font-medium text-[#1d718f]">
+                        {chapter.view}
+                        <ArrowRight className="size-3 transition group-hover:translate-x-0.5" />
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </Panel>
+
+          <Panel>
+            <PanelHeader
+              title="Evidence boundaries"
+              description="What this portfolio deliberately does not claim."
+            />
+            <ul className="space-y-3 p-5">
+              {[
+                'No real-company time-savings percentage until repeated paired timing runs are saved.',
+                'No extraction-accuracy claim without a named completed run, dataset version, and sample size.',
+                'No legal-advice, negotiation-outcome, or contract-enforceability claim.',
+                'No production duplicate-precision claim without labeled false-positive and false-negative evidence.',
+                'No external-notification claim while outbox delivery remains intentionally unconfigured.',
+              ].map((boundary) => (
+                <li
+                  key={boundary}
+                  className="flex items-start gap-2 text-[10px] leading-5 text-slate-600"
+                >
+                  <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-[#2d8a72]" />
+                  {boundary}
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function AIEvaluationView({
   workspace,
   onCompleted,
@@ -9707,7 +10096,15 @@ function SupplierRiskProfilePanel({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <StatusBadge tone={profile.level === 'high' ? 'rose' : profile.level === 'medium' ? 'amber' : 'green'}>
+          <StatusBadge
+            tone={
+              profile.level === 'high'
+                ? 'rose'
+                : profile.level === 'medium'
+                  ? 'amber'
+                  : 'green'
+            }
+          >
             {titleCase(profile.level)} risk
           </StatusBadge>
           <Badge variant="outline">{profile.score} points</Badge>

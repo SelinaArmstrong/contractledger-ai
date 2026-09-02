@@ -23,7 +23,8 @@ The fictional policy checks are operational review prompts, not legal advice. AI
 
 ## Interview demo
 
-- Start on **Portfolio Dashboard** and explain that only executed contracts count toward the official value.
+- Start on **Portfolio Case Study** and frame the operating problem, product boundary, verified release evidence, and ten-minute route. Use the companion [case study](PORTFOLIO_CASE_STUDY.md), [demo runbook](DEMO_RUNBOOK.md), and [resume evidence ledger](RESUME_EVIDENCE.md) when preparing for an interview.
+- Open **Portfolio Dashboard** and explain that only executed contracts count toward the official value.
 - Open **Bulk Import & Data Quality**, download a supplier or contract template, and open a prior dry run. Show automatic `Vendor Name → Supplier Legal Name` mapping, normalized values, duplicate candidates, row decisions, the correction report, and the reversible batch history.
 - Open **New Contract Review**, choose **Use demo PDF**, and run **Analyze with DeepSeek**. Correct or confirm every extracted field; point out confidence, source page, source quote, and playbook differences.
 - Save the reviewed draft and show that it remains a proposed-supplier intake while the Supplier Register and official contract total are unchanged.
@@ -109,6 +110,12 @@ AI Accuracy & Validation is server-controlled. The server loads 15 fixed fiction
 ## Source structure
 
 The implementation sequence, release gates, metrics, and portfolio evidence plan are maintained in the [product roadmap](ROADMAP.md).
+
+The portfolio narrative and claim controls are maintained as three interview-ready artifacts:
+
+- `PORTFOLIO_CASE_STUDY.md` — problem, product boundary, lifecycle decisions, controls, validation method, evidence, and limitations
+- `DEMO_RUNBOOK.md` — paced ten-minute walkthrough, opening and closing language, and recovery paths
+- `RESUME_EVIDENCE.md` — release-by-release evidence, safe claim boundaries, candidate resume bullets, and evidence still required
 
 - `app/api/analyze/route.ts` — contract PDF extraction and DeepSeek analysis
 - `app/api/analyze-supplier-document/route.ts` — supplier PDF/image extraction and qualification review

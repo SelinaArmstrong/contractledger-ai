@@ -526,6 +526,8 @@ Avoid direct email, e-signature, or third-party CLM integrations until the inter
 
 ## 13. Cross-cutting portfolio and resume track
 
+**Status:** Complete — 2026-09-02
+
 This track runs alongside every release.
 
 ### Case study
@@ -571,6 +573,14 @@ After each release, record only measured and reproducible facts:
 | v0.8    | Review-package contents, visible risk factors, outbox events | Operational reporting and integration readiness |
 
 Do not update resume metrics until the corresponding release and evidence have passed their exit criteria.
+
+### Delivered evidence
+
+- The application now includes a dedicated Portfolio Case Study workspace that presents the product thesis, current fictional demo state, core product decisions, release-by-release evidence ledger, claim boundaries, and a navigable ten-minute demonstration route.
+- `PORTFOLIO_CASE_STUDY.md` provides the interview narrative across the manual problem, lifecycle design, data-model and human-review decisions, security/privacy boundaries, validation method, reproducible results, limitations, and next evidence step.
+- `DEMO_RUNBOOK.md` turns the ten-step scenario into a timed walkthrough with an opening, close, evidence cue for every view, and recovery paths when live AI or an upload is unavailable.
+- `RESUME_EVIDENCE.md` records release-specific evidence locations, safe claim boundaries, candidate resume language, and the additional measurements required before making stronger productivity, accuracy, precision, or operational-outcome claims.
+- The portfolio baseline explicitly identifies 15 fictional evaluation cases, seven roles, thirteen permissions, seven completed lifecycle releases, and 85 passing automated tests as of 2026-09-02. It does not convert fictional fixtures into claims about real-company savings or legal outcomes.
 
 ## 14. Definition of done for every major feature
 
