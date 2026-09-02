@@ -243,6 +243,21 @@ export type ImportBatchDetails = {
   >;
 };
 
+export type ImportPortfolioMetrics = {
+  batchCount: number;
+  completedBatchCount: number;
+  assessedRowCount: number;
+  finalizedRowCount: number;
+  acceptedRowCount: number;
+  rejectedRowCount: number;
+  acceptanceRate: number | null;
+  rejectionRate: number | null;
+  duplicateCandidateCount: number;
+  normalizationIssueCount: number;
+  medianMigrationMinutes: number | null;
+  migrationDurationSampleSize: number;
+};
+
 export type ObligationDetails = {
   obligation: Record<string, string | number | null>;
   events: Array<Record<string, string | number | null>>;

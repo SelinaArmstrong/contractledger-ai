@@ -45,6 +45,31 @@ export type ImportPreviewRow = {
   duplicateType: 'exact' | 'possible' | null;
 };
 
+export type ImportBatchMetricInput = {
+  status: 'preview' | 'committed' | 'rolled_back';
+  totalRows: number;
+  acceptedRows: number;
+  rejectedRows: number;
+  normalizationIssueCount: number;
+  createdAt: string;
+  committedAt: string | null;
+};
+
+export type ImportPortfolioMetrics = {
+  batchCount: number;
+  completedBatchCount: number;
+  assessedRowCount: number;
+  finalizedRowCount: number;
+  acceptedRowCount: number;
+  rejectedRowCount: number;
+  acceptanceRate: number | null;
+  rejectionRate: number | null;
+  duplicateCandidateCount: number;
+  normalizationIssueCount: number;
+  medianMigrationMinutes: number | null;
+  migrationDurationSampleSize: number;
+};
+
 const supplierFields: readonly ImportFieldDefinition[] = [
   {
     key: 'legal_name',
@@ -908,6 +933,66 @@ export function importPreviewSummary(
         ).length,
       0,
     ),
+  };
+}
+
+export function calculateImportPortfolioMetrics(
+  batches: readonly ImportBatchMetricInput[],
+  duplicateCandidateCount: number,
+): ImportPortfolioMetrics {
+  const completed = batches.filter(
+    (batch) =>
+      (batch.status === 'committed' || batch.status === 'rolled_back') &&
+      batch.committedAt,
+  );
+  const acceptedRowCount = completed.reduce(
+    (sum, batch) => sum + batch.acceptedRows,
+    0,
+  );
+  const rejectedRowCount = completed.reduce(
+    (sum, batch) => sum + batch.rejectedRows,
+    0,
+  );
+  const finalizedRowCount = acceptedRowCount + rejectedRowCount;
+  const durations = completed
+    .map((batch) => {
+      const started = Date.parse(batch.createdAt);
+      const committed = Date.parse(batch.committedAt ?? '');
+      return Number.isFinite(started) &&
+        Number.isFinite(committed) &&
+        committed >= started
+        ? (committed - started) / 60_000
+        : null;
+    })
+    .filter((duration): duration is number => duration !== null)
+    .sort((left, right) => left - right);
+  const middle = Math.floor(durations.length / 2);
+  const medianMigrationMinutes = durations.length
+    ? durations.length % 2
+      ? durations[middle]
+      : (durations[middle - 1] + durations[middle]) / 2
+    : null;
+
+  return {
+    batchCount: batches.length,
+    completedBatchCount: completed.length,
+    assessedRowCount: batches.reduce((sum, batch) => sum + batch.totalRows, 0),
+    finalizedRowCount,
+    acceptedRowCount,
+    rejectedRowCount,
+    acceptanceRate: finalizedRowCount
+      ? acceptedRowCount / finalizedRowCount
+      : null,
+    rejectionRate: finalizedRowCount
+      ? rejectedRowCount / finalizedRowCount
+      : null,
+    duplicateCandidateCount,
+    normalizationIssueCount: batches.reduce(
+      (sum, batch) => sum + batch.normalizationIssueCount,
+      0,
+    ),
+    medianMigrationMinutes,
+    migrationDurationSampleSize: durations.length,
   };
 }
 

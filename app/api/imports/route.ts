@@ -9,6 +9,7 @@ import {
   IMPORT_TARGETS,
   IMPORT_TEMPLATE_ROWS,
   autoMapImportHeaders,
+  calculateImportPortfolioMetrics,
   csvCell,
   importPreviewSummary,
   previewImportRows,
@@ -282,10 +283,33 @@ export async function GET(request: Request) {
         ? Response.json(details)
         : Response.json({ error: 'Import batch not found.' }, { status: 404 });
     }
-    const batches = await env.DB.prepare(
-      'SELECT * FROM import_batches ORDER BY created_at DESC LIMIT 20',
-    ).all<BatchRow>();
-    return Response.json({ batches: batches.results });
+    const [batches, metricRows, duplicateCandidates] = await env.DB.batch([
+      env.DB.prepare(
+        'SELECT * FROM import_batches ORDER BY created_at DESC LIMIT 20',
+      ),
+      env.DB.prepare(`SELECT status, total_rows, accepted_rows, rejected_rows,
+        normalization_issue_count, created_at, committed_at
+        FROM import_batches ORDER BY created_at`),
+      env.DB.prepare(`SELECT COUNT(*) AS count FROM import_rows
+        WHERE duplicate_type IS NOT NULL`),
+    ]);
+    const metrics = calculateImportPortfolioMetrics(
+      (metricRows.results as BatchRow[]).map((row) => ({
+        status: z
+          .enum(['preview', 'committed', 'rolled_back'])
+          .parse(String(row.status)),
+        totalRows: Number(row.total_rows),
+        acceptedRows: Number(row.accepted_rows),
+        rejectedRows: Number(row.rejected_rows),
+        normalizationIssueCount: Number(row.normalization_issue_count),
+        createdAt: String(row.created_at),
+        committedAt: row.committed_at ? String(row.committed_at) : null,
+      })),
+      Number(
+        (duplicateCandidates.results[0] as BatchRow | undefined)?.count ?? 0,
+      ),
+    );
+    return Response.json({ batches: batches.results, metrics });
   } catch (error) {
     return Response.json(
       {

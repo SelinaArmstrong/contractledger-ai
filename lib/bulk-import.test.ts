@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   autoMapImportHeaders,
+  calculateImportPortfolioMetrics,
   csvCell,
   importPreviewSummary,
   normalizeCurrencyToCents,
@@ -180,5 +181,81 @@ describe('bulk import normalization', () => {
 
   it('neutralizes formula characters in exported correction cells', () => {
     expect(csvCell('=2+2')).toBe("'=2+2");
+  });
+
+  it('calculates portfolio evidence from finalized import batches', () => {
+    const metrics = calculateImportPortfolioMetrics(
+      [
+        {
+          status: 'committed',
+          totalRows: 10,
+          acceptedRows: 8,
+          rejectedRows: 2,
+          normalizationIssueCount: 3,
+          createdAt: '2026-09-01T10:00:00.000Z',
+          committedAt: '2026-09-01T10:04:00.000Z',
+        },
+        {
+          status: 'rolled_back',
+          totalRows: 4,
+          acceptedRows: 3,
+          rejectedRows: 1,
+          normalizationIssueCount: 1,
+          createdAt: '2026-09-01T11:00:00.000Z',
+          committedAt: '2026-09-01T11:10:00.000Z',
+        },
+        {
+          status: 'preview',
+          totalRows: 6,
+          acceptedRows: 2,
+          rejectedRows: 1,
+          normalizationIssueCount: 2,
+          createdAt: '2026-09-01T12:00:00.000Z',
+          committedAt: null,
+        },
+      ],
+      5,
+    );
+
+    expect(metrics).toMatchObject({
+      batchCount: 3,
+      completedBatchCount: 2,
+      assessedRowCount: 20,
+      finalizedRowCount: 14,
+      acceptedRowCount: 11,
+      rejectedRowCount: 3,
+      acceptanceRate: 11 / 14,
+      rejectionRate: 3 / 14,
+      duplicateCandidateCount: 5,
+      normalizationIssueCount: 6,
+      medianMigrationMinutes: 7,
+      migrationDurationSampleSize: 2,
+    });
+  });
+
+  it('does not overstate rates or duration without finalized evidence', () => {
+    expect(
+      calculateImportPortfolioMetrics(
+        [
+          {
+            status: 'preview',
+            totalRows: 2,
+            acceptedRows: 1,
+            rejectedRows: 0,
+            normalizationIssueCount: 0,
+            createdAt: '2026-09-01T10:00:00.000Z',
+            committedAt: null,
+          },
+        ],
+        0,
+      ),
+    ).toMatchObject({
+      completedBatchCount: 0,
+      finalizedRowCount: 0,
+      acceptanceRate: null,
+      rejectionRate: null,
+      medianMigrationMinutes: null,
+      migrationDurationSampleSize: 0,
+    });
   });
 });

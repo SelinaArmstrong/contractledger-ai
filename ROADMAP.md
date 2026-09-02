@@ -298,6 +298,7 @@ The recommended cadence is one coherent release at a time. For part-time develop
 - The same runtime exercise produced an actionable rejected-row CSV with the formula cell safely escaped, and a generated XLSX supplier template was uploaded and parsed into a ready row.
 - Ten deterministic bulk-import tests cover alias mapping, date and currency normalization, existing-record and within-file duplicates, unknown suppliers, formula injection, summary metrics, notice-deadline calculation, and correction-export safety. The repository suite now contains 51 passing tests.
 - Batch timestamps and row counts support processed-row, acceptance/rejection, normalization-issue, and migration-duration metrics as additional completed batches accumulate; no unmeasured time-savings claim is made.
+- The import workspace now aggregates saved dry runs into a portfolio evidence panel showing rows assessed, finalized-row acceptance, duplicate candidates, normalization issues, and median preview-to-commit duration with its completed-batch sample size. Preview-only decisions are excluded from outcome rates so unfinished work cannot inflate the evidence.
 
 ## 9. Phase 4 — Obligation Execution & Evidence (v0.5)
 

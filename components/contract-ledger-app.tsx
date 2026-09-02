@@ -90,6 +90,7 @@ import type {
   ExtractedField,
   ApprovalRequestDetails,
   ImportBatchDetails,
+  ImportPortfolioMetrics,
   IntakeDetails,
   ObligationDetails,
   RecordDetails,
@@ -7399,6 +7400,7 @@ function BulkImportView({
     Array<Record<string, string | number | null>>
   >([]);
   const [details, setDetails] = useState<ImportBatchDetails | null>(null);
+  const [metrics, setMetrics] = useState<ImportPortfolioMetrics | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -7409,11 +7411,13 @@ function BulkImportView({
       const response = await fetch('/api/imports');
       const body = (await response.json()) as {
         batches?: Array<Record<string, string | number | null>>;
+        metrics?: ImportPortfolioMetrics;
         error?: string;
       };
       if (!response.ok)
         throw new Error(body.error || 'Import history could not be loaded.');
       setBatches(body.batches ?? []);
+      setMetrics(body.metrics ?? null);
       setError('');
     } catch (loadError) {
       setError(
@@ -7573,6 +7577,50 @@ function BulkImportView({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
+
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          [
+            'Rows assessed',
+            metrics ? valueText(metrics.assessedRowCount) : '—',
+            `${valueText(metrics?.batchCount)} dry runs`,
+          ],
+          [
+            'Final acceptance',
+            metrics?.acceptanceRate === null || !metrics
+              ? '—'
+              : `${Math.round(metrics.acceptanceRate * 100)}%`,
+            `${valueText(metrics?.acceptedRowCount)} of ${valueText(metrics?.finalizedRowCount)} finalized rows`,
+          ],
+          [
+            'Quality flags',
+            metrics ? valueText(metrics.duplicateCandidateCount) : '—',
+            `${valueText(metrics?.normalizationIssueCount)} normalization issues`,
+          ],
+          [
+            'Median migration',
+            metrics?.medianMigrationMinutes === null || !metrics
+              ? '—'
+              : metrics.medianMigrationMinutes < 1
+                ? '<1 min'
+                : `${Math.round(metrics.medianMigrationMinutes)} min`,
+            metrics
+              ? `${metrics.migrationDurationSampleSize} completed batch${metrics.migrationDurationSampleSize === 1 ? '' : 'es'}`
+              : 'No completed batches',
+          ],
+        ].map(([label, value, description]) => (
+          <article
+            key={label}
+            className="rounded-xl border border-[#dce3e8] bg-white p-4 shadow-sm"
+          >
+            <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+              {label}
+            </p>
+            <p className="mt-2 text-xl font-semibold text-[#183040]">{value}</p>
+            <p className="mt-1 text-[9px] text-slate-500">{description}</p>
+          </article>
+        ))}
+      </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-5">
