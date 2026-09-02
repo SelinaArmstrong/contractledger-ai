@@ -10,22 +10,33 @@
     {
       "id": "user-story",
       "status": "complete",
-      "evidence": [{ "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md" }]
+      "evidence": [
+        { "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md" }
+      ]
     },
     {
       "id": "happy-and-failure-paths",
       "status": "complete",
-      "evidence": [{ "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }]
+      "evidence": [
+        { "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }
+      ]
     },
     {
       "id": "interaction-states",
       "status": "complete",
-      "evidence": [{ "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md#interface-walkthrough" }]
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/releases/V1_SMOKE_TEST.md#interface-walkthrough"
+        }
+      ]
     },
     {
       "id": "server-validation",
       "status": "complete",
-      "evidence": [{ "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }]
+      "evidence": [
+        { "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }
+      ]
     },
     {
       "id": "transactional-writes",
@@ -35,7 +46,9 @@
     {
       "id": "auditability",
       "status": "complete",
-      "evidence": [{ "kind": "file", "ref": "docs/releases/v1.0-release-evidence.json" }]
+      "evidence": [
+        { "kind": "file", "ref": "docs/releases/v1.0-release-evidence.json" }
+      ]
     },
     {
       "id": "migration-strategy",
@@ -45,24 +58,36 @@
     {
       "id": "r2-consistency",
       "status": "complete",
-      "evidence": [{ "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }]
+      "evidence": [
+        { "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }
+      ]
     },
     {
       "id": "unit-tests",
       "status": "complete",
-      "evidence": [{ "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }]
+      "evidence": [
+        { "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }
+      ]
     },
     {
       "id": "api-tests",
       "status": "complete",
-      "evidence": [{ "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }]
+      "evidence": [
+        { "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }
+      ]
     },
     {
       "id": "fictional-fixture",
       "status": "complete",
       "evidence": [
-        { "kind": "fixture", "ref": "public/demo-documents/01_Draft_Professional_Services_Agreement.pdf" },
-        { "kind": "fixture", "ref": "public/demo-documents/15_Ambiguous_Incomplete_Supplier_Note.txt" }
+        {
+          "kind": "fixture",
+          "ref": "public/demo-documents/01_Draft_Professional_Services_Agreement.pdf"
+        },
+        {
+          "kind": "fixture",
+          "ref": "public/demo-documents/15_Ambiguous_Incomplete_Supplier_Note.txt"
+        }
       ]
     },
     {
@@ -73,7 +98,12 @@
     {
       "id": "accessibility",
       "status": "complete",
-      "evidence": [{ "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md#interface-walkthrough" }]
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/releases/V1_SMOKE_TEST.md#interface-walkthrough"
+        }
+      ]
     },
     {
       "id": "quality-gate",
@@ -93,14 +123,25 @@
         { "kind": "documentation", "ref": "README.md" },
         { "kind": "documentation", "ref": "DEMO_RUNBOOK.md" },
         { "kind": "documentation", "ref": "ROADMAP.md" },
-        { "kind": "documentation", "ref": "PORTFOLIO_CASE_STUDY.md#results-limitations-and-next-steps" },
-        { "kind": "documentation", "ref": "docs/releases/v1.0.0.md#known-boundaries" }
+        {
+          "kind": "documentation",
+          "ref": "PORTFOLIO_CASE_STUDY.md#results-limitations-and-next-steps"
+        },
+        {
+          "kind": "documentation",
+          "ref": "docs/releases/v1.0.0.md#known-boundaries"
+        }
       ]
     },
     {
       "id": "metric",
       "status": "complete",
-      "evidence": [{ "kind": "metric", "ref": "2 of 2 reset snapshots byte-for-byte equivalent" }]
+      "evidence": [
+        {
+          "kind": "metric",
+          "ref": "2 of 2 reset snapshots byte-for-byte equivalent"
+        }
+      ]
     }
   ],
   "metric": {

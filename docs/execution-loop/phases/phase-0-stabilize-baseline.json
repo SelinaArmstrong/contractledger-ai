@@ -28,14 +28,22 @@
     {
       "id": "define",
       "status": "complete",
-      "evidence": [{ "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md" }]
+      "evidence": [
+        { "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md" }
+      ]
     },
     {
       "id": "fixture-first",
       "status": "complete",
       "evidence": [
-        { "kind": "fixture", "ref": "public/demo-documents/01_Draft_Professional_Services_Agreement.pdf" },
-        { "kind": "fixture", "ref": "public/demo-documents/15_Ambiguous_Incomplete_Supplier_Note.txt" }
+        {
+          "kind": "fixture",
+          "ref": "public/demo-documents/01_Draft_Professional_Services_Agreement.pdf"
+        },
+        {
+          "kind": "fixture",
+          "ref": "public/demo-documents/15_Ambiguous_Incomplete_Supplier_Note.txt"
+        }
       ]
     },
     {
@@ -59,17 +67,29 @@
     {
       "id": "interface",
       "status": "complete",
-      "evidence": [{ "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md#interface-walkthrough" }]
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/releases/V1_SMOKE_TEST.md#interface-walkthrough"
+        }
+      ]
     },
     {
       "id": "test",
       "status": "complete",
-      "evidence": [{ "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }]
+      "evidence": [
+        { "kind": "test", "ref": "scripts/verify-release-baseline.mjs" }
+      ]
     },
     {
       "id": "measure",
       "status": "complete",
-      "evidence": [{ "kind": "metric", "ref": "15 fixture files and 9 seeded document links verified across two identical resets" }]
+      "evidence": [
+        {
+          "kind": "metric",
+          "ref": "15 fixture files and 9 seeded document links verified across two identical resets"
+        }
+      ]
     },
     {
       "id": "demonstrate",
@@ -81,7 +101,10 @@
       "status": "complete",
       "evidence": [
         { "kind": "documentation", "ref": "docs/releases/v1.0.0.md" },
-        { "kind": "documentation", "ref": "docs/releases/v1.0-release-evidence.json" },
+        {
+          "kind": "documentation",
+          "ref": "docs/releases/v1.0-release-evidence.json"
+        },
         { "kind": "documentation", "ref": "ROADMAP.md" }
       ]
     }

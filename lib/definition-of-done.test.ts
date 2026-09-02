@@ -13,7 +13,8 @@ function validManifest(): DefinitionOfDoneManifest {
     featureId: 'approval-workflow',
     title: 'Approval workflow',
     owner: 'Contract operations',
-    userStory: 'As a contract administrator, I can route material exceptions to an accountable reviewer.',
+    userStory:
+      'As a contract administrator, I can route material exceptions to an accountable reviewer.',
     updatedAt: '2026-09-02',
     status: 'complete',
     criteria: DEFINITION_OF_DONE_CRITERIA.map(({ id }) => ({
@@ -46,11 +47,18 @@ function validManifest(): DefinitionOfDoneManifest {
 }
 
 const pathExists = (path: string) =>
-  ['README.md', 'DEMO_RUNBOOK.md', 'ROADMAP.md', 'PORTFOLIO_CASE_STUDY.md'].includes(path);
+  [
+    'README.md',
+    'DEMO_RUNBOOK.md',
+    'ROADMAP.md',
+    'PORTFOLIO_CASE_STUDY.md',
+  ].includes(path);
 
 describe('Definition of Done gate', () => {
   it('accepts a complete manifest with evidence for every criterion', () => {
-    expect(validateDefinitionOfDone(validManifest(), { pathExists })).toEqual([]);
+    expect(validateDefinitionOfDone(validManifest(), { pathExists })).toEqual(
+      [],
+    );
     expect(summarizeDefinitionOfDone(validManifest())).toEqual({
       complete: 16,
       notApplicable: 0,
@@ -62,9 +70,13 @@ describe('Definition of Done gate', () => {
 
   it('blocks a complete feature when a criterion is missing', () => {
     const manifest = validManifest();
-    manifest.criteria = manifest.criteria.filter(({ id }) => id !== 'api-tests');
+    manifest.criteria = manifest.criteria.filter(
+      ({ id }) => id !== 'api-tests',
+    );
 
-    expect(validateDefinitionOfDone(manifest, { pathExists })).toContain('Missing criterion: api-tests.');
+    expect(validateDefinitionOfDone(manifest, { pathExists })).toContain(
+      'Missing criterion: api-tests.',
+    );
   });
 
   it('blocks pending work from being marked complete', () => {
@@ -78,7 +90,11 @@ describe('Definition of Done gate', () => {
 
   it('requires a specific rationale for a not-applicable criterion', () => {
     const manifest = validManifest();
-    manifest.criteria[2] = { id: 'interaction-states', status: 'not_applicable', rationale: 'No UI.' };
+    manifest.criteria[2] = {
+      id: 'interaction-states',
+      status: 'not_applicable',
+      rationale: 'No UI.',
+    };
 
     expect(validateDefinitionOfDone(manifest, { pathExists })).toContain(
       'interaction-states: not_applicable requires a specific rationale of at least 30 characters.',
@@ -95,8 +111,12 @@ describe('Definition of Done gate', () => {
     manifest.metric = { ...manifest.metric!, source: 'missing-metric.json' };
 
     const errors = validateDefinitionOfDone(manifest, { pathExists });
-    expect(errors).toContain('user-story.evidence[0] path does not exist: missing.md');
-    expect(errors).toContain('metric.source path does not exist: missing-metric.json');
+    expect(errors).toContain(
+      'user-story.evidence[0] path does not exist: missing.md',
+    );
+    expect(errors).toContain(
+      'metric.source path does not exist: missing-metric.json',
+    );
   });
 
   it('requires all four repository quality commands', () => {
@@ -106,9 +126,15 @@ describe('Definition of Done gate', () => {
     ];
 
     const errors = validateDefinitionOfDone(manifest, { pathExists });
-    expect(errors).toContain('quality-gate evidence must include "npm run lint".');
-    expect(errors).toContain('quality-gate evidence must include "npx tsc --noEmit".');
-    expect(errors).toContain('quality-gate evidence must include "npm run build".');
+    expect(errors).toContain(
+      'quality-gate evidence must include "npm run lint".',
+    );
+    expect(errors).toContain(
+      'quality-gate evidence must include "npx tsc --noEmit".',
+    );
+    expect(errors).toContain(
+      'quality-gate evidence must include "npm run build".',
+    );
   });
 
   it('rejects unknown evidence kinds and paths outside the repository', () => {
@@ -123,7 +149,11 @@ describe('Definition of Done gate', () => {
     };
 
     const errors = validateDefinitionOfDone(manifest, { pathExists });
-    expect(errors).toContain('user-story.evidence[0].kind "unsupported" is not recognized.');
-    expect(errors).toContain('user-story.evidence[1] path does not exist: ../outside.md');
+    expect(errors).toContain(
+      'user-story.evidence[0].kind "unsupported" is not recognized.',
+    );
+    expect(errors).toContain(
+      'user-story.evidence[1] path does not exist: ../outside.md',
+    );
   });
 });

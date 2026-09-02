@@ -1,0 +1,227 @@
+{
+  "schemaVersion": "dod-2026.1",
+  "featureId": "v1-1-portfolio-accessibility-and-evidence",
+  "title": "Public demo access, seeded validation evidence, and timed workflow measurement",
+  "owner": "ContractLedger AI maintainers",
+  "userStory": "As a hiring reviewer, I can open the hosted workspace without credentials, see the validation report populated, and understand exactly which numbers are measurements and which are seeded demonstrations, so that I can evaluate the work without setting up an API key.",
+  "updatedAt": "2026-09-02",
+  "status": "complete",
+  "criteria": [
+    {
+      "id": "user-story",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/INTERVIEW_ONE_PAGER.md"
+        }
+      ]
+    },
+    {
+      "id": "happy-and-failure-paths",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "test",
+          "ref": "lib/workflow-timing.test.ts"
+        },
+        {
+          "kind": "test",
+          "ref": "lib/server/route-handler.test.ts"
+        }
+      ]
+    },
+    {
+      "id": "interaction-states",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "components/workspace/workflow-timing-panel.tsx"
+        }
+      ]
+    },
+    {
+      "id": "server-validation",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "app/api/workflow-timings/route.ts"
+        },
+        {
+          "kind": "test",
+          "ref": "lib/workflow-timing.test.ts"
+        }
+      ]
+    },
+    {
+      "id": "transactional-writes",
+      "status": "not_applicable",
+      "rationale": "A timed run is a single-row insert with no dependent records, and the seeded validation report is written inside the existing reset batch, which is already transactional."
+    },
+    {
+      "id": "auditability",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "app/api/workflow-timings/route.ts"
+        }
+      ]
+    },
+    {
+      "id": "migration-strategy",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "db/bootstrap.ts"
+        }
+      ]
+    },
+    {
+      "id": "r2-consistency",
+      "status": "not_applicable",
+      "rationale": "Neither timed runs nor the seeded validation report create, reference, or delete any object in R2, so there is no file-to-row consistency question to answer."
+    },
+    {
+      "id": "unit-tests",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "test",
+          "ref": "lib/workflow-timing.test.ts"
+        },
+        {
+          "kind": "test",
+          "ref": "lib/ai-evaluation-demo-run.test.ts"
+        },
+        {
+          "kind": "test",
+          "ref": "lib/workspace-limits.test.ts"
+        }
+      ]
+    },
+    {
+      "id": "api-tests",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "test",
+          "ref": "lib/server/route-handler.test.ts"
+        },
+        {
+          "kind": "test",
+          "ref": "lib/server/request-security.test.ts"
+        }
+      ]
+    },
+    {
+      "id": "fictional-fixture",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "lib/ai-evaluation-demo-run.ts"
+        }
+      ]
+    },
+    {
+      "id": "data-model-consumers",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "lib/contract-ledger-types.ts"
+        },
+        {
+          "kind": "file",
+          "ref": "lib/workspace-limits.ts"
+        }
+      ]
+    },
+    {
+      "id": "accessibility",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "components/workspace/primitives.tsx"
+        }
+      ]
+    },
+    {
+      "id": "quality-gate",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "command",
+          "ref": "npm test"
+        },
+        {
+          "kind": "command",
+          "ref": "npm run lint"
+        },
+        {
+          "kind": "command",
+          "ref": "npx tsc --noEmit"
+        },
+        {
+          "kind": "command",
+          "ref": "npm run build"
+        },
+        {
+          "kind": "file",
+          "ref": ".github/workflows/quality.yml"
+        }
+      ]
+    },
+    {
+      "id": "documentation",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "README.md"
+        },
+        {
+          "kind": "documentation",
+          "ref": "README.md#known-boundaries"
+        },
+        {
+          "kind": "documentation",
+          "ref": "DEMO_RUNBOOK.md"
+        },
+        {
+          "kind": "documentation",
+          "ref": "ROADMAP.md"
+        },
+        {
+          "kind": "documentation",
+          "ref": "PORTFOLIO_CASE_STUDY.md"
+        },
+        {
+          "kind": "documentation",
+          "ref": "RESUME_EVIDENCE.md"
+        }
+      ]
+    },
+    {
+      "id": "metric",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "test",
+          "ref": "lib/ai-evaluation-demo-run.test.ts"
+        }
+      ]
+    }
+  ],
+  "metric": {
+    "name": "Seeded validation report field accuracy",
+    "value": "90.3 percent field accuracy over 113 ground-truth fields, computed by the live scorer from replayed fixtures with injected defects; explicitly not a model measurement and not an approved baseline",
+    "sampleSize": 113,
+    "source": "lib/ai-evaluation-demo-run.test.ts"
+  }
+}

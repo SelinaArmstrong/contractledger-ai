@@ -10,7 +10,12 @@
     {
       "id": "user-story",
       "status": "complete",
-      "evidence": [{ "kind": "documentation", "ref": "ROADMAP.md#17-v10-portfolio-ready-exit-criteria" }]
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "ROADMAP.md#17-v10-portfolio-ready-exit-criteria"
+        }
+      ]
     },
     {
       "id": "happy-and-failure-paths",
@@ -26,7 +31,10 @@
       "status": "complete",
       "evidence": [
         { "kind": "file", "ref": "components/contract-ledger-app.tsx" },
-        { "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md#interface-walkthrough" }
+        {
+          "kind": "documentation",
+          "ref": "docs/releases/V1_SMOKE_TEST.md#interface-walkthrough"
+        }
       ]
     },
     {
@@ -51,13 +59,18 @@
       "status": "complete",
       "evidence": [
         { "kind": "file", "ref": "app/api/record-details/route.ts" },
-        { "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md#core-lifecycle-traceability" }
+        {
+          "kind": "documentation",
+          "ref": "docs/releases/V1_SMOKE_TEST.md#core-lifecycle-traceability"
+        }
       ]
     },
     {
       "id": "migration-strategy",
       "status": "complete",
-      "evidence": [{ "kind": "migration", "ref": "drizzle/0016_white_stardust.sql" }]
+      "evidence": [
+        { "kind": "migration", "ref": "drizzle/0016_white_stardust.sql" }
+      ]
     },
     {
       "id": "r2-consistency",
@@ -88,8 +101,14 @@
       "id": "fictional-fixture",
       "status": "complete",
       "evidence": [
-        { "kind": "fixture", "ref": "public/demo-documents/01_Draft_Professional_Services_Agreement.pdf" },
-        { "kind": "fixture", "ref": "public/demo-documents/15_Ambiguous_Incomplete_Supplier_Note.txt" }
+        {
+          "kind": "fixture",
+          "ref": "public/demo-documents/01_Draft_Professional_Services_Agreement.pdf"
+        },
+        {
+          "kind": "fixture",
+          "ref": "public/demo-documents/15_Ambiguous_Incomplete_Supplier_Note.txt"
+        }
       ]
     },
     {
@@ -103,7 +122,12 @@
     {
       "id": "accessibility",
       "status": "complete",
-      "evidence": [{ "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md#interface-walkthrough" }]
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/releases/V1_SMOKE_TEST.md#interface-walkthrough"
+        }
+      ]
     },
     {
       "id": "quality-gate",
@@ -123,14 +147,22 @@
         { "kind": "documentation", "ref": "README.md" },
         { "kind": "documentation", "ref": "DEMO_RUNBOOK.md" },
         { "kind": "documentation", "ref": "ROADMAP.md" },
-        { "kind": "documentation", "ref": "PORTFOLIO_CASE_STUDY.md#results-limitations-and-next-steps" },
-        { "kind": "documentation", "ref": "docs/releases/v1.0.0.md#known-boundaries" }
+        {
+          "kind": "documentation",
+          "ref": "PORTFOLIO_CASE_STUDY.md#results-limitations-and-next-steps"
+        },
+        {
+          "kind": "documentation",
+          "ref": "docs/releases/v1.0.0.md#known-boundaries"
+        }
       ]
     },
     {
       "id": "metric",
       "status": "complete",
-      "evidence": [{ "kind": "metric", "ref": "10 of 10 v1.0 exit criteria evidenced" }]
+      "evidence": [
+        { "kind": "metric", "ref": "10 of 10 v1.0 exit criteria evidenced" }
+      ]
     }
   ],
   "metric": {

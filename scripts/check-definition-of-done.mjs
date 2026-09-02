@@ -4,12 +4,19 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { summarizeDefinitionOfDone, validateDefinitionOfDone } from '../lib/definition-of-done.mjs';
+import {
+  summarizeDefinitionOfDone,
+  validateDefinitionOfDone,
+} from '../lib/definition-of-done.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const featureDirectory = resolve(repositoryRoot, 'docs/definition-of-done/features');
+const featureDirectory = resolve(
+  repositoryRoot,
+  'docs/definition-of-done/features',
+);
 const manifestFlagIndex = process.argv.indexOf('--manifest');
-const requestedManifest = manifestFlagIndex >= 0 ? process.argv[manifestFlagIndex + 1] : undefined;
+const requestedManifest =
+  manifestFlagIndex >= 0 ? process.argv[manifestFlagIndex + 1] : undefined;
 
 if (manifestFlagIndex >= 0 && !requestedManifest) {
   console.error('Definition of Done gate failed: --manifest requires a path.');
@@ -23,7 +30,9 @@ if (manifestFlagIndex >= 0 && !requestedManifest) {
         .map((name) => resolve(featureDirectory, name));
 
   if (manifestPaths.length === 0) {
-    console.error('Definition of Done gate failed: no feature manifests were found.');
+    console.error(
+      'Definition of Done gate failed: no feature manifests were found.',
+    );
     process.exitCode = 1;
   } else {
     let failed = false;
@@ -35,7 +44,9 @@ if (manifestFlagIndex >= 0 && !requestedManifest) {
         manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
       } catch (error) {
         failed = true;
-        console.error(`[FAIL] ${manifestPath}: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(
+          `[FAIL] ${manifestPath}: ${error instanceof Error ? error.message : String(error)}`,
+        );
         continue;
       }
 
@@ -43,7 +54,12 @@ if (manifestFlagIndex >= 0 && !requestedManifest) {
         pathExists: (path) => {
           const candidate = resolve(repositoryRoot, path);
           const relativePath = relative(repositoryRoot, candidate);
-          return relativePath !== '..' && !relativePath.startsWith('../') && !isAbsolute(relativePath) && existsSync(candidate);
+          return (
+            relativePath !== '..' &&
+            !relativePath.startsWith('../') &&
+            !isAbsolute(relativePath) &&
+            existsSync(candidate)
+          );
         },
       });
       const summary = summarizeDefinitionOfDone(manifest);
@@ -65,7 +81,9 @@ if (manifestFlagIndex >= 0 && !requestedManifest) {
       console.error('Definition of Done gate failed.');
       process.exitCode = 1;
     } else {
-      console.log(`Definition of Done gate passed: ${manifestPaths.length} feature(s), ${totalCriteria} criteria.`);
+      console.log(
+        `Definition of Done gate passed: ${manifestPaths.length} feature(s), ${totalCriteria} criteria.`,
+      );
     }
   }
 }

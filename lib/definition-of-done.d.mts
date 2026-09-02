@@ -1,5 +1,12 @@
 export interface DefinitionOfDoneEvidence {
-  kind: 'command' | 'documentation' | 'file' | 'fixture' | 'metric' | 'migration' | 'test';
+  kind:
+    | 'command'
+    | 'documentation'
+    | 'file'
+    | 'fixture'
+    | 'metric'
+    | 'migration'
+    | 'test';
   ref: string;
 }
 
@@ -28,8 +35,13 @@ export interface DefinitionOfDoneManifest {
 }
 
 export const DEFINITION_OF_DONE_VERSION: string;
-export const DEFINITION_OF_DONE_CRITERIA: ReadonlyArray<{ id: string; label: string }>;
-export function summarizeDefinitionOfDone(manifest: Partial<DefinitionOfDoneManifest>): {
+export const DEFINITION_OF_DONE_CRITERIA: ReadonlyArray<{
+  id: string;
+  label: string;
+}>;
+export function summarizeDefinitionOfDone(
+  manifest: Partial<DefinitionOfDoneManifest>,
+): {
   complete: number;
   notApplicable: number;
   pending: number;

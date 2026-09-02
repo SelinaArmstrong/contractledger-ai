@@ -46,3 +46,14 @@ If asked how phase scope is controlled, show `docs/execution-loop/phases/roadmap
 - **Upload fails:** explain the visible signature, size, quality, and authorization gate; use a seeded document.
 - **No completed import metric:** describe the seeded preview and avoid claiming an acceptance rate until a batch is committed.
 - **Time is short:** show the Portfolio Case Study, one contract lifecycle, one obligation, and the AI validation dashboard.
+
+## v1.1 additions to the demo path
+
+- **Opening without credentials.** On the hosted demo a reviewer lands directly in a read-only workspace. Point out the banner: every register, approval, obligation and validation record is readable, while uploads, decisions, imports, AI calls and reset are refused server-side. This is the honest way to show a full workspace without handing out an account.
+- **AI Accuracy & Validation now opens populated.** Lead with the grey banner, not the numbers: the report is replayed from fixture ground truth through the live scorer with injected defects, so it demonstrates the measurement instrumentation and not a model's accuracy. Say plainly that it is deliberately barred from becoming an approved baseline, then offer to run the real validation set if a key is configured.
+- **Portfolio Case Study → Timed workflow evidence.** Show the stopwatch and the "Not yet claimable" column. The point to make is the refusal: the panel will not state a percentage until three manual and three assisted runs exist for the same scenario. If asked about productivity gains, this is the honest answer — the measurement path is built and the runs are not yet recorded.
+
+### Recovery paths
+
+- **A reviewer asks whether the accuracy numbers are real:** answer no, immediately, and show the banner. The instrumentation is the claim, not the figure.
+- **Guest mode blocks something mid-demo:** that is the control working. Sign in for the full workflow, or narrate the refusal as the separation-of-duties boundary.

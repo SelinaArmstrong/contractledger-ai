@@ -31,14 +31,25 @@
     {
       "id": "define",
       "status": "complete",
-      "evidence": [{ "kind": "documentation", "ref": "ROADMAP.md#17-v10-portfolio-ready-exit-criteria" }]
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "ROADMAP.md#17-v10-portfolio-ready-exit-criteria"
+        }
+      ]
     },
     {
       "id": "fixture-first",
       "status": "complete",
       "evidence": [
-        { "kind": "fixture", "ref": "public/demo-documents/01_Draft_Professional_Services_Agreement.pdf" },
-        { "kind": "fixture", "ref": "public/demo-documents/15_Ambiguous_Incomplete_Supplier_Note.txt" }
+        {
+          "kind": "fixture",
+          "ref": "public/demo-documents/01_Draft_Professional_Services_Agreement.pdf"
+        },
+        {
+          "kind": "fixture",
+          "ref": "public/demo-documents/15_Ambiguous_Incomplete_Supplier_Note.txt"
+        }
       ]
     },
     {
@@ -72,7 +83,10 @@
       "status": "complete",
       "evidence": [
         { "kind": "file", "ref": "components/contract-ledger-app.tsx" },
-        { "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md#interface-walkthrough" }
+        {
+          "kind": "documentation",
+          "ref": "docs/releases/V1_SMOKE_TEST.md#interface-walkthrough"
+        }
       ]
     },
     {
@@ -86,14 +100,22 @@
     {
       "id": "measure",
       "status": "complete",
-      "evidence": [{ "kind": "metric", "ref": "101 tests and 15 fictional evaluation fixtures in the saved v1.0 baseline" }]
+      "evidence": [
+        {
+          "kind": "metric",
+          "ref": "101 tests and 15 fictional evaluation fixtures in the saved v1.0 baseline"
+        }
+      ]
     },
     {
       "id": "demonstrate",
       "status": "complete",
       "evidence": [
         { "kind": "documentation", "ref": "DEMO_RUNBOOK.md" },
-        { "kind": "documentation", "ref": "docs/releases/V1_SMOKE_TEST.md#core-lifecycle-traceability" }
+        {
+          "kind": "documentation",
+          "ref": "docs/releases/V1_SMOKE_TEST.md#core-lifecycle-traceability"
+        }
       ]
     },
     {

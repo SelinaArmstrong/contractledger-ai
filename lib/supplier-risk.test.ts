@@ -25,7 +25,9 @@ describe('calculateSupplierRiskProfile', () => {
     expect(profile.level).toBe('low');
     expect(profile.score).toBe(0);
     expect(profile.factors).toHaveLength(8);
-    expect(profile.factors.every((factor) => factor.evidence.length > 0)).toBe(true);
+    expect(profile.factors.every((factor) => factor.evidence.length > 0)).toBe(
+      true,
+    );
   });
 
   it('raises missing insurance and overdue work to high risk', () => {
@@ -37,7 +39,9 @@ describe('calculateSupplierRiskProfile', () => {
     });
     expect(profile.level).toBe('high');
     expect(profile.score).toBe(45);
-    expect(profile.factors.find((factor) => factor.key === 'insurance')).toMatchObject({
+    expect(
+      profile.factors.find((factor) => factor.key === 'insurance'),
+    ).toMatchObject({
       status: 'high_risk',
       points: 25,
     });
@@ -50,7 +54,9 @@ describe('calculateSupplierRiskProfile', () => {
     });
     expect(medium.score).toBe(15);
     expect(medium.level).toBe('low');
-    expect(medium.factors.find((factor) => factor.key === 'concentration')?.points).toBe(15);
+    expect(
+      medium.factors.find((factor) => factor.key === 'concentration')?.points,
+    ).toBe(15);
   });
 
   it('flags insurance that expires within sixty days without calling it expired', () => {
@@ -58,7 +64,9 @@ describe('calculateSupplierRiskProfile', () => {
       ...baseline,
       insuranceExpiration: '2026-10-15',
     });
-    expect(profile.factors.find((factor) => factor.key === 'insurance')).toMatchObject({
+    expect(
+      profile.factors.find((factor) => factor.key === 'insurance'),
+    ).toMatchObject({
       status: 'attention',
       points: 10,
     });

@@ -7,7 +7,11 @@ import {
   type PhaseExecutionManifest,
 } from './phase-execution.mjs';
 
-const existingPaths = new Set(['ROADMAP.md', 'README.md', 'lib/phase-execution.test.ts']);
+const existingPaths = new Set([
+  'ROADMAP.md',
+  'README.md',
+  'lib/phase-execution.test.ts',
+]);
 const pathExists = (path: string) => existingPaths.has(path);
 
 function validManifest(): PhaseExecutionManifest {
@@ -18,12 +22,19 @@ function validManifest(): PhaseExecutionManifest {
     owner: 'Contract operations',
     updatedAt: '2026-09-02',
     status: 'complete',
-    userStory: 'As a contract administrator, I can route material exceptions to an accountable reviewer.',
+    userStory:
+      'As a contract administrator, I can route material exceptions to an accountable reviewer.',
     businessRules: ['Mandatory approvals block executed registration.'],
     nonGoals: ['This phase does not send external approval email.'],
-    acceptanceCriteria: ['Every mandatory decision has an actor, reason, and timestamp.'],
+    acceptanceCriteria: [
+      'Every mandatory decision has an actor, reason, and timestamp.',
+    ],
     startGate: {
-      previousPhase: { phaseId: 'amendment-lifecycle', status: 'complete', evidence: 'ROADMAP.md' },
+      previousPhase: {
+        phaseId: 'amendment-lifecycle',
+        status: 'complete',
+        evidence: 'ROADMAP.md',
+      },
       unresolvedDataIntegrityDefects: [],
       unresolvedAuditTrailDefects: [],
     },
@@ -58,7 +69,10 @@ describe('phase execution loop gate', () => {
 
   it('requires all ten steps in the roadmap order', () => {
     const manifest = validManifest();
-    [manifest.steps[0], manifest.steps[1]] = [manifest.steps[1], manifest.steps[0]];
+    [manifest.steps[0], manifest.steps[1]] = [
+      manifest.steps[1],
+      manifest.steps[0],
+    ];
 
     const errors = validatePhaseExecution(manifest, { pathExists });
     expect(errors).toContain('steps[0].id must be "define".');
@@ -87,22 +101,36 @@ describe('phase execution loop gate', () => {
   it('blocks active work while data-integrity or audit defects remain open', () => {
     const manifest = validManifest();
     manifest.status = 'active';
-    manifest.startGate.unresolvedDataIntegrityDefects = ['Current version uniqueness is unresolved.'];
-    manifest.startGate.unresolvedAuditTrailDefects = ['Decision actor is absent.'];
+    manifest.startGate.unresolvedDataIntegrityDefects = [
+      'Current version uniqueness is unresolved.',
+    ];
+    manifest.startGate.unresolvedAuditTrailDefects = [
+      'Decision actor is absent.',
+    ];
 
     const errors = validatePhaseExecution(manifest, { pathExists });
-    expect(errors).toContain('A phase cannot be active with open unresolvedDataIntegrityDefects.');
-    expect(errors).toContain('A phase cannot be active with open unresolvedAuditTrailDefects.');
+    expect(errors).toContain(
+      'A phase cannot be active with open unresolvedDataIntegrityDefects.',
+    );
+    expect(errors).toContain(
+      'A phase cannot be active with open unresolvedAuditTrailDefects.',
+    );
   });
 
   it('requires evidence for completed steps and a rationale for exclusions', () => {
     const manifest = validManifest();
     manifest.steps[2] = { id: 'model', status: 'complete' };
-    manifest.steps[4] = { id: 'api', status: 'not_applicable', rationale: 'No API.' };
+    manifest.steps[4] = {
+      id: 'api',
+      status: 'not_applicable',
+      rationale: 'No API.',
+    };
 
     const errors = validatePhaseExecution(manifest, { pathExists });
     expect(errors).toContain('model: complete steps require evidence.');
-    expect(errors).toContain('api: not_applicable requires a specific rationale of at least 30 characters.');
+    expect(errors).toContain(
+      'api: not_applicable requires a specific rationale of at least 30 characters.',
+    );
   });
 
   it('rejects missing evidence paths and unsupported evidence kinds', () => {
@@ -113,13 +141,22 @@ describe('phase execution loop gate', () => {
     ];
 
     const errors = validatePhaseExecution(manifest, { pathExists });
-    expect(errors).toContain('define.evidence[0] path does not exist: ../outside.md');
-    expect(errors).toContain('define.evidence[1].kind "unsupported" is not recognized.');
+    expect(errors).toContain(
+      'define.evidence[0] path does not exist: ../outside.md',
+    );
+    expect(errors).toContain(
+      'define.evidence[1].kind "unsupported" is not recognized.',
+    );
   });
 
   it('requires one bounded metric with an existing source', () => {
     const manifest = validManifest();
-    manifest.metric = { name: '', value: '', sampleSize: 0, source: 'missing.json' };
+    manifest.metric = {
+      name: '',
+      value: '',
+      sampleSize: 0,
+      source: 'missing.json',
+    };
 
     const errors = validatePhaseExecution(manifest, { pathExists });
     expect(errors).toContain('metric.name is required.');
@@ -132,12 +169,20 @@ describe('phase execution loop gate', () => {
     const manifest = validManifest();
     manifest.status = 'draft';
     manifest.startGate.previousPhase!.status = 'active';
-    manifest.startGate.unresolvedDataIntegrityDefects = ['May be recorded while planning.'];
-    manifest.startGate.unresolvedAuditTrailDefects = ['May be recorded while planning.'];
+    manifest.startGate.unresolvedDataIntegrityDefects = [
+      'May be recorded while planning.',
+    ];
+    manifest.startGate.unresolvedAuditTrailDefects = [
+      'May be recorded while planning.',
+    ];
 
     const errors = validatePhaseExecution(manifest, { pathExists });
     expect(errors).toContain('A draft phase cannot start execution steps.');
-    expect(errors).not.toContain('The previous phase must be complete before this phase can start.');
-    expect(errors.some((error) => error.includes('with open unresolved'))).toBe(false);
+    expect(errors).not.toContain(
+      'The previous phase must be complete before this phase can start.',
+    );
+    expect(errors.some((error) => error.includes('with open unresolved'))).toBe(
+      false,
+    );
   });
 });

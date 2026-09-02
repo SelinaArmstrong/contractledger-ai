@@ -74,16 +74,16 @@ Amendment & Version Lifecycle (v0.2), Approval & Exception Workflow (v0.3), Bulk
 
 ## 4. Release sequence
 
-| Release | Product milestone                             | Status    | Relative effort | Resume value |
-| ------- | --------------------------------------------- | --------- | --------------- | ------------ |
-| v0.2    | Amendment & Version Lifecycle                 | Complete  | Large           | Very high    |
-| v0.3    | Approval & Exception Workflow                 | Complete  | Large           | Very high    |
-| v0.4    | Bulk Import & Data Quality                    | Complete  | Large           | Very high    |
-| v0.5    | Obligation Execution & Evidence               | Complete  | Medium          | High         |
-| v0.6    | AI Quality & Governance                       | Complete  | Large           | Very high    |
-| v0.7    | Document Quality, OCR Readiness & Permissions | Complete  | Medium/Large    | Medium-high  |
-| v0.8    | Review Package, Supplier Risk & Integrations  | Complete  | Medium          | Medium-high  |
-| v1.0    | Portfolio-ready Contract Operations System    | Complete  | —               | Maximum      |
+| Release | Product milestone                             | Status   | Relative effort | Resume value |
+| ------- | --------------------------------------------- | -------- | --------------- | ------------ |
+| v0.2    | Amendment & Version Lifecycle                 | Complete | Large           | Very high    |
+| v0.3    | Approval & Exception Workflow                 | Complete | Large           | Very high    |
+| v0.4    | Bulk Import & Data Quality                    | Complete | Large           | Very high    |
+| v0.5    | Obligation Execution & Evidence               | Complete | Medium          | High         |
+| v0.6    | AI Quality & Governance                       | Complete | Large           | Very high    |
+| v0.7    | Document Quality, OCR Readiness & Permissions | Complete | Medium/Large    | Medium-high  |
+| v0.8    | Review Package, Supplier Risk & Integrations  | Complete | Medium          | Medium-high  |
+| v1.0    | Portfolio-ready Contract Operations System    | Complete | —               | Maximum      |
 
 The recommended cadence is one coherent release at a time. For part-time development, plan approximately one to two focused weeks for a medium phase and two to three for a large phase, but release only when the exit criteria are satisfied.
 
@@ -576,14 +576,14 @@ Build toward a ten-minute end-to-end story:
 
 After each release, record only measured and reproducible facts:
 
-| Release | Evidence to retain                                         | Possible future resume use               |
-| ------- | ---------------------------------------------------------- | ---------------------------------------- |
-| v0.2    | Amendment scenarios, version consistency, source coverage  | Contract lifecycle and change control    |
-| v0.3    | Approval rules, decision aging, blocked unsafe progression | Governance and cross-functional workflow |
-| v0.4    | Rows migrated, issues detected, time saved                 | Data migration and register integrity    |
-| v0.5    | Obligations completed with evidence, overdue trend         | Post-execution administration            |
-| v0.6    | Accuracy, source coverage, correction rate, sample size    | Responsible AI and measurable automation |
-| v0.7    | Preflight outcomes, blocked writes, role-policy test matrix | Document quality and separation of duties  |
+| Release | Evidence to retain                                           | Possible future resume use                      |
+| ------- | ------------------------------------------------------------ | ----------------------------------------------- |
+| v0.2    | Amendment scenarios, version consistency, source coverage    | Contract lifecycle and change control           |
+| v0.3    | Approval rules, decision aging, blocked unsafe progression   | Governance and cross-functional workflow        |
+| v0.4    | Rows migrated, issues detected, time saved                   | Data migration and register integrity           |
+| v0.5    | Obligations completed with evidence, overdue trend           | Post-execution administration                   |
+| v0.6    | Accuracy, source coverage, correction rate, sample size      | Responsible AI and measurable automation        |
+| v0.7    | Preflight outcomes, blocked writes, role-policy test matrix  | Document quality and separation of duties       |
 | v0.8    | Review-package contents, visible risk factors, outbox events | Operational reporting and integration readiness |
 
 Do not update resume metrics until the corresponding release and evidence have passed their exit criteria.
@@ -704,3 +704,26 @@ At that point, the strongest positioning is not “built an AI website.” It is
 - Seven roles and thirteen named permissions are enforced at material server routes and covered by denied-write tests.
 - The deterministic baseline, full quality gate, case study, runbook, resume ledger, release note, and versioned release evidence all pass their executable manifests.
 - The resulting release is package version `1.0.0`. Its evidence supports a portfolio-ready claim, not real-company savings, legal outcomes, production availability, or external notification delivery.
+
+## 18. v1.1 — Reviewer access and measurable evidence
+
+Scope after the v1.0 baseline, driven by one question: can a hiring reviewer evaluate this without cloning the repository or holding an API key?
+
+### Delivered
+
+- **Hosted read-only access.** `DEMO_GUEST_ACCESS=true` resolves a signed-out visitor to `read_only_auditor`. Every write, import, AI and reset route refuses the guest server-side; verified over HTTP against a non-loopback host.
+- **Seeded validation report.** The AI accuracy view was empty without a configured model. It now ships a report replayed from fixture ground truth through the same scorer a live run uses, with a fixed set of injected defects. It is labelled in the interface as instrumentation evidence rather than a model measurement, and is excluded from becoming an approved regression baseline.
+- **Timed workflow evidence.** The measurement the v1.0 case study identified as the next step is built: manual and AI-assisted runs of the same scenario are recorded per mode with median and sample size, and no percentage reduction is stated until both modes reach three runs.
+- **Bounded register snapshots.** Each register in the workspace payload is capped at 500 rows with totals returned alongside, and the interface states when a list is truncated instead of presenting a partial register as complete.
+- **API surface consolidation.** 26 duplicated authorization prologues were replaced by one tested `withApiRoute` wrapper owning permission resolution, database readiness and error mapping across 22 routes.
+- **Interface decomposition.** The 11,786-line workbench module was split into 26 modules by view, dialog and shared primitive, verified by type checking, linting, a production build and a nine-view render pass.
+- **Accessibility.** Added a skip link and two polite live regions so view changes and long-running operations are announced; made the sign-in form labels explicit.
+- **Deep-linkable views.** Each view has a stable slug resolved on the server, with browser back/forward support, so a reviewer can be sent straight to the validation report.
+- **MIT licence.** The repository is now explicitly licensed for public review.
+- **English-first documentation.** `README.md` is now English with `README.zh-CN.md` alongside it, plus screenshots, author attribution and a 300-word interview one-pager.
+
+### Explicitly not delivered
+
+- Server-side filtering for the registers. The snapshot is bounded and says so, but the ten register filters still operate client-side over the loaded page.
+- An end-to-end browser test suite. Coverage remains deterministic unit and validator tests over domain logic and the route wrapper.
+- Any real time-saving number. The mechanism exists; the runs have not been recorded.

@@ -182,7 +182,10 @@ export type ObligationCalendarRecord = {
 };
 
 export function buildObligationCalendar(records: ObligationCalendarRecord[]) {
-  const created = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+  const created = new Date()
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}Z$/, 'Z');
   const events = records.map((item) => {
     const dueDate = String(item.due_date);
     const dateValue = dueDate.replaceAll('-', '');

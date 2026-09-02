@@ -9,7 +9,7 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",
-    "lint": "oxlint app components/contract-ledger-app.tsx db lib scripts",
+    "lint": "oxlint app components db lib scripts",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "check:dod": "node scripts/check-definition-of-done.mjs",

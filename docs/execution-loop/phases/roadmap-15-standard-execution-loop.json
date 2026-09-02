@@ -31,12 +31,19 @@
     {
       "id": "define",
       "status": "complete",
-      "evidence": [{ "kind": "documentation", "ref": "docs/execution-loop/README.md#workflow" }]
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/execution-loop/README.md#workflow"
+        }
+      ]
     },
     {
       "id": "fixture-first",
       "status": "complete",
-      "evidence": [{ "kind": "fixture", "ref": "docs/execution-loop/phase-template.json" }]
+      "evidence": [
+        { "kind": "fixture", "ref": "docs/execution-loop/phase-template.json" }
+      ]
     },
     {
       "id": "model",
@@ -66,7 +73,12 @@
     {
       "id": "measure",
       "status": "complete",
-      "evidence": [{ "kind": "metric", "ref": "10 of 10 execution steps explicitly accounted for" }]
+      "evidence": [
+        {
+          "kind": "metric",
+          "ref": "10 of 10 execution steps explicitly accounted for"
+        }
+      ]
     },
     {
       "id": "demonstrate",

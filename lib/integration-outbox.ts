@@ -11,8 +11,14 @@ export type OutboxEventInput = {
 };
 
 export function buildOutboxEvent(input: OutboxEventInput) {
-  if (!input.id.trim() || !input.eventType.trim() || !input.aggregateId.trim()) {
-    throw new Error('Outbox events require an id, event type, and aggregate id.');
+  if (
+    !input.id.trim() ||
+    !input.eventType.trim() ||
+    !input.aggregateId.trim()
+  ) {
+    throw new Error(
+      'Outbox events require an id, event type, and aggregate id.',
+    );
   }
   return {
     ...input,

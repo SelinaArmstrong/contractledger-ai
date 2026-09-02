@@ -10,7 +10,12 @@
     {
       "id": "user-story",
       "status": "complete",
-      "evidence": [{ "kind": "documentation", "ref": "docs/definition-of-done/README.md#workflow" }]
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/definition-of-done/README.md#workflow"
+        }
+      ]
     },
     {
       "id": "happy-and-failure-paths",
@@ -35,7 +40,12 @@
     {
       "id": "auditability",
       "status": "complete",
-      "evidence": [{ "kind": "file", "ref": "docs/definition-of-done/features/roadmap-14-definition-of-done.json" }]
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "docs/definition-of-done/features/roadmap-14-definition-of-done.json"
+        }
+      ]
     },
     {
       "id": "migration-strategy",
@@ -60,7 +70,12 @@
     {
       "id": "fictional-fixture",
       "status": "complete",
-      "evidence": [{ "kind": "fixture", "ref": "docs/definition-of-done/feature-template.json" }]
+      "evidence": [
+        {
+          "kind": "fixture",
+          "ref": "docs/definition-of-done/feature-template.json"
+        }
+      ]
     },
     {
       "id": "data-model-consumers",
@@ -70,7 +85,9 @@
     {
       "id": "accessibility",
       "status": "complete",
-      "evidence": [{ "kind": "file", "ref": "scripts/check-definition-of-done.mjs" }]
+      "evidence": [
+        { "kind": "file", "ref": "scripts/check-definition-of-done.mjs" }
+      ]
     },
     {
       "id": "quality-gate",
@@ -89,13 +106,21 @@
         { "kind": "documentation", "ref": "README.md" },
         { "kind": "documentation", "ref": "DEMO_RUNBOOK.md" },
         { "kind": "documentation", "ref": "ROADMAP.md" },
-        { "kind": "documentation", "ref": "PORTFOLIO_CASE_STUDY.md#results-limitations-and-next-steps" }
+        {
+          "kind": "documentation",
+          "ref": "PORTFOLIO_CASE_STUDY.md#results-limitations-and-next-steps"
+        }
       ]
     },
     {
       "id": "metric",
       "status": "complete",
-      "evidence": [{ "kind": "metric", "ref": "16 of 16 roadmap criteria explicitly accounted for" }]
+      "evidence": [
+        {
+          "kind": "metric",
+          "ref": "16 of 16 roadmap criteria explicitly accounted for"
+        }
+      ]
     }
   ],
   "metric": {

@@ -7,8 +7,12 @@
   "status": "draft",
   "userStory": "As a contract-operations user, I can ... so that ...",
   "businessRules": ["State the deterministic rule this phase must enforce."],
-  "nonGoals": ["State one adjacent capability this phase intentionally excludes."],
-  "acceptanceCriteria": ["State one observable outcome required for completion."],
+  "nonGoals": [
+    "State one adjacent capability this phase intentionally excludes."
+  ],
+  "acceptanceCriteria": [
+    "State one observable outcome required for completion."
+  ],
   "startGate": {
     "previousPhase": {
       "phaseId": "previous-phase-id",

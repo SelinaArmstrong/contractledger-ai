@@ -4,12 +4,16 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { summarizePhaseExecution, validatePhaseExecution } from '../lib/phase-execution.mjs';
+import {
+  summarizePhaseExecution,
+  validatePhaseExecution,
+} from '../lib/phase-execution.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const phaseDirectory = resolve(repositoryRoot, 'docs/execution-loop/phases');
 const manifestFlagIndex = process.argv.indexOf('--manifest');
-const requestedManifest = manifestFlagIndex >= 0 ? process.argv[manifestFlagIndex + 1] : undefined;
+const requestedManifest =
+  manifestFlagIndex >= 0 ? process.argv[manifestFlagIndex + 1] : undefined;
 
 if (manifestFlagIndex >= 0 && !requestedManifest) {
   console.error('Phase execution gate failed: --manifest requires a path.');
@@ -23,7 +27,9 @@ if (manifestFlagIndex >= 0 && !requestedManifest) {
         .map((name) => resolve(phaseDirectory, name));
 
   if (manifestPaths.length === 0) {
-    console.error('Phase execution gate failed: no phase manifests were found.');
+    console.error(
+      'Phase execution gate failed: no phase manifests were found.',
+    );
     process.exitCode = 1;
   } else {
     let failed = false;
@@ -35,7 +41,9 @@ if (manifestFlagIndex >= 0 && !requestedManifest) {
         manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
       } catch (error) {
         failed = true;
-        console.error(`[FAIL] ${manifestPath}: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(
+          `[FAIL] ${manifestPath}: ${error instanceof Error ? error.message : String(error)}`,
+        );
         continue;
       }
 
@@ -43,7 +51,12 @@ if (manifestFlagIndex >= 0 && !requestedManifest) {
         pathExists: (path) => {
           const candidate = resolve(repositoryRoot, path);
           const relativePath = relative(repositoryRoot, candidate);
-          return relativePath !== '..' && !relativePath.startsWith('../') && !isAbsolute(relativePath) && existsSync(candidate);
+          return (
+            relativePath !== '..' &&
+            !relativePath.startsWith('../') &&
+            !isAbsolute(relativePath) &&
+            existsSync(candidate)
+          );
         },
       });
       const summary = summarizePhaseExecution(manifest);
@@ -65,7 +78,9 @@ if (manifestFlagIndex >= 0 && !requestedManifest) {
       console.error('Phase execution gate failed.');
       process.exitCode = 1;
     } else {
-      console.log(`Phase execution gate passed: ${manifestPaths.length} phase(s), ${totalSteps} steps checked.`);
+      console.log(
+        `Phase execution gate passed: ${manifestPaths.length} phase(s), ${totalSteps} steps checked.`,
+      );
     }
   }
 }

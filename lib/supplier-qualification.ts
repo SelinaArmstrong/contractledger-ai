@@ -54,10 +54,7 @@ export function supplierDocumentationStatus({
   insuranceStatus: string;
   documentStatuses: string[];
 }): SupplierDocumentationStatus {
-  if (
-    insuranceStatus === 'expired' ||
-    documentStatuses.includes('expired')
-  )
+  if (insuranceStatus === 'expired' || documentStatuses.includes('expired'))
     return 'expired';
   if (documentStatuses.includes('needs_follow_up')) return 'needs_follow_up';
   if (w9Status === 'missing' || insuranceStatus === 'missing')

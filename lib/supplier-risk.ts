@@ -100,17 +100,18 @@ export function calculateSupplierRiskProfile(
   );
 
   const insuranceStatus = input.insuranceStatus ?? 'missing';
-  const insuranceDays = daysUntil(
-    input.insuranceExpiration,
-    input.asOfDate,
-  );
-  if (insuranceStatus === 'expired' || (insuranceDays !== null && insuranceDays < 0)) {
+  const insuranceDays = daysUntil(input.insuranceExpiration, input.asOfDate);
+  if (
+    insuranceStatus === 'expired' ||
+    (insuranceDays !== null && insuranceDays < 0)
+  ) {
     add({
       key: 'insurance',
       label: 'Insurance coverage',
       status: 'high_risk',
       points: 30,
-      explanation: 'Insurance evidence is expired and requires immediate follow-up.',
+      explanation:
+        'Insurance evidence is expired and requires immediate follow-up.',
       evidence: `Status ${insuranceStatus}; expiration ${input.insuranceExpiration ?? 'not recorded'}`,
     });
   } else if (insuranceStatus === 'missing') {
@@ -187,11 +188,17 @@ export function calculateSupplierRiskProfile(
     input.activeContractValueCents,
     input.portfolioValueCents,
   );
-  const concentrationPoints = concentration >= 25 ? 15 : concentration >= 15 ? 8 : 0;
+  const concentrationPoints =
+    concentration >= 25 ? 15 : concentration >= 15 ? 8 : 0;
   add({
     key: 'concentration',
     label: 'Contract concentration',
-    status: concentrationPoints >= 15 ? 'attention' : concentrationPoints ? 'informational' : 'satisfied',
+    status:
+      concentrationPoints >= 15
+        ? 'attention'
+        : concentrationPoints
+          ? 'informational'
+          : 'satisfied',
     points: concentrationPoints,
     explanation: `${concentration}% of current active contract value is assigned to this supplier.`,
     evidence: `${input.activeContractValueCents} of ${input.portfolioValueCents} cents`,
@@ -210,7 +217,8 @@ export function calculateSupplierRiskProfile(
   });
 
   const score = factors.reduce((sum, factor) => sum + factor.points, 0);
-  const level: SupplierRiskLevel = score >= 40 ? 'high' : score >= 20 ? 'medium' : 'low';
+  const level: SupplierRiskLevel =
+    score >= 40 ? 'high' : score >= 20 ? 'medium' : 'low';
   const attentionCount = factors.filter((factor) => factor.points > 0).length;
   return {
     version: SUPPLIER_RISK_PROFILE_VERSION,

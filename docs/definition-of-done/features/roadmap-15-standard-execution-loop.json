@@ -10,7 +10,12 @@
     {
       "id": "user-story",
       "status": "complete",
-      "evidence": [{ "kind": "documentation", "ref": "docs/execution-loop/README.md#workflow" }]
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/execution-loop/README.md#workflow"
+        }
+      ]
     },
     {
       "id": "happy-and-failure-paths",
@@ -35,7 +40,12 @@
     {
       "id": "auditability",
       "status": "complete",
-      "evidence": [{ "kind": "file", "ref": "docs/execution-loop/phases/roadmap-15-standard-execution-loop.json" }]
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "docs/execution-loop/phases/roadmap-15-standard-execution-loop.json"
+        }
+      ]
     },
     {
       "id": "migration-strategy",
@@ -60,7 +70,9 @@
     {
       "id": "fictional-fixture",
       "status": "complete",
-      "evidence": [{ "kind": "fixture", "ref": "docs/execution-loop/phase-template.json" }]
+      "evidence": [
+        { "kind": "fixture", "ref": "docs/execution-loop/phase-template.json" }
+      ]
     },
     {
       "id": "data-model-consumers",
@@ -70,7 +82,9 @@
     {
       "id": "accessibility",
       "status": "complete",
-      "evidence": [{ "kind": "file", "ref": "scripts/check-phase-execution.mjs" }]
+      "evidence": [
+        { "kind": "file", "ref": "scripts/check-phase-execution.mjs" }
+      ]
     },
     {
       "id": "quality-gate",
@@ -90,13 +104,21 @@
         { "kind": "documentation", "ref": "README.md" },
         { "kind": "documentation", "ref": "DEMO_RUNBOOK.md" },
         { "kind": "documentation", "ref": "ROADMAP.md" },
-        { "kind": "documentation", "ref": "PORTFOLIO_CASE_STUDY.md#results-limitations-and-next-steps" }
+        {
+          "kind": "documentation",
+          "ref": "PORTFOLIO_CASE_STUDY.md#results-limitations-and-next-steps"
+        }
       ]
     },
     {
       "id": "metric",
       "status": "complete",
-      "evidence": [{ "kind": "metric", "ref": "10 of 10 roadmap execution steps explicitly accounted for" }]
+      "evidence": [
+        {
+          "kind": "metric",
+          "ref": "10 of 10 roadmap execution steps explicitly accounted for"
+        }
+      ]
     }
   ],
   "metric": {

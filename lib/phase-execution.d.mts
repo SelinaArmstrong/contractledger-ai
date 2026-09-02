@@ -1,5 +1,12 @@
 export interface PhaseEvidence {
-  kind: 'command' | 'documentation' | 'file' | 'fixture' | 'metric' | 'migration' | 'test';
+  kind:
+    | 'command'
+    | 'documentation'
+    | 'file'
+    | 'fixture'
+    | 'metric'
+    | 'migration'
+    | 'test';
   ref: string;
 }
 
@@ -31,8 +38,13 @@ export interface PhaseExecutionManifest {
 }
 
 export const PHASE_EXECUTION_VERSION: string;
-export const PHASE_EXECUTION_STEPS: ReadonlyArray<{ id: string; label: string }>;
-export function summarizePhaseExecution(manifest: Partial<PhaseExecutionManifest>): {
+export const PHASE_EXECUTION_STEPS: ReadonlyArray<{
+  id: string;
+  label: string;
+}>;
+export function summarizePhaseExecution(
+  manifest: Partial<PhaseExecutionManifest>,
+): {
   complete: number;
   notApplicable: number;
   inProgress: number;

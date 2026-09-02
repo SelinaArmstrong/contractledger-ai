@@ -467,12 +467,9 @@ function buildSupplierReport(input: BuildReportInput): ManagementReport {
     const documentationStatus = textValue(supplier.qualification_status);
     if (
       activeExposure &&
-      [
-        'incomplete',
-        'needs_follow_up',
-        'expired',
-        'under_review',
-      ].includes(documentationStatus) &&
+      ['incomplete', 'needs_follow_up', 'expired', 'under_review'].includes(
+        documentationStatus,
+      ) &&
       !attention.some(
         (item) =>
           item.entityId === supplierId &&
