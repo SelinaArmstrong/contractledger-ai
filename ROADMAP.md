@@ -740,14 +740,15 @@ and carrying a second identity path complicated every authorization decision
 for no benefit. There is now one method: username and password against the
 configured workspace accounts, issuing a signed 12-hour session.
 
-The demo account `demo` / `demotest` is published on purpose. To make that
-safe rather than merely convenient, it carries a new eighth role,
-`demo_operator`: every contract-operations workflow including approvals, but no
-`reset_workspace`, so one visitor cannot wipe the records another is part-way
-through. Resetting a hosted workspace needs the optional `ADMIN_AUTH_*`
-account, which is itself refused unless a real session secret is configured —
-the fallback signing key is public, and an administrator that a public key can
-forge is not an administrator.
+No credentials ship in the repository. Accounts and the session signing key
+come only from the host's secret store, so a clone grants no access and an
+unconfigured deployment has no sign-in rather than a guessable one;
+`WORKSPACE_SESSION_SECRET` is required for any account to exist, because a
+known signing key would make the cookie itself the credential. The reviewer
+account carries a new eighth role, `demo_operator`: every contract-operations
+workflow including approvals, but no `reset_workspace`, so one reviewer cannot
+wipe the records another is part-way through. Resetting a hosted workspace
+needs the optional `ADMIN_AUTH_*` account.
 
 Session roles are re-read from configuration on every request, so revoking or
 downgrading an account takes effect immediately instead of waiting out a
@@ -755,10 +756,10 @@ downgrading an account takes effect immediately instead of waiting out a
 
 ### Cost
 
-A published password means anyone can reach the model-backed routes. Per-actor
-rate limiting alone does not bound the bill: every visitor shares one demo
-identity and therefore one bucket, and a bucket that refills every ten minutes
-has no ceiling over a day.
+Shared credentials mean several reviewers reach the model-backed routes under
+one identity. Per-actor rate limiting alone does not bound the bill: they share
+one bucket, and a bucket that refills every ten minutes has no ceiling over a
+day.
 
 Three layers now sit in front of every model call — the existing per-actor
 burst limit, a per-visitor hourly budget keyed on a hashed client address, and

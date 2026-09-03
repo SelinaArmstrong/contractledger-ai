@@ -60,15 +60,14 @@ If asked how phase scope is controlled, show `docs/execution-loop/phases/roadmap
 
 ## v1.2 additions to the demo path
 
-- **Signing in.** One method, username and password. The reviewer credentials
-  are `demo` / `demotest` and are printed in the README on purpose. If a
-  reviewer asks whether publishing a password is wise, that is the opening for
-  the next two points rather than an awkward moment.
-- **What the published account cannot do.** Try **Reset demo** while signed in
-  as `demo`: the server refuses it. The published account holds `demo_operator`,
-  which runs every workflow including approvals but cannot reset the workspace,
-  because one visitor should not be able to wipe the records another is
-  part-way through. Resetting needs the separate maintainer account.
+- **Two ways in.** Anyone can browse the workspace read-only with no account at
+  all. Reviewers who should run the write and AI workflow are given credentials
+  directly; nothing is published, and no credential lives in the repository.
+- **What the reviewer account cannot do.** Try **Reset demo** while signed in as
+  the reviewer: the server refuses it. That account holds `demo_operator`, which
+  runs every workflow including approvals but cannot reset the workspace,
+  because credentials are shared and one reviewer should not be able to wipe the
+  records another is part-way through. Resetting needs the maintainer account.
 - **Why the AI bill is bounded.** Point at the line in **AI Accuracy &
   Validation** showing how many shared AI units remain for the day. Explain the
   three layers — per-actor burst limit, per-visitor hourly budget on a hashed

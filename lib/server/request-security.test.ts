@@ -106,7 +106,7 @@ describe('demo_operator role', () => {
     }
   });
 
-  it('cannot reset the shared workspace, because its password is published', () => {
+  it('cannot reset the shared workspace it shares with other reviewers', () => {
     expect(roleCan('demo_operator', 'reset_workspace')).toBe(false);
     expect(permissionsForRole('demo_operator')).not.toContain(
       'reset_workspace',

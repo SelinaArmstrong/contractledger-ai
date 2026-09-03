@@ -77,11 +77,11 @@ const permissionPolicy: Record<
     'export_data',
   ]),
   /**
-   * The published demo account. It can walk every contract-operations
-   * workflow end to end — including approvals, so a reviewer sees both sides
-   * of the separation-of-duties design — but it deliberately cannot reset the
-   * workspace, because the password is public and a reset would wipe the
-   * records another visitor is part-way through.
+   * The reviewer account. It can walk every contract-operations workflow end
+   * to end — including approvals, so a reviewer sees both sides of the
+   * separation-of-duties design — but it deliberately cannot reset the
+   * workspace: the credentials are shared with more than one reviewer, and a
+   * reset would wipe the records another is part-way through.
    */
   demo_operator: new Set([
     'view_workspace',
