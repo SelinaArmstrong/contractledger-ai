@@ -20,17 +20,26 @@ const errorMessages: Record<string, string> = {
 
 export function ChatGPTSignIn({
   signInPath,
+  chatGPTEnabled,
   demoEnabled,
   configurationError,
   error,
 }: {
   signInPath: string;
+  /** False when the Sites sign-in proxy is not in front of this deployment. */
+  chatGPTEnabled: boolean;
   demoEnabled: boolean;
   configurationError: string;
   error?: string;
 }) {
   const errorMessage =
     configurationError || (error ? errorMessages[error] : '');
+  // Never advertise a sign-in route this deployment cannot serve.
+  const signInMethod = demoEnabled
+    ? 'demo'
+    : chatGPTEnabled
+      ? 'chatgpt'
+      : 'none';
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#edf3f6] text-[#17212b]">
       <div className="absolute inset-x-0 top-0 h-72 bg-[#0d2638]" />
@@ -93,9 +102,11 @@ export function ChatGPTSignIn({
               Sign in to continue
             </h2>
             <p className="mt-3 text-sm leading-6 text-slate-500">
-              {demoEnabled
+              {signInMethod === 'demo'
                 ? 'Use the temporary demo credentials configured for this ContractLedger workspace.'
-                : 'Use your ChatGPT account to access this ContractLedger workspace.'}
+                : signInMethod === 'chatgpt'
+                  ? 'Use your ChatGPT account to access this ContractLedger workspace.'
+                  : 'This deployment has no sign-in method enabled.'}
             </p>
 
             {errorMessage ? (
@@ -108,7 +119,7 @@ export function ChatGPTSignIn({
               </div>
             ) : null}
 
-            {demoEnabled ? (
+            {signInMethod === 'demo' ? (
               <form
                 action="/api/auth/login"
                 method="post"
@@ -159,7 +170,7 @@ export function ChatGPTSignIn({
                   <ArrowRight data-icon="inline-end" />
                 </button>
               </form>
-            ) : (
+            ) : signInMethod === 'chatgpt' ? (
               <a
                 href={signInPath}
                 target="_top"
@@ -171,12 +182,25 @@ export function ChatGPTSignIn({
                 Sign in with ChatGPT
                 <ArrowRight data-icon="inline-end" />
               </a>
+            ) : (
+              <div className="mt-7 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3.5 text-xs leading-5 text-amber-900">
+                <p className="font-medium">Sign-in is not configured here.</p>
+                <p className="mt-1.5">
+                  ChatGPT sign-in is served by OpenAI Sites and is unavailable
+                  on this origin. Set <code>DEMO_GUEST_ACCESS=true</code> for
+                  public read-only browsing, or configure the{' '}
+                  <code>DEMO_AUTH_*</code> credentials for a signed-in
+                  workspace.
+                </p>
+              </div>
             )}
 
             <p className="mt-5 text-center text-[10px] leading-4 text-slate-400">
-              {demoEnabled
+              {signInMethod === 'demo'
                 ? 'The password stays in server-side environment secrets. The browser receives only a secure, time-limited session cookie.'
-                : 'Authentication is handled by OpenAI Sites. ContractLedger receives only the identity details needed for access and audit attribution.'}
+                : signInMethod === 'chatgpt'
+                  ? 'Authentication is handled by OpenAI Sites. ContractLedger receives only the identity details needed for access and audit attribution.'
+                  : 'All contracts, suppliers, and company policies in this workspace are fictional.'}
             </p>
           </div>
         </section>

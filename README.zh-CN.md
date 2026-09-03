@@ -264,6 +264,18 @@ WORKSPACE_ROLE_ASSIGNMENTS='{"user_123":"contract_administrator","legal@example.
 
 未映射的托管用户默认是 `read_only_auditor`；localhost 和临时演示账号保持管理员权限，以保证自包含演示流程可运行。
 
+### 选择登录方式
+
+`/signin-with-chatgpt` 由 OpenAI Sites 代理提供，**不是本应用的路由**，因此只在 Sites 托管的域名下有效。绕过该代理的自定义域名访问这个路径会返回 404。在这类部署上请设置 `CHATGPT_SIGN_IN_ENABLED=false`，并配置一个真正可用的登录方式：
+
+| 部署形态                  | 建议配置                                                   |
+| ------------------------- | ---------------------------------------------------------- |
+| Sites 托管域名            | 保持默认即可                                               |
+| 自定义域名 · 公开作品集   | `CHATGPT_SIGN_IN_ENABLED=false` + `DEMO_GUEST_ACCESS=true` |
+| 自定义域名 · 需要登录操作 | `CHATGPT_SIGN_IN_ENABLED=false` + `DEMO_AUTH_*` 系列变量   |
+
+当没有任何可用登录方式时，登录页会直接说明这一点，而不是给出一个点了会 404 的按钮。
+
 ### 只读公开 Demo
 
 将 `DEMO_GUEST_ACCESS` 设为 `true` 后，未登录访客将以 `read_only_auditor` 角色浏览全部台账、审批、履约和验证记录；上传、决策、导入、AI 调用和重置操作均在服务端被拒绝。托管 Demo 依靠这一机制在不发放账号的前提下对招聘方开放。

@@ -1,6 +1,7 @@
 import { cookies, headers } from 'next/headers';
 
 import {
+  chatGPTSignInEnabled,
   chatGPTSignInPath,
   getChatGPTUser,
   type ChatGPTUser,
@@ -130,6 +131,7 @@ export default async function Home({
     return (
       <ChatGPTSignIn
         signInPath={chatGPTSignInPath('/')}
+        chatGPTEnabled={chatGPTSignInEnabled()}
         demoEnabled={Boolean(getDemoAuthConfig())}
         configurationError={demoAuthConfigurationError()}
         error={

@@ -48,6 +48,20 @@ export async function requireChatGPTUser(
   redirect(chatGPTSignInPath(returnTo));
 }
 
+/**
+ * Whether this deployment can actually complete a ChatGPT sign-in.
+ *
+ * `/signin-with-chatgpt` is served by the OpenAI Sites proxy, not by this
+ * application, so it only exists on a Sites-hosted origin. A custom domain
+ * that bypasses that proxy answers 404, and offering the button there sends
+ * the visitor to a dead end. Deployments outside Sites must set
+ * `CHATGPT_SIGN_IN_ENABLED=false` and provide demo credentials or guest
+ * access instead.
+ */
+export function chatGPTSignInEnabled(): boolean {
+  return process.env.CHATGPT_SIGN_IN_ENABLED !== 'false';
+}
+
 export function chatGPTSignInPath(returnTo: string): string {
   const safeReturnTo = safeRelativeReturnPath(returnTo);
   return `${SIGN_IN_PATH}?return_to=${encodeURIComponent(safeReturnTo)}`;

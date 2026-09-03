@@ -233,6 +233,22 @@ Seven roles map to thirteen named permissions enforced on the server:
 
 Unmapped hosted users default to `read_only_auditor`. Localhost and the temporary demo account keep administrator rights so the self-contained demo runs end to end. A contract administrator can verify operational data but **cannot approve their own exceptions**.
 
+### Choosing a sign-in method
+
+`/signin-with-chatgpt` is served by the OpenAI Sites proxy, not by this
+application, so it only resolves on a Sites-hosted origin. A custom domain that
+bypasses that proxy returns 404 for it. Set `CHATGPT_SIGN_IN_ENABLED=false`
+there and give the deployment a method that works:
+
+| Deployment                         | Recommended settings                                          |
+| ---------------------------------- | ------------------------------------------------------------- |
+| Sites-hosted origin                | Defaults are fine                                             |
+| Custom domain, public portfolio    | `CHATGPT_SIGN_IN_ENABLED=false` + `DEMO_GUEST_ACCESS=true`    |
+| Custom domain, signed-in workspace | `CHATGPT_SIGN_IN_ENABLED=false` + the `DEMO_AUTH_*` variables |
+
+With no method enabled the sign-in page says so plainly instead of offering a
+button that cannot complete.
+
 ### Read-only public demo
 
 Setting `DEMO_GUEST_ACCESS=true` lets a signed-out visitor browse every register, approval, obligation and validation record with the `read_only_auditor` role. Uploads, decisions, imports, AI calls and workspace reset are all refused server-side. This is how the hosted demo stays open to reviewers without handing out credentials.
