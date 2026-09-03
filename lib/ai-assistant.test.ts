@@ -8,6 +8,12 @@ import type { Workspace } from '@/lib/contract-ledger-types';
 
 const workspace: Workspace = {
   registerLimit: 500,
+  aiBudget: {
+    dailyUnitLimit: 250,
+    usedUnits: 0,
+    remainingUnits: 250,
+    resetsAt: '2026-09-03T00:00:00.000Z',
+  },
   metrics: {
     active_contracts: 2,
     current_value_cents: 45_000_000,

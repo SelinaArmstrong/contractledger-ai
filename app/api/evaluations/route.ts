@@ -24,6 +24,7 @@ import {
 } from '@/lib/ai-evaluation';
 import { enforceRateLimit } from '@/lib/server/request-security';
 import { withApiRoute } from '@/lib/server/route-handler';
+import { reserveAIBudget } from '@/lib/server/ai-budget';
 
 const actionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('run') }).strict(),
@@ -316,6 +317,10 @@ export const POST = withApiRoute(
 
     const rateLimited = await enforceRateLimit(actor, 'ai-evaluation', 2, 600);
     if (rateLimited) return rateLimited;
+    // A published demo password means anyone can reach this route, so the
+    // shared cost ceiling is enforced before the model is called.
+    const overBudget = await reserveAIBudget(request, actor, 'ai-evaluation');
+    if (overBudget) return overBudget;
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
       return Response.json(

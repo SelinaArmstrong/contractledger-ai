@@ -60,7 +60,7 @@ Bulk imports use staging tables, explicit row decisions, transactional commit, a
 
 ## 5. Human oversight and security controls
 
-- Seven workspace roles map to thirteen named permissions enforced by server routes.
+- Eight workspace roles map to thirteen named permissions enforced by server routes.
 - Contract administrators can verify operational data but cannot approve their own exceptions through the approval route.
 - Unreadable, corrupted, protected, or unsupported files are blocked before model analysis.
 - Sparse, rotated, image-only, or otherwise uncertain pages are marked for manual review.
@@ -73,7 +73,7 @@ The AI validation suite uses 15 server-controlled fictional cases with immutable
 
 A complete run may become the approved baseline. A later prompt or model is blocked from promotion when critical-field accuracy falls more than two percentage points below that baseline. Evaluation documents never enter operational registers.
 
-The repository quality gate includes versioned 16-criterion Definition of Done manifests, a ten-step phase-execution manifest, deterministic tests, linting, TypeScript checking, and a production build. The phase gate blocks reordered or premature work, incomplete predecessors, open data-integrity or audit defects, absent evidence paths, and metrics without a source or sample size. The 2026-09-02 portfolio baseline contains 140 passing automated tests, including seven Definition of Done and nine phase-execution validator tests, nine route-wrapper tests and fourteen timed-evidence tests. These are deterministic unit and validator tests over domain logic; there is no end-to-end browser suite.
+The repository quality gate includes versioned 16-criterion Definition of Done manifests, a ten-step phase-execution manifest, deterministic tests, linting, TypeScript checking, and a production build. The phase gate blocks reordered or premature work, incomplete predecessors, open data-integrity or audit defects, absent evidence paths, and metrics without a source or sample size. The 2026-09-02 portfolio baseline contains 182 passing automated tests, including seven Definition of Done and nine phase-execution validator tests, nine route-wrapper tests and fourteen timed-evidence tests. These are deterministic unit and validator tests over domain logic; there is no end-to-end browser suite.
 
 ## 7. Reproducible evidence
 
@@ -84,7 +84,7 @@ The repository quality gate includes versioned 16-criterion Definition of Done m
 | v0.4       | CSV/XLSX dry runs retain mapping, normalized values, row issues, explicit decisions, correction output, commit evidence, and dependency-aware rollback.               |
 | v0.5       | Five seeded obligations include open, overdue, and evidence-backed completion states with calculated workflow metrics and calendar export.                            |
 | v0.6       | Fifteen fictional benchmark cases produce field-level metrics and a two-percentage-point critical-accuracy regression gate.                                           |
-| v0.7       | Seven roles, thirteen permissions, document preflight, and denied-write tests demonstrate separation of duties and input-quality controls.                            |
+| v0.7       | Eight roles, thirteen permissions, document preflight, and denied-write tests demonstrate separation of duties and input-quality controls.                            |
 | v0.8       | A source-aware PDF review package, eight visible supplier-risk factors, and durable integration-outbox events support operational handoff.                            |
 | Governance | Two versioned repository gates account for 16 Definition of Done criteria and all ten ordered execution steps, including predecessor and defect controls.             |
 

@@ -18,28 +18,15 @@ const errorMessages: Record<string, string> = {
   unavailable: 'Demo sign-in has not been configured on this deployment.',
 };
 
-export function ChatGPTSignIn({
-  signInPath,
-  chatGPTEnabled,
-  demoEnabled,
+export function WorkspaceSignIn({
   configurationError,
   error,
 }: {
-  signInPath: string;
-  /** False when the Sites sign-in proxy is not in front of this deployment. */
-  chatGPTEnabled: boolean;
-  demoEnabled: boolean;
   configurationError: string;
   error?: string;
 }) {
   const errorMessage =
     configurationError || (error ? errorMessages[error] : '');
-  // Never advertise a sign-in route this deployment cannot serve.
-  const signInMethod = demoEnabled
-    ? 'demo'
-    : chatGPTEnabled
-      ? 'chatgpt'
-      : 'none';
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#edf3f6] text-[#17212b]">
       <div className="absolute inset-x-0 top-0 h-72 bg-[#0d2638]" />
@@ -102,11 +89,8 @@ export function ChatGPTSignIn({
               Sign in to continue
             </h2>
             <p className="mt-3 text-sm leading-6 text-slate-500">
-              {signInMethod === 'demo'
-                ? 'Use the temporary demo credentials configured for this ContractLedger workspace.'
-                : signInMethod === 'chatgpt'
-                  ? 'Use your ChatGPT account to access this ContractLedger workspace.'
-                  : 'This deployment has no sign-in method enabled.'}
+              Sign in with the workspace demo account. Everything inside is
+              fictional portfolio data.
             </p>
 
             {errorMessage ? (
@@ -119,88 +103,70 @@ export function ChatGPTSignIn({
               </div>
             ) : null}
 
-            {signInMethod === 'demo' ? (
-              <form
-                action="/api/auth/login"
-                method="post"
-                className="mt-6 space-y-4"
-              >
-                <div className="block">
-                  <label
-                    htmlFor="demo-username"
-                    className="mb-1.5 block text-xs font-medium text-[#294454]"
-                  >
-                    Username
-                  </label>
-                  <Input
-                    id="demo-username"
-                    name="username"
-                    type="text"
-                    autoComplete="username"
-                    required
-                    maxLength={100}
-                    className="h-10 bg-white"
-                  />
-                </div>
-                <div className="block">
-                  <label
-                    htmlFor="demo-password"
-                    className="mb-1.5 block text-xs font-medium text-[#294454]"
-                  >
-                    Password
-                  </label>
-                  <Input
-                    id="demo-password"
-                    name="password"
-                    type="password"
-                    autoComplete="current-password"
-                    required
-                    maxLength={300}
-                    className="h-10 bg-white"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className={cn(
-                    buttonVariants({ size: 'lg' }),
-                    'h-11 w-full bg-[#1d718f] px-4 text-white hover:bg-[#185f78]',
-                  )}
+            <form
+              action="/api/auth/login"
+              method="post"
+              className="mt-6 space-y-4"
+            >
+              <div className="block">
+                <label
+                  htmlFor="demo-username"
+                  className="mb-1.5 block text-xs font-medium text-[#294454]"
                 >
-                  Sign in to demo
-                  <ArrowRight data-icon="inline-end" />
-                </button>
-              </form>
-            ) : signInMethod === 'chatgpt' ? (
-              <a
-                href={signInPath}
-                target="_top"
+                  Username
+                </label>
+                <Input
+                  id="demo-username"
+                  name="username"
+                  type="text"
+                  autoComplete="username"
+                  required
+                  maxLength={100}
+                  className="h-10 bg-white"
+                />
+              </div>
+              <div className="block">
+                <label
+                  htmlFor="demo-password"
+                  className="mb-1.5 block text-xs font-medium text-[#294454]"
+                >
+                  Password
+                </label>
+                <Input
+                  id="demo-password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  maxLength={300}
+                  className="h-10 bg-white"
+                />
+              </div>
+              <button
+                type="submit"
                 className={cn(
                   buttonVariants({ size: 'lg' }),
-                  'mt-7 h-11 w-full bg-[#1d718f] px-4 text-white hover:bg-[#185f78]',
+                  'h-11 w-full bg-[#1d718f] px-4 text-white hover:bg-[#185f78]',
                 )}
               >
-                Sign in with ChatGPT
+                Sign in to demo
                 <ArrowRight data-icon="inline-end" />
-              </a>
-            ) : (
-              <div className="mt-7 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3.5 text-xs leading-5 text-amber-900">
-                <p className="font-medium">Sign-in is not configured here.</p>
-                <p className="mt-1.5">
-                  ChatGPT sign-in is served by OpenAI Sites and is unavailable
-                  on this origin. Set <code>DEMO_GUEST_ACCESS=true</code> for
-                  public read-only browsing, or configure the{' '}
-                  <code>DEMO_AUTH_*</code> credentials for a signed-in
-                  workspace.
-                </p>
-              </div>
-            )}
+              </button>
+            </form>
+
+            <div className="mt-5 rounded-lg border border-[#cfe2ea] bg-[#f2f8fb] px-4 py-3 text-xs leading-5 text-[#22536a]">
+              <p className="font-medium">Reviewer credentials</p>
+              <p className="mt-1">
+                Username <code className="font-mono">demo</code> · password{' '}
+                <code className="font-mono">demotest</code>. These are published
+                on purpose — the workspace holds only fictional records.
+              </p>
+            </div>
 
             <p className="mt-5 text-center text-[10px] leading-4 text-slate-400">
-              {signInMethod === 'demo'
-                ? 'The password stays in server-side environment secrets. The browser receives only a secure, time-limited session cookie.'
-                : signInMethod === 'chatgpt'
-                  ? 'Authentication is handled by OpenAI Sites. ContractLedger receives only the identity details needed for access and audit attribution.'
-                  : 'All contracts, suppliers, and company policies in this workspace are fictional.'}
+              The browser receives only a signed, HttpOnly, time-limited session
+              cookie. AI features are protected by a shared daily budget, so the
+              demo cannot be used to run up model costs.
             </p>
           </div>
         </section>

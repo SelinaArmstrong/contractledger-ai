@@ -9,6 +9,7 @@ import {
 } from '@/lib/document-quality';
 import { enforceRateLimit } from '@/lib/server/request-security';
 import { withApiRoute } from '@/lib/server/route-handler';
+import { reserveAIBudget } from '@/lib/server/ai-budget';
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_PAGES = 40;
@@ -227,6 +228,14 @@ export const POST = withApiRoute(
       600,
     );
     if (rateLimited) return rateLimited;
+    // A published demo password means anyone can reach this route, so the
+    // shared cost ceiling is enforced before the model is called.
+    const overBudget = await reserveAIBudget(
+      request,
+      actor,
+      'amendment-analysis',
+    );
+    if (overBudget) return overBudget;
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey)
       return Response.json(

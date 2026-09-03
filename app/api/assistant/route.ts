@@ -12,6 +12,7 @@ import {
 import { enforceRateLimit } from '@/lib/server/request-security';
 import type { Workspace } from '@/lib/contract-ledger-types';
 import { withApiRoute } from '@/lib/server/route-handler';
+import { reserveAIBudget } from '@/lib/server/ai-budget';
 
 const MODEL = 'deepseek-v4-flash';
 const PLANNER_VERSION = 'contract-operations-assistant-2026.1';
@@ -299,6 +300,14 @@ export const POST = withApiRoute(
       600,
     );
     if (rateLimited) return rateLimited;
+    // A published demo password means anyone can reach this route, so the
+    // shared cost ceiling is enforced before the model is called.
+    const overBudget = await reserveAIBudget(
+      request,
+      actor,
+      'contract-operations-assistant',
+    );
+    if (overBudget) return overBudget;
 
     const today = new Date().toISOString().slice(0, 10);
     const planned = await callDeepSeek(

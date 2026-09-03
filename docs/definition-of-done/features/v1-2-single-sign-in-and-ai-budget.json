@@ -1,0 +1,227 @@
+{
+  "schemaVersion": "dod-2026.1",
+  "featureId": "v1-2-single-sign-in-and-ai-budget",
+  "title": "Password-only workspace access and a bounded AI spend ceiling",
+  "owner": "ContractLedger AI maintainers",
+  "userStory": "As a hiring reviewer I can sign in with a published username and password and use the AI features, and as the maintainer I can publish that password without exposing an unbounded model bill or letting a visitor reset the shared workspace.",
+  "updatedAt": "2026-09-02",
+  "status": "complete",
+  "criteria": [
+    {
+      "id": "user-story",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "README.md#access-and-cost-controls"
+        }
+      ]
+    },
+    {
+      "id": "happy-and-failure-paths",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "test",
+          "ref": "lib/workspace-auth.test.ts"
+        },
+        {
+          "kind": "test",
+          "ref": "lib/ai-budget-policy.test.ts"
+        }
+      ]
+    },
+    {
+      "id": "interaction-states",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "components/workspace-sign-in.tsx"
+        },
+        {
+          "kind": "file",
+          "ref": "components/views/ai-evaluation-view.tsx"
+        }
+      ]
+    },
+    {
+      "id": "server-validation",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "lib/server/request-security.ts"
+        },
+        {
+          "kind": "test",
+          "ref": "lib/server/request-security.test.ts"
+        }
+      ]
+    },
+    {
+      "id": "transactional-writes",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "lib/server/ai-budget.ts"
+        }
+      ]
+    },
+    {
+      "id": "auditability",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "app/api/auth/login/route.ts"
+        }
+      ]
+    },
+    {
+      "id": "migration-strategy",
+      "status": "not_applicable",
+      "rationale": "Budget counters reuse the existing api_rate_limits table with a distinct key prefix, and no column or table was added, so there is no schema change to migrate."
+    },
+    {
+      "id": "r2-consistency",
+      "status": "not_applicable",
+      "rationale": "Authentication and budget accounting never create, reference, or delete an object in R2, so there is no file-to-row consistency question to answer."
+    },
+    {
+      "id": "unit-tests",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "test",
+          "ref": "lib/ai-budget-policy.test.ts"
+        },
+        {
+          "kind": "test",
+          "ref": "lib/workspace-auth.test.ts"
+        }
+      ]
+    },
+    {
+      "id": "api-tests",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "test",
+          "ref": "lib/server/request-security.test.ts"
+        },
+        {
+          "kind": "test",
+          "ref": "lib/server/route-handler.test.ts"
+        }
+      ]
+    },
+    {
+      "id": "fictional-fixture",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "lib/workspace-auth.ts"
+        }
+      ]
+    },
+    {
+      "id": "data-model-consumers",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "lib/contract-ledger-types.ts"
+        },
+        {
+          "kind": "file",
+          "ref": "app/api/workspace/route.ts"
+        }
+      ]
+    },
+    {
+      "id": "accessibility",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "components/workspace-sign-in.tsx"
+        }
+      ]
+    },
+    {
+      "id": "quality-gate",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "command",
+          "ref": "npm test"
+        },
+        {
+          "kind": "command",
+          "ref": "npm run lint"
+        },
+        {
+          "kind": "command",
+          "ref": "npx tsc --noEmit"
+        },
+        {
+          "kind": "command",
+          "ref": "npm run build"
+        },
+        {
+          "kind": "file",
+          "ref": ".github/workflows/quality.yml"
+        }
+      ]
+    },
+    {
+      "id": "documentation",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "README.md"
+        },
+        {
+          "kind": "documentation",
+          "ref": "README.md#known-boundaries"
+        },
+        {
+          "kind": "documentation",
+          "ref": "DEMO_RUNBOOK.md"
+        },
+        {
+          "kind": "documentation",
+          "ref": "ROADMAP.md"
+        },
+        {
+          "kind": "documentation",
+          "ref": "PORTFOLIO_CASE_STUDY.md"
+        },
+        {
+          "kind": "documentation",
+          "ref": "RESUME_EVIDENCE.md"
+        }
+      ]
+    },
+    {
+      "id": "metric",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "test",
+          "ref": "lib/ai-budget-policy.test.ts"
+        }
+      ]
+    }
+  ],
+  "metric": {
+    "name": "Shared daily AI unit ceiling",
+    "value": "250 weighted units per UTC day by default, with a 15-document validation run priced at 15 units, enforced atomically and fail-closed before any model call",
+    "sampleSize": 6,
+    "source": "lib/ai-budget-policy.test.ts"
+  }
+}

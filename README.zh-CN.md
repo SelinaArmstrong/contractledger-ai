@@ -4,6 +4,8 @@
 
 **[▶ 打开在线 Demo](https://contractledger.selinaq.com/)** · [作品集案例](PORTFOLIO_CASE_STUDY.md) · [面试速览](docs/INTERVIEW_ONE_PAGER.md) · [English](README.md)
 
+> **审阅账号：** 用户名 `demo`，密码 `demotest`。刻意公开 —— 工作区内全部为虚构记录。
+
 ![ContractLedger AI social preview](public/og.jpg)
 
 **当前版本：** `v1.0.0`（Portfolio-ready baseline，2026-09-02）
@@ -232,53 +234,64 @@ React 工作台
 
 ## 环境变量
 
-所有变量均为服务端变量，不要添加 `NEXT_PUBLIC_` 前缀，也不要提交真实凭据。
+全部为服务端变量，不要加 `NEXT_PUBLIC_` 前缀，也不要提交真实凭据。
 
-| 变量                         | 必填               | 用途                                                                      |
-| ---------------------------- | ------------------ | ------------------------------------------------------------------------- |
-| `DEEPSEEK_API_KEY`           | AI 功能必填        | 合同/供应商文档分析、Assistant、Insights 和评估                           |
-| `SITE_URL`                   | 否                 | Open Graph 等站点元数据的规范 URL，默认 `http://localhost:3000`           |
-| `DEMO_GUEST_ACCESS`          | 否                 | 设为 `true` 时，未登录访客可以只读浏览托管 Demo（read_only_auditor 角色） |
-| `DEMO_ADMIN_USER_IDS`        | 否                 | 允许重置托管演示数据的 Sites 用户 ID，逗号分隔                            |
-| `WORKSPACE_ROLE_ASSIGNMENTS` | 托管角色控制时必填 | 将 Sites 用户 ID 或邮箱映射到工作区角色的 JSON 对象                       |
-| `DEMO_AUTH_USERNAME`         | 临时演示登录时必填 | 公共/自定义域名上的单用户演示账号                                         |
-| `DEMO_AUTH_PASSWORD`         | 临时演示登录时必填 | 单用户演示密码，请使用强密码                                              |
-| `DEMO_AUTH_DISPLAY_NAME`     | 否                 | 演示用户显示名                                                            |
-| `DEMO_AUTH_SESSION_SECRET`   | 临时演示登录时必填 | 至少 32 个字符的随机会话签名密钥                                          |
+| 变量                            | 必填                       | 用途                                             |
+| ------------------------------- | -------------------------- | ------------------------------------------------ |
+| `DEEPSEEK_API_KEY`              | AI 功能必填                | 合同/供应商分析、Assistant、Insights、评估       |
+| `SITE_URL`                      | 否                         | Open Graph 等站点元数据的规范 URL                |
+| `DEMO_GUEST_ACCESS`             | 否                         | 设为 `true` 时未登录访客可只读浏览               |
+| `DEMO_AUTH_USERNAME`            | 否                         | Demo 账号用户名（默认 `demo`）                   |
+| `DEMO_AUTH_PASSWORD`            | 否                         | Demo 账号密码（默认 `demotest`）                 |
+| `DEMO_AUTH_DISPLAY_NAME`        | 否                         | Demo 账号显示名                                  |
+| `DEMO_AUTH_ROLE`                | 否                         | Demo 账号角色（默认 `demo_operator`）            |
+| `ADMIN_AUTH_USERNAME`           | 需要管理员登录时           | 可选管理员账号 —— 托管环境下重置工作区的唯一途径 |
+| `ADMIN_AUTH_PASSWORD`           | 需要管理员登录时           | 请使用强密码                                     |
+| `WORKSPACE_SESSION_SECRET`      | 配置 `ADMIN_AUTH_*` 时必填 | 至少 32 位的随机会话签名密钥                     |
+| `AI_DAILY_UNIT_BUDGET`          | 否                         | 全局每日模型调用上限（默认 `250`）               |
+| `AI_VISITOR_HOURLY_UNIT_BUDGET` | 否                         | 单访客每小时上限（默认 `40`）                    |
 
-角色映射示例：
+## 访问控制与成本控制
 
-```bash
-WORKSPACE_ROLE_ASSIGNMENTS='{"user_123":"contract_administrator","legal@example.com":"legal_reviewer"}'
-```
+### 登录方式
 
-支持的七种角色：
+只有一种登录方式：用户名 + 密码，校验通过后签发签名的 HttpOnly、12 小时有效的会话 Cookie。
 
-- `requester`
-- `contract_administrator`
-- `legal_reviewer`
-- `procurement_compliance_reviewer`
-- `approver`
-- `read_only_auditor`
-- `administrator`
+**Demo 账号是 `demo` / `demotest`，这是刻意公开的。** 工作区里只有虚构记录，招聘方应该能直接照着 README 登录，而不必先找你要账号。
 
-未映射的托管用户默认是 `read_only_auditor`；localhost 和临时演示账号保持管理员权限，以保证自包含演示流程可运行。
+localhost 请求按本地维护者处理，所以 `npm run dev` 无需登录。已登录会话优先于该快捷方式 —— 这样你可以在本地用 demo 账号登录，看到的就是招聘方看到的画面。
 
-### 选择登录方式
+### 角色与权限
 
-`/signin-with-chatgpt` 由 OpenAI Sites 代理提供，**不是本应用的路由**，因此只在 Sites 托管的域名下有效。绕过该代理的自定义域名访问这个路径会返回 404。在这类部署上请设置 `CHATGPT_SIGN_IN_ENABLED=false`，并配置一个真正可用的登录方式：
+八个角色映射到十三项服务端强制权限：
 
-| 部署形态                  | 建议配置                                                   |
-| ------------------------- | ---------------------------------------------------------- |
-| Sites 托管域名            | 保持默认即可                                               |
-| 自定义域名 · 公开作品集   | `CHATGPT_SIGN_IN_ENABLED=false` + `DEMO_GUEST_ACCESS=true` |
-| 自定义域名 · 需要登录操作 | `CHATGPT_SIGN_IN_ENABLED=false` + `DEMO_AUTH_*` 系列变量   |
+`requester` · `contract_administrator` · `legal_reviewer` · `procurement_compliance_reviewer` · `approver` · `read_only_auditor` · `demo_operator` · `administrator`
 
-当没有任何可用登录方式时，登录页会直接说明这一点，而不是给出一个点了会 404 的按钮。
+`contract_administrator` 可以核验业务数据，但**不能审批自己提出的例外**。公开账号所持的 `demo_operator` 可以走完整的合同运营流程（含审批），但**刻意不能重置工作区** —— 密码是公开的，一次重置会抹掉另一位访客正在进行到一半的记录。托管环境重置需要可选的 `ADMIN_AUTH_*` 账号。
+
+把 `DEMO_AUTH_ROLE` 设为策略中的任意角色，即可从该角色视角演示产品，例如 `legal_reviewer` 或 `read_only_auditor`。
 
 ### 只读公开 Demo
 
-将 `DEMO_GUEST_ACCESS` 设为 `true` 后，未登录访客将以 `read_only_auditor` 角色浏览全部台账、审批、履约和验证记录；上传、决策、导入、AI 调用和重置操作均在服务端被拒绝。托管 Demo 依靠这一机制在不发放账号的前提下对招聘方开放。
+设置 `DEMO_GUEST_ACCESS=true` 后，未登录访客以 `read_only_auditor` 角色浏览全部台账、审批、履约与验证记录；上传、决策、导入、AI 调用和重置在服务端一律拒绝。
+
+### 如何防止 AI 接口被滥用
+
+密码公开意味着任何人都能触达模型接口，而仅靠按用户限流并不能约束账单：所有访客共用同一个 demo 身份，也就共用同一个令牌桶；而一个每十分钟就重新填满的桶，在一天的尺度上根本没有上限。
+
+每次模型调用前有三层防护：
+
+| 层级             | 作用范围                       | 目的                     |
+| ---------------- | ------------------------------ | ------------------------ |
+| 按主体的突发限流 | 按账号 + 按路由，10 分钟窗口   | 阻止对单个操作的快速重复 |
+| 按访客的小时预算 | 哈希后的客户端地址，1 小时窗口 | 防止一个人抽干共享额度   |
+| 全局每日预算     | 整个部署，按 UTC 日            | 真正的成本天花板         |
+
+调用按加权单位计价，权重对应实际的模型往返次数：一次分析 1 单位，Management Insights 2 单位，15 份文档的验证运行 15 单位 —— 因此最贵的操作无法靠反复点击把当天额度耗光。
+
+设计上**失败即拒绝**：计数器读写失败时拒绝调用而不是放行，因为猜错的代价是一张无上限的账单。预算预留使用原子 upsert，并发请求不会同时占用最后一个单位；被后一层拒绝的预留会被退还而不是白白烧掉。
+
+额度耗尽只会禁用**模型调用**。全部已保存记录、种子验证报告、审计历史和台账导出仍可完整浏览，剩余额度会显示在 AI 准确率页面。
 
 ## 常用命令
 
@@ -367,7 +380,7 @@ npm run check:baseline
 | 项目               |                   当前基线 |
 | ------------------ | -------------------------: |
 | Schema 版本        |                         21 |
-| 自动化测试         | 23 个测试文件 / 140 项测试 |
+| 自动化测试         | 25 个测试文件 / 182 项测试 |
 | 虚构评估文件       |                         15 |
 | 重置后合同         |                          7 |
 | 重置后供应商       |                          8 |

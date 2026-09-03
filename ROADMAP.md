@@ -727,3 +727,55 @@ Scope after the v1.0 baseline, driven by one question: can a hiring reviewer eva
 - Server-side filtering for the registers. The snapshot is bounded and says so, but the ten register filters still operate client-side over the loaded page.
 - An end-to-end browser test suite. Coverage remains deterministic unit and validator tests over domain logic and the route wrapper.
 - Any real time-saving number. The mechanism exists; the runs have not been recorded.
+
+## 19. v1.2 — One way in, and a bounded AI bill
+
+Two changes driven by operating the demo publicly rather than by feature scope.
+
+### Access
+
+ChatGPT / OpenAI Sites authentication is removed. It only ever resolved on a
+Sites-hosted origin, so on the custom domain the sign-in button led to a 404,
+and carrying a second identity path complicated every authorization decision
+for no benefit. There is now one method: username and password against the
+configured workspace accounts, issuing a signed 12-hour session.
+
+The demo account `demo` / `demotest` is published on purpose. To make that
+safe rather than merely convenient, it carries a new eighth role,
+`demo_operator`: every contract-operations workflow including approvals, but no
+`reset_workspace`, so one visitor cannot wipe the records another is part-way
+through. Resetting a hosted workspace needs the optional `ADMIN_AUTH_*`
+account, which is itself refused unless a real session secret is configured —
+the fallback signing key is public, and an administrator that a public key can
+forge is not an administrator.
+
+Session roles are re-read from configuration on every request, so revoking or
+downgrading an account takes effect immediately instead of waiting out a
+12-hour cookie.
+
+### Cost
+
+A published password means anyone can reach the model-backed routes. Per-actor
+rate limiting alone does not bound the bill: every visitor shares one demo
+identity and therefore one bucket, and a bucket that refills every ten minutes
+has no ceiling over a day.
+
+Three layers now sit in front of every model call — the existing per-actor
+burst limit, a per-visitor hourly budget keyed on a hashed client address, and
+a shared daily unit budget for the whole deployment. Calls are weighted by the
+model round-trips they make, so the 15-document validation run costs 15 units
+and cannot be clicked repeatedly to drain the day. Reservations are atomic,
+refused reservations are refunded, and the whole thing fails closed: an
+unreadable counter refuses the call rather than allowing it.
+
+Exhausting the budget disables model calls only. Every saved record, the seeded
+validation report and the exports stay browsable.
+
+### Explicitly not delivered
+
+- Token-level accounting. Budgets count calls, weighted by round-trips, not
+  input or output tokens; a pathological document still costs one unit.
+- Per-visitor identity beyond a hashed address. Shared egress addresses share a
+  bucket.
+- Any measured cost saving. The ceiling is designed and enforced, not yet
+  observed against real traffic.

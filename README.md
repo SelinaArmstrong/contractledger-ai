@@ -4,6 +4,8 @@
 
 **[▶ Open the live demo](https://contractledger.selinaq.com/)** · [Case study](PORTFOLIO_CASE_STUDY.md) · [Interview one-pager](docs/INTERVIEW_ONE_PAGER.md) · [中文文档](README.zh-CN.md)
 
+> **Reviewer sign-in:** username `demo`, password `demotest`. Published deliberately — every record in the workspace is fictional.
+
 ![ContractLedger AI social preview](public/og.jpg)
 
 **Version:** `v1.0.0` (portfolio baseline) · **Status:** roadmap complete; core lifecycle, demo data, automated tests and release evidence all committed.
@@ -207,51 +209,91 @@ Every authenticated route goes through a single `withApiRoute` wrapper that owns
 
 All variables are server-side. Never add a `NEXT_PUBLIC_` prefix, and never commit real credentials.
 
-| Variable                     | Required                 | Purpose                                                                     |
-| ---------------------------- | ------------------------ | --------------------------------------------------------------------------- |
-| `DEEPSEEK_API_KEY`           | For AI features          | Contract/supplier analysis, Assistant, Insights, evaluations                |
-| `SITE_URL`                   | No                       | Canonical URL for social preview metadata (default `http://localhost:3000`) |
-| `DEMO_GUEST_ACCESS`          | No                       | `true` lets signed-out visitors browse the hosted demo read-only            |
-| `DEMO_ADMIN_USER_IDS`        | No                       | Comma-separated Sites user IDs allowed to reset hosted demo data            |
-| `WORKSPACE_ROLE_ASSIGNMENTS` | For hosted role control  | JSON mapping Sites user IDs or emails to workspace roles                    |
-| `DEMO_AUTH_USERNAME`         | For temporary demo login | Single-user demo account on a public/custom domain                          |
-| `DEMO_AUTH_PASSWORD`         | For temporary demo login | Use a strong password                                                       |
-| `DEMO_AUTH_DISPLAY_NAME`     | No                       | Display name for the demo user                                              |
-| `DEMO_AUTH_SESSION_SECRET`   | For temporary demo login | Random session-signing secret, at least 32 characters                       |
+| Variable                        | Required               | Purpose                                                                     |
+| ------------------------------- | ---------------------- | --------------------------------------------------------------------------- |
+| `DEEPSEEK_API_KEY`              | For AI features        | Contract/supplier analysis, Assistant, Insights, evaluations                |
+| `SITE_URL`                      | No                     | Canonical URL for social preview metadata (default `http://localhost:3000`) |
+| `DEMO_GUEST_ACCESS`             | No                     | `true` lets signed-out visitors browse read-only                            |
+| `DEMO_AUTH_USERNAME`            | No                     | Demo account username (default `demo`)                                      |
+| `DEMO_AUTH_PASSWORD`            | No                     | Demo account password (default `demotest`)                                  |
+| `DEMO_AUTH_DISPLAY_NAME`        | No                     | Display name for the demo account                                           |
+| `DEMO_AUTH_ROLE`                | No                     | Role granted to the demo account (default `demo_operator`)                  |
+| `ADMIN_AUTH_USERNAME`           | For a maintainer login | Optional administrator account — the only way to reset a hosted workspace   |
+| `ADMIN_AUTH_PASSWORD`           | For a maintainer login | Use a strong password                                                       |
+| `WORKSPACE_SESSION_SECRET`      | With `ADMIN_AUTH_*`    | Random session-signing secret, at least 32 characters                       |
+| `AI_DAILY_UNIT_BUDGET`          | No                     | Shared ceiling on model calls per UTC day (default `250`)                   |
+| `AI_VISITOR_HOURLY_UNIT_BUDGET` | No                     | Ceiling per visitor per hour (default `40`)                                 |
 
-Role mapping example:
+## Access and cost controls
 
-```bash
-WORKSPACE_ROLE_ASSIGNMENTS='{"user_123":"contract_administrator","legal@example.com":"legal_reviewer"}'
-```
+### Signing in
+
+There is one sign-in method: a username and password checked against the
+configured workspace accounts, which issues a signed, HttpOnly, 12-hour
+session cookie.
+
+**The demo account is `demo` / `demotest`, and that is published on purpose.**
+The workspace holds only fictional records, so a reviewer should be able to
+sign in straight from this README rather than asking for a credential.
+
+Loopback requests are treated as the local maintainer, so `npm run dev` needs
+no credentials. A signed-in session takes precedence over that shortcut, which
+lets you sign in locally as the demo account to see exactly what a reviewer
+sees.
 
 ### Roles and permissions
 
-Seven roles map to thirteen named permissions enforced on the server:
+Eight roles map to thirteen named permissions enforced on the server:
 
-`requester` · `contract_administrator` · `legal_reviewer` · `procurement_compliance_reviewer` · `approver` · `read_only_auditor` · `administrator`
+`requester` · `contract_administrator` · `legal_reviewer` · `procurement_compliance_reviewer` · `approver` · `read_only_auditor` · `demo_operator` · `administrator`
 
-Unmapped hosted users default to `read_only_auditor`. Localhost and the temporary demo account keep administrator rights so the self-contained demo runs end to end. A contract administrator can verify operational data but **cannot approve their own exceptions**.
+A contract administrator can verify operational data but **cannot approve their
+own exceptions**. `demo_operator` — the role the published account carries —
+can run every contract-operations workflow end to end, approvals included, but
+deliberately **cannot reset the workspace**: the password is public, and a
+reset would wipe the records another visitor is part-way through. Resetting a
+hosted workspace requires the optional `ADMIN_AUTH_*` account.
 
-### Choosing a sign-in method
-
-`/signin-with-chatgpt` is served by the OpenAI Sites proxy, not by this
-application, so it only resolves on a Sites-hosted origin. A custom domain that
-bypasses that proxy returns 404 for it. Set `CHATGPT_SIGN_IN_ENABLED=false`
-there and give the deployment a method that works:
-
-| Deployment                         | Recommended settings                                          |
-| ---------------------------------- | ------------------------------------------------------------- |
-| Sites-hosted origin                | Defaults are fine                                             |
-| Custom domain, public portfolio    | `CHATGPT_SIGN_IN_ENABLED=false` + `DEMO_GUEST_ACCESS=true`    |
-| Custom domain, signed-in workspace | `CHATGPT_SIGN_IN_ENABLED=false` + the `DEMO_AUTH_*` variables |
-
-With no method enabled the sign-in page says so plainly instead of offering a
-button that cannot complete.
+Set `DEMO_AUTH_ROLE` to any role in the policy to demonstrate the product from
+that perspective — as a `legal_reviewer`, say, or a `read_only_auditor`.
 
 ### Read-only public demo
 
-Setting `DEMO_GUEST_ACCESS=true` lets a signed-out visitor browse every register, approval, obligation and validation record with the `read_only_auditor` role. Uploads, decisions, imports, AI calls and workspace reset are all refused server-side. This is how the hosted demo stays open to reviewers without handing out credentials.
+Setting `DEMO_GUEST_ACCESS=true` lets a signed-out visitor browse every
+register, approval, obligation and validation record with the
+`read_only_auditor` role. Uploads, decisions, imports, AI calls and reset are
+all refused server-side, so the demo stays open to reviewers who would rather
+not type anything.
+
+### Keeping the AI budget bounded
+
+A published password means anyone can reach the model-backed routes, and per-user
+rate limiting alone does not bound the bill: every visitor shares the one demo
+identity, so they share one bucket, and a bucket that refills every ten minutes
+still has no ceiling over a day.
+
+Three layers sit in front of every model call:
+
+| Layer                     | Scope                                    | Purpose                                   |
+| ------------------------- | ---------------------------------------- | ----------------------------------------- |
+| Per-actor burst limit     | Per account, per route, 10-minute window | Stops rapid repeats of one operation      |
+| Per-visitor hourly budget | Hashed client address, 1-hour window     | Stops one person draining the shared pool |
+| Shared daily budget       | Whole deployment, per UTC day            | The actual cost ceiling                   |
+
+Calls are priced in weighted units reflecting how many model round-trips they
+make: one analysis costs 1, Management Insights 2, and a 15-document validation
+run 15 — so the expensive operation cannot be clicked repeatedly to drain the
+day.
+
+The design fails closed. If the counters cannot be read or written the call is
+refused rather than allowed, because the failure mode of guessing wrong is an
+unbounded bill. Reservations are atomic upserts, so two concurrent requests
+cannot both claim the last unit, and a reservation refused by a later layer is
+refunded rather than burned.
+
+Exhausting the budget disables **model calls only**. Every saved record, the
+seeded validation report, the audit history and the register exports stay fully
+browsable, and the remaining allowance is shown in the AI accuracy view.
 
 ## Commands
 
@@ -311,9 +353,9 @@ npm run quality
 - The DeepSeek key is read server-side only; raw file content and model output are never exposed as client environment variables.
 - Uploads are treated as untrusted: extension, MIME type, file signature, size, UTF-8 text and PDF structure are all validated.
 - PDF preflight records page count, checked pages, character counts, blank/sparse pages and rotation. Risky documents are blocked or explicitly marked for manual review.
-- Hosted API access requires a Sites identity, a valid temporary demo session, or — when enabled — the read-only guest role. State-changing requests are same-origin checked.
-- AI endpoints are rate limited per user and persisted in D1. Demo login allows at most 5 attempts in 15 minutes.
-- Temporary demo sessions use signed, HttpOnly, SameSite cookies that expire after 12 hours.
+- Hosted API access requires a signed session cookie or — when enabled — the read-only guest role. State-changing requests are same-origin checked.
+- AI endpoints sit behind three layers: a per-actor burst limit, a per-visitor hourly budget keyed on a hashed client address, and a shared daily unit ceiling for the whole deployment. All are persisted in D1 and fail closed. Sign-in allows at most 5 attempts per 15 minutes per address.
+- Sessions use signed, HttpOnly, SameSite cookies that expire after 12 hours. The role is re-read from configuration on every request, so a downgrade takes effect without waiting for the cookie to expire.
 - Material state changes are written to immutable event or audit logs. Exports are authorized server-side and leave a record.
 
 ## Quality and release baseline
@@ -321,7 +363,7 @@ npm run quality
 | Item                               | Current baseline     |
 | ---------------------------------- | -------------------- |
 | Schema version                     | 21                   |
-| Automated tests                    | 23 files / 140 tests |
+| Automated tests                    | 25 files / 182 tests |
 | Fictional evaluation documents     | 15                   |
 | Contracts after reset              | 7                    |
 | Suppliers after reset              | 8                    |

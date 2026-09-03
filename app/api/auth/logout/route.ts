@@ -1,5 +1,4 @@
-import { chatGPTSignOutPath } from '@/app/chatgpt-auth';
-import { clearDemoSessionCookie } from '@/lib/demo-auth';
+import { clearDemoSessionCookie } from '@/lib/workspace-auth';
 
 export async function POST(request: Request) {
   const url = new URL(request.url);
@@ -12,16 +11,10 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Forbidden.' }, { status: 403 });
     }
   }
-  const hasSitesIdentity = Boolean(
-    request.headers.get('oai-authenticated-user-id'),
-  );
   return new Response(null, {
     status: 303,
     headers: {
-      Location: new URL(
-        hasSitesIdentity ? chatGPTSignOutPath('/') : '/',
-        url,
-      ).toString(),
+      Location: new URL('/', url).toString(),
       'Set-Cookie': clearDemoSessionCookie(url.protocol === 'https:'),
     },
   });

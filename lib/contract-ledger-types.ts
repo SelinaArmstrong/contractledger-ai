@@ -278,6 +278,13 @@ export type Workspace = {
   };
   /** Row cap applied to each register snapshot in this payload. */
   registerLimit: number;
+  /** Shared daily ceiling on model-backed calls for this deployment. */
+  aiBudget: {
+    dailyUnitLimit: number;
+    usedUnits: number;
+    remainingUnits: number;
+    resetsAt: string;
+  };
   contracts: Array<Record<string, string | number | null>>;
   suppliers: Array<Record<string, string | number | null>>;
   supplierRiskProfiles?: Record<string, SupplierRiskProfile>;

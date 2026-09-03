@@ -7,21 +7,41 @@ import {
   authorizeApiRequest,
   guestAccessEnabled,
   guestIdentity,
-  permissionsForRole,
-  resolveWorkspaceRole,
-  roleCan,
 } from './request-security';
+import {
+  permissionsForRole,
+  roleCan,
+  workspacePermissions,
+} from '@/lib/workspace-roles';
+import {
+  createDemoSessionToken,
+  demoSessionCookie,
+} from '@/lib/workspace-auth';
 
-const originalAssignments = process.env.WORKSPACE_ROLE_ASSIGNMENTS;
-const originalAdmins = process.env.DEMO_ADMIN_USER_IDS;
+const environmentKeys = [
+  'DEMO_GUEST_ACCESS',
+  'DEMO_AUTH_ROLE',
+  'DEMO_AUTH_USERNAME',
+  'DEMO_AUTH_PASSWORD',
+] as const;
+
+const original = Object.fromEntries(
+  environmentKeys.map((key) => [key, process.env[key]]),
+);
 
 afterEach(() => {
-  if (originalAssignments === undefined)
-    delete process.env.WORKSPACE_ROLE_ASSIGNMENTS;
-  else process.env.WORKSPACE_ROLE_ASSIGNMENTS = originalAssignments;
-  if (originalAdmins === undefined) delete process.env.DEMO_ADMIN_USER_IDS;
-  else process.env.DEMO_ADMIN_USER_IDS = originalAdmins;
+  for (const key of environmentKeys) {
+    const value = original[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
 });
+
+const HOSTED = 'https://contractledger.example/api/workspace';
+
+async function signedCookie() {
+  return demoSessionCookie(await createDemoSessionToken('demo'), true);
+}
 
 describe('workspace role authorization', () => {
   it('denies every material write to a read-only auditor', () => {
@@ -38,117 +58,28 @@ describe('workspace role authorization', () => {
       'reset_workspace',
     ] as const;
 
-    expect(roleCan('read_only_auditor', 'view_documents')).toBe(true);
-    expect(roleCan('read_only_auditor', 'export_data')).toBe(true);
     for (const permission of writes) {
       expect(roleCan('read_only_auditor', permission)).toBe(false);
     }
+    expect(roleCan('read_only_auditor', 'view_workspace')).toBe(true);
   });
 
-  it('returns 403 from the server guard for every denied auditor write', async () => {
-    delete process.env.WORKSPACE_ROLE_ASSIGNMENTS;
-    delete process.env.DEMO_ADMIN_USER_IDS;
-    const writes = [
-      'submit_documents',
-      'edit_verified_fields',
-      'edit_supplier_records',
-      'approve_exceptions',
-      'apply_amendments',
-      'complete_obligations',
-      'manage_imports',
-      'run_ai_assistant',
-      'manage_ai_governance',
-      'reset_workspace',
-    ] as const;
-    for (const permission of writes) {
-      const result = await authorizeApiRequest(
-        new Request('https://contractledger.example/api/test', {
-          method: 'POST',
-          headers: {
-            origin: 'https://contractledger.example',
-            'oai-authenticated-user-id': 'auditor-1',
-            'oai-authenticated-user-email': 'auditor@example.com',
-          },
-        }),
-        { permission },
-      );
-      expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.response.status).toBe(403);
-    }
-  });
-
-  it('separates verified-field editing from exception approval', () => {
+  it('keeps a contract administrator away from approving their own exceptions', () => {
     expect(roleCan('contract_administrator', 'edit_verified_fields')).toBe(
       true,
     );
     expect(roleCan('contract_administrator', 'approve_exceptions')).toBe(false);
-    expect(roleCan('approver', 'approve_exceptions')).toBe(true);
-    expect(roleCan('approver', 'edit_verified_fields')).toBe(false);
   });
 
-  it('uses configured identities and defaults hosted users to auditor', () => {
-    process.env.WORKSPACE_ROLE_ASSIGNMENTS = JSON.stringify({
-      'legal@example.com': 'legal_reviewer',
-    });
-    const base = { id: 'user-1', local: false, demo: false };
-    expect(resolveWorkspaceRole({ ...base, email: 'legal@example.com' })).toBe(
-      'legal_reviewer',
-    );
-    expect(
-      resolveWorkspaceRole({ ...base, email: 'unknown@example.com' }),
-    ).toBe('read_only_auditor');
-  });
-
-  it('grants administrators the complete permission catalog', () => {
-    expect(permissionsForRole('administrator')).toHaveLength(13);
+  it('gives the administrator every permission', () => {
+    expect(permissionsForRole('administrator')).toEqual([
+      ...workspacePermissions,
+    ]);
   });
 });
 
-describe('guest access', () => {
-  const original = process.env.DEMO_GUEST_ACCESS;
-  afterEach(() => {
-    if (original === undefined) delete process.env.DEMO_GUEST_ACCESS;
-    else process.env.DEMO_GUEST_ACCESS = original;
-  });
-
-  it('is disabled unless the deployment opts in', () => {
-    delete process.env.DEMO_GUEST_ACCESS;
-    expect(guestAccessEnabled()).toBe(false);
-    process.env.DEMO_GUEST_ACCESS = 'false';
-    expect(guestAccessEnabled()).toBe(false);
-    process.env.DEMO_GUEST_ACCESS = 'true';
-    expect(guestAccessEnabled()).toBe(true);
-  });
-
-  it('gives a guest the read-only auditor role', () => {
-    const guest = guestIdentity();
-    expect(
-      resolveWorkspaceRole({
-        id: guest.userId,
-        email: guest.email,
-        local: false,
-        demo: false,
-        guest: true,
-      }),
-    ).toBe('read_only_auditor');
-  });
-
-  it('never elevates a guest, even one listed as a hosted admin', () => {
-    process.env.DEMO_ADMIN_USER_IDS = GUEST_ACTOR_ID;
-    expect(
-      resolveWorkspaceRole({
-        id: GUEST_ACTOR_ID,
-        email: '',
-        local: true,
-        demo: true,
-        guest: true,
-      }),
-    ).toBe('read_only_auditor');
-    delete process.env.DEMO_ADMIN_USER_IDS;
-  });
-
-  it('withholds every write and AI permission from a guest', () => {
-    const granted = permissionsForRole('read_only_auditor');
+describe('demo_operator role', () => {
+  it('can run the full contract-operations workflow, approvals included', () => {
     for (const permission of [
       'submit_documents',
       'edit_verified_fields',
@@ -159,11 +90,151 @@ describe('guest access', () => {
       'manage_imports',
       'run_ai_assistant',
       'manage_ai_governance',
+      'export_data',
+    ] as const) {
+      expect(roleCan('demo_operator', permission)).toBe(true);
+    }
+  });
+
+  it('cannot reset the shared workspace, because its password is published', () => {
+    expect(roleCan('demo_operator', 'reset_workspace')).toBe(false);
+    expect(permissionsForRole('demo_operator')).not.toContain(
+      'reset_workspace',
+    );
+  });
+});
+
+describe('guest access', () => {
+  it('is disabled unless the deployment opts in', () => {
+    delete process.env.DEMO_GUEST_ACCESS;
+    expect(guestAccessEnabled()).toBe(false);
+    process.env.DEMO_GUEST_ACCESS = 'false';
+    expect(guestAccessEnabled()).toBe(false);
+    process.env.DEMO_GUEST_ACCESS = 'true';
+    expect(guestAccessEnabled()).toBe(true);
+  });
+
+  it('identifies itself as a guest viewer', () => {
+    expect(guestIdentity().userId).toBe(GUEST_ACTOR_ID);
+    expect(guestIdentity().guest).toBe(true);
+  });
+
+  it('withholds every write and AI permission from the guest role', () => {
+    const granted = permissionsForRole('read_only_auditor');
+    for (const permission of [
+      'submit_documents',
+      'edit_verified_fields',
+      'approve_exceptions',
+      'manage_imports',
+      'run_ai_assistant',
       'reset_workspace',
     ] as const) {
       expect(granted).not.toContain(permission);
     }
     expect(granted).toContain('view_workspace');
-    expect(granted).toContain('view_documents');
+  });
+});
+
+describe('authorizeApiRequest', () => {
+  it('refuses an anonymous hosted request when guest access is off', async () => {
+    delete process.env.DEMO_GUEST_ACCESS;
+    const result = await authorizeApiRequest(new Request(HOSTED), {
+      permission: 'view_workspace',
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(401);
+  });
+
+  it('admits an anonymous hosted request as a read-only guest when enabled', async () => {
+    process.env.DEMO_GUEST_ACCESS = 'true';
+    const result = await authorizeApiRequest(new Request(HOSTED), {
+      permission: 'view_workspace',
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.actor.guest).toBe(true);
+      expect(result.actor.role).toBe('read_only_auditor');
+    }
+  });
+
+  it('refuses a guest write even with guest access enabled', async () => {
+    process.env.DEMO_GUEST_ACCESS = 'true';
+    const result = await authorizeApiRequest(
+      new Request(HOSTED, { method: 'POST' }),
+      { permission: 'reset_workspace' },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(403);
+  });
+
+  it('admits a signed-in demo account with the demo_operator role', async () => {
+    const result = await authorizeApiRequest(
+      new Request(HOSTED, { headers: { cookie: await signedCookie() } }),
+      { permission: 'approve_exceptions' },
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.actor.role).toBe('demo_operator');
+      expect(result.actor.id).toBe('account:demo');
+      expect(result.actor.demo).toBe(true);
+    }
+  });
+
+  it('refuses a workspace reset from the signed-in demo account', async () => {
+    const result = await authorizeApiRequest(
+      new Request(HOSTED, {
+        method: 'POST',
+        headers: { cookie: await signedCookie() },
+      }),
+      { permission: 'reset_workspace' },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(403);
+  });
+
+  it('rejects a cross-origin write from a signed-in account', async () => {
+    const result = await authorizeApiRequest(
+      new Request(HOSTED, {
+        method: 'POST',
+        headers: {
+          cookie: await signedCookie(),
+          origin: 'https://attacker.example',
+        },
+      }),
+      { permission: 'edit_verified_fields' },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(403);
+  });
+
+  it('treats a loopback request as the local maintainer', async () => {
+    const result = await authorizeApiRequest(
+      new Request('http://localhost:3000/api/workspace'),
+      { permission: 'reset_workspace' },
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.actor.local).toBe(true);
+      expect(result.actor.role).toBe('administrator');
+    }
+  });
+
+  it('lets a signed-in account override the loopback shortcut', async () => {
+    const result = await authorizeApiRequest(
+      new Request('http://localhost:3000/api/workspace', {
+        headers: { cookie: await signedCookie() },
+      }),
+      { permission: 'view_workspace' },
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.actor.role).toBe('demo_operator');
   });
 });

@@ -8,6 +8,7 @@ import {
 import { getWorkspace } from '@/app/api/workspace/route';
 import { enforceRateLimit } from '@/lib/server/request-security';
 import { withApiRoute } from '@/lib/server/route-handler';
+import { reserveAIBudget } from '@/lib/server/ai-budget';
 
 const MODEL = 'deepseek-v4-flash';
 const PROMPT_VERSION = 'management-insights-2026.1';
@@ -147,6 +148,14 @@ export const POST = withApiRoute(
       600,
     );
     if (rateLimited) return rateLimited;
+    // A published demo password means anyone can reach this route, so the
+    // shared cost ceiling is enforced before the model is called.
+    const overBudget = await reserveAIBudget(
+      request,
+      actor,
+      'management-insights',
+    );
+    if (overBudget) return overBudget;
     const workspace = await getWorkspace();
     const selectedIds = new Set(input.recordIds);
     const contracts =

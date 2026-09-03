@@ -18,11 +18,11 @@ ContractLedger AI is an AI-assisted contract-operations workbench built on one r
 
 ## What is actually built
 
-Seven workspace roles across thirteen server-enforced permissions; rule-driven approvals that block executed registration until complete; page-level document preflight before any model call; explainable eight-factor supplier risk; obligations with evidence-backed completion; CSV/XLSX migration with dependency-aware rollback; XLSX/PDF/ICS exports; and a 15-document AI validation suite with a critical-field regression gate.
+Eight workspace roles across thirteen server-enforced permissions; rule-driven approvals that block executed registration until complete; page-level document preflight before any model call; explainable eight-factor supplier risk; obligations with evidence-backed completion; CSV/XLSX migration with dependency-aware rollback; XLSX/PDF/ICS exports; and a 15-document AI validation suite with a critical-field regression gate.
 
 ## What the evidence supports
 
-**Can claim:** implemented controls, reproducible fictional scenarios, dataset size, test coverage (23 files / 140 tests), and saved workflow metrics.
+**Can claim:** implemented controls, reproducible fictional scenarios, dataset size, test coverage (25 files / 182 tests), and saved workflow metrics.
 
 **Cannot claim yet:** real-company time savings, production-scale duplicate precision, legal outcome quality, or external notification delivery. The validation page ships a _seeded demonstration report_ that is labelled in the UI as replayed fixture data rather than a model measurement, and the timed-evidence panel refuses to state a percentage reduction until both manual and assisted modes have at least three recorded runs.
 

@@ -19,6 +19,7 @@ import {
 import { calculateSupplierRiskProfile } from '@/lib/supplier-risk';
 import { isIsoDate } from '@/lib/validation';
 import { withApiRoute } from '@/lib/server/route-handler';
+import { aiBudgetStatus } from '@/lib/server/ai-budget';
 import { WORKSPACE_REGISTER_LIMIT } from '@/lib/workspace-limits';
 
 const fieldSchema = z.object({
@@ -621,6 +622,7 @@ export async function getWorkspace() {
     intakes: intakeRows.results,
     keyDates: keyDateRows.results,
     registerLimit: WORKSPACE_REGISTER_LIMIT,
+    aiBudget: await aiBudgetStatus(),
     obligationMetrics: calculateObligationMetrics(keyDateRows.results),
     supplierAlerts: supplierAlertRows.results,
     supplierDocuments: supplierDocumentRows.results,

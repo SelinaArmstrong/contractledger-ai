@@ -3,7 +3,24 @@ import { env } from 'cloudflare:workers';
 import {
   demoSessionFromCookieHeader,
   verifyDemoSessionToken,
-} from '@/lib/demo-auth';
+} from '@/lib/workspace-auth';
+import {
+  permissionsForRole,
+  roleCan,
+  workspacePermissions,
+  workspaceRoles,
+  type WorkspacePermission,
+  type WorkspaceRole,
+} from '@/lib/workspace-roles';
+
+export {
+  permissionsForRole,
+  roleCan,
+  workspacePermissions,
+  workspaceRoles,
+  type WorkspacePermission,
+  type WorkspaceRole,
+};
 
 export type RequestActor = {
   id: string;
@@ -21,7 +38,7 @@ export const GUEST_ACTOR_ID = 'guest-viewer';
 /**
  * Public read-only browsing lets a reviewer open the hosted demo without
  * credentials. It is opt-in per deployment because it exposes every read route
- * to anonymous traffic; writes and AI calls stay behind a real identity.
+ * to anonymous traffic; writes and AI calls stay behind a signed-in account.
  */
 export function guestAccessEnabled() {
   return process.env.DEMO_GUEST_ACCESS === 'true';
@@ -39,107 +56,10 @@ export function guestIdentity() {
   };
 }
 
-export const workspaceRoles = [
-  'requester',
-  'contract_administrator',
-  'legal_reviewer',
-  'procurement_compliance_reviewer',
-  'approver',
-  'read_only_auditor',
-  'administrator',
-] as const;
-
-export type WorkspaceRole = (typeof workspaceRoles)[number];
-
-export const workspacePermissions = [
-  'view_workspace',
-  'view_documents',
-  'submit_documents',
-  'edit_verified_fields',
-  'edit_supplier_records',
-  'approve_exceptions',
-  'apply_amendments',
-  'complete_obligations',
-  'manage_imports',
-  'run_ai_assistant',
-  'manage_ai_governance',
-  'export_data',
-  'reset_workspace',
-] as const;
-
-export type WorkspacePermission = (typeof workspacePermissions)[number];
-
-const permissionPolicy: Record<
-  WorkspaceRole,
-  ReadonlySet<WorkspacePermission>
-> = {
-  requester: new Set(['view_workspace', 'view_documents', 'submit_documents']),
-  contract_administrator: new Set([
-    'view_workspace',
-    'view_documents',
-    'submit_documents',
-    'edit_verified_fields',
-    'edit_supplier_records',
-    'apply_amendments',
-    'complete_obligations',
-    'manage_imports',
-    'run_ai_assistant',
-    'manage_ai_governance',
-    'export_data',
-  ]),
-  legal_reviewer: new Set([
-    'view_workspace',
-    'view_documents',
-    'approve_exceptions',
-    'run_ai_assistant',
-  ]),
-  procurement_compliance_reviewer: new Set([
-    'view_workspace',
-    'view_documents',
-    'submit_documents',
-    'edit_supplier_records',
-    'approve_exceptions',
-    'complete_obligations',
-    'run_ai_assistant',
-  ]),
-  approver: new Set(['view_workspace', 'view_documents', 'approve_exceptions']),
-  read_only_auditor: new Set([
-    'view_workspace',
-    'view_documents',
-    'export_data',
-  ]),
-  administrator: new Set(workspacePermissions),
-};
-
-type AuthorizationOptions = {
-  permission?: WorkspacePermission;
-};
-
-type AuthorizationResult =
-  | { ok: true; actor: RequestActor }
-  | { ok: false; response: Response };
-
 function isLoopback(hostname: string) {
   return (
     hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
   );
-}
-
-function decodedDisplayName(headers: Headers) {
-  const encoded = headers.get('oai-authenticated-user-full-name');
-  if (
-    !encoded ||
-    headers.get('oai-authenticated-user-full-name-encoding') !==
-      'percent-encoded-utf-8'
-  ) {
-    return '';
-  }
-
-  try {
-    return decodeURIComponent(encoded).trim();
-  } catch {
-    return '';
-  }
 }
 
 function sameOrigin(request: Request) {
@@ -152,79 +72,34 @@ function sameOrigin(request: Request) {
   }
 }
 
-function hostedAdminIds() {
-  return new Set(
-    (process.env.DEMO_ADMIN_USER_IDS ?? '')
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean),
-  );
-}
+type AuthorizationOptions = {
+  permission?: WorkspacePermission;
+};
 
-function configuredRoleAssignments() {
-  const raw = process.env.WORKSPACE_ROLE_ASSIGNMENTS?.trim();
-  if (!raw) return new Map<string, WorkspaceRole>();
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    return new Map(
-      Object.entries(parsed).flatMap(([identity, role]) =>
-        typeof role === 'string' &&
-        workspaceRoles.includes(role as WorkspaceRole)
-          ? [[identity.trim().toLowerCase(), role as WorkspaceRole]]
-          : [],
-      ),
-    );
-  } catch {
-    return new Map<string, WorkspaceRole>();
-  }
-}
+type AuthorizationResult =
+  | { ok: true; actor: RequestActor }
+  | { ok: false; response: Response };
 
-export function resolveWorkspaceRole(actor: {
-  id: string;
-  email: string;
-  local: boolean;
-  demo: boolean;
-  guest?: boolean;
-}): WorkspaceRole {
-  if (actor.guest) return 'read_only_auditor';
-  if (actor.local || actor.demo || hostedAdminIds().has(actor.id)) {
-    return 'administrator';
-  }
-  const assignments = configuredRoleAssignments();
-  return (
-    assignments.get(actor.id.toLowerCase()) ??
-    assignments.get(actor.email.toLowerCase()) ??
-    'read_only_auditor'
-  );
-}
-
-export function roleCan(role: WorkspaceRole, permission: WorkspacePermission) {
-  return permissionPolicy[role].has(permission);
-}
-
-export function permissionsForRole(role: WorkspaceRole) {
-  return workspacePermissions.filter((permission) => roleCan(role, permission));
-}
-
+/**
+ * Resolves who is making the request and whether their role allows it.
+ *
+ * There is exactly one way to sign in: a signed session cookie issued by
+ * `/api/auth/login` for a configured workspace account. Loopback requests are
+ * treated as the maintainer so local development needs no credentials, and an
+ * anonymous visitor becomes a read-only guest when the deployment opts in.
+ */
 export async function authorizeApiRequest(
   request: Request,
   options: AuthorizationOptions = {},
 ): Promise<AuthorizationResult> {
   const url = new URL(request.url);
   const local = isLoopback(url.hostname);
-  const id = request.headers.get('oai-authenticated-user-id')?.trim() ?? '';
-  const email =
-    request.headers.get('oai-authenticated-user-email')?.trim() ?? '';
-  const demoSession =
-    !local && !id
-      ? await verifyDemoSessionToken(
-          demoSessionFromCookieHeader(request.headers.get('cookie')),
-        )
-      : null;
+  const session = await verifyDemoSessionToken(
+    demoSessionFromCookieHeader(request.headers.get('cookie')),
+  );
+  const guest = !local && !session && guestAccessEnabled();
 
-  const guest = !local && !id && !demoSession && guestAccessEnabled();
-
-  if (!local && !id && !demoSession && !guest) {
+  if (!local && !session && !guest) {
     return {
       ok: false,
       response: Response.json(
@@ -247,49 +122,37 @@ export async function authorizeApiRequest(
     };
   }
 
-  const actorWithoutRole = local
+  // A signed-in account wins over the loopback shortcut, so the maintainer can
+  // sign in locally as the demo role to check what a reviewer actually sees.
+  const actor: RequestActor = session
     ? {
-        id: 'local-demo-user',
-        email: 'local-demo@contractledger.invalid',
-        name: 'Selina Armstrong',
-        local: true,
-        demo: false,
+        id: `account:${session.username}`,
+        email: session.email,
+        name: session.displayName,
+        local,
+        demo: true,
         guest: false,
+        role: session.role,
       }
-    : demoSession
+    : local
       ? {
-          id: `demo:${demoSession.username}`,
-          email: demoSession.email,
-          name: demoSession.displayName,
-          local: false,
-          demo: true,
+          id: 'local-maintainer',
+          email: 'local@contractledger.invalid',
+          name: 'Local maintainer',
+          local: true,
+          demo: false,
           guest: false,
+          role: 'administrator',
         }
-      : guest
-        ? {
-            id: GUEST_ACTOR_ID,
-            email: '',
-            name: 'Guest viewer',
-            local: false,
-            demo: false,
-            guest: true,
-          }
-        : {
-            id,
-            email,
-            name:
-              decodedDisplayName(request.headers) ||
-              email ||
-              'Authenticated user',
-            local: false,
-            demo: false,
-            guest: false,
-          };
-
-  const actor: RequestActor = {
-    ...actorWithoutRole,
-    role: resolveWorkspaceRole(actorWithoutRole),
-  };
+      : {
+          id: GUEST_ACTOR_ID,
+          email: '',
+          name: 'Guest viewer',
+          local: false,
+          demo: false,
+          guest: true,
+          role: 'read_only_auditor',
+        };
 
   if (options.permission && !roleCan(actor.role, options.permission)) {
     return {

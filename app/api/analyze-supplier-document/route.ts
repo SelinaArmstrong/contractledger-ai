@@ -15,6 +15,7 @@ import {
   qualityWarnings,
 } from '@/lib/document-quality';
 import { withApiRoute } from '@/lib/server/route-handler';
+import { reserveAIBudget } from '@/lib/server/ai-budget';
 
 const MAX_PAGES = 20;
 const MAX_TEXT_CHARS = 40_000;
@@ -257,6 +258,14 @@ export const POST = withApiRoute(
       600,
     );
     if (rateLimited) return rateLimited;
+    // A published demo password means anyone can reach this route, so the
+    // shared cost ceiling is enforced before the model is called.
+    const overBudget = await reserveAIBudget(
+      request,
+      actor,
+      'supplier-analysis',
+    );
+    if (overBudget) return overBudget;
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey)
       return Response.json(

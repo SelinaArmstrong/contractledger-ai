@@ -1,7 +1,7 @@
 # ContractLedger AI Resume Evidence Ledger
 
 **Evidence baseline:** 2026-09-02  
-**Repository quality gate:** 140 automated tests passing, phase-execution and Definition of Done gates passing, lint passing, TypeScript passing, production build passing
+**Repository quality gate:** 182 automated tests passing, phase-execution and Definition of Done gates passing, lint passing, TypeScript passing, production build passing
 **Release:** v1.0.0 portfolio-ready fictional baseline
 
 ## Claim rules
@@ -21,7 +21,7 @@
 | v0.4    | Legacy migration          | CSV/XLSX support, 5 MB and 150-row limits, versioned mapping, formula protection, duplicate review, correction report, transactional commit and rollback.                   | Bulk Import view, import records, tests                             | Claim implemented controls; do not claim real migration savings or duplicate precision yet.                                          |
 | v0.5    | Obligation execution      | Five seeded obligations: one evidence-backed on-time completion, one overdue evidence-required item, three upcoming items.                                                  | Obligations view, events, calendar export, tests                    | Expose the one-completion sample; do not generalize its rate.                                                                        |
 | v0.6    | AI governance             | Fifteen server-controlled fictional fixtures, field-level results, source coverage, correction evidence, version labels, and a two-point critical-accuracy regression gate. | AI Accuracy view, CSV appendix, evaluation tests                    | Quote achieved accuracy only from a named completed run with dataset and sample size.                                                |
-| v0.7    | Quality and permissions   | Seven roles, thirteen named permissions, server-side denied-write coverage, page-level document preflight.                                                                  | Role policy, preflight reports, authorization tests                 | Claim separation-of-duties implementation, not enterprise IAM certification.                                                         |
+| v0.7    | Quality and permissions   | Eight roles, thirteen named permissions, server-side denied-write coverage, page-level document preflight.                                                                  | Role policy, preflight reports, authorization tests                 | Claim separation-of-duties implementation, not enterprise IAM certification.                                                         |
 | v0.8    | Operational handoff       | Source-aware PDF review package, eight-factor explainable supplier risk, versioned integration outbox.                                                                      | Contract PDF export, supplier profile, outbox records, tests        | Say integration-ready; do not imply external delivery is active.                                                                     |
 | DoD     | Release governance        | Sixteen versioned criteria, evidence-path validation, explicit applicability decisions, and one combined quality command enforced in pull requests.                         | Definition of Done manifest, validator tests, CI workflow           | Claim an implemented repository gate, not proof of review quality or production outcomes.                                            |
 | Loop    | Phase governance          | Ten ordered execution steps, predecessor completion evidence, explicit integrity/audit start gates, and bounded phase metrics.                                              | Phase manifest, validator tests, CI workflow                        | Claim sequence and evidence enforcement, not substantive evidence quality.                                                           |
@@ -38,12 +38,14 @@
 - Designed human-in-the-loop controls that retain model and reviewer values, page-and-quote evidence, override reasons, actors, timestamps, and immutable decision history for material contract data.
 - Implemented controlled CSV/XLSX migration with versioned column mapping, normalization, duplicate review, row-level correction reporting, transactional commit, and dependency-aware rollback.
 - Created a 15-document fictional AI validation suite with field-level ground truth, source-coverage metrics, operational correction evidence, and a regression gate for critical-field accuracy.
-- Enforced seven contract-operations roles across thirteen server permissions and added document-quality preflight to block unreadable or unsupported source files before analysis.
+- Enforced eight contract-operations roles across thirteen server permissions and added document-quality preflight to block unreadable or unsupported source files before analysis.
 - Produced operational handoff artifacts including an audited review-package PDF, current-register workbook, obligation calendar export, and explainable eight-factor supplier-risk profile.
 - Consolidated 26 duplicated route authorization prologues into a single tested wrapper that centralises permission checks, database readiness and HTTP error semantics across 22 API routes.
 - Decomposed an 11,786-line interface module into 26 view, dialog and shared-primitive modules, verified by type checking, linting, a production build and a nine-view render pass with no behaviour change.
 - Added a read-only public access mode so reviewers can browse the full workspace without credentials while every write, import, AI and reset route stays refused server-side.
 - Built a timed-evidence panel that records manual and AI-assisted runs of the same scenario and withholds any percentage claim until both modes reach a stated minimum sample size.
+- Designed a three-layer spend ceiling for a publicly reachable AI demo — per-actor burst limiting, per-visitor hourly budgets on hashed addresses, and a weighted shared daily unit budget — that reserves atomically, refunds refused reservations, and fails closed so an unavailable counter cannot become an unbounded bill.
+- Contained a deliberately published demo credential by giving it a role that can run every operational workflow but cannot reset the shared workspace, keeping the demo useful without letting one visitor destroy another's session.
 - Built versioned release controls that enforce 16 Definition of Done criteria and a ten-step phase sequence with predecessor, integrity-defect, audit-defect, evidence, and metric gates.
 
 ## Evidence still needed before stronger claims

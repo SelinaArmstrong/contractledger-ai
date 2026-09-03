@@ -59,6 +59,7 @@ export function AIEvaluationView({
   const isSeededRun = String(latest?.model ?? '').startsWith(
     'seeded-demonstration',
   );
+  const budget = workspace?.aiBudget;
   const reviewedOperationalFields = Number(
     workspace?.aiGovernanceMetrics?.reviewed_fields ?? 0,
   );
@@ -195,8 +196,26 @@ export function AIEvaluationView({
           registers. Targets are development gates; achieved results remain
           versioned evidence. Evaluation fixtures are never inserted into
           operational contract or supplier tables.
+          {budget ? (
+            <>
+              {' '}
+              A full run costs 15 of the {budget.dailyUnitLimit} shared AI units
+              available each day; {budget.remainingUnits} remain.
+            </>
+          ) : null}
         </AlertDescription>
       </Alert>
+
+      {budget && budget.remainingUnits <= 0 ? (
+        <Alert className="mb-5 border-amber-200 bg-amber-50 text-amber-900">
+          <AlertTriangle />
+          <AlertTitle>Shared AI budget used up for today</AlertTitle>
+          <AlertDescription>
+            Every saved record, this validation report and the register exports
+            stay fully browsable. The budget resets at 00:00 UTC.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {isSeededRun ? (
         <Alert className="mb-5 border-slate-300 bg-slate-100 text-slate-800">

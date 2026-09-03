@@ -3,11 +3,10 @@ import { z } from 'zod';
 
 import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import {
-  authenticateDemoCredentials,
+  authenticateWorkspaceCredentials,
   createDemoSessionToken,
   demoSessionCookie,
-  getDemoAuthConfig,
-} from '@/lib/demo-auth';
+} from '@/lib/workspace-auth';
 
 const loginSchema = z.object({
   username: z.string().min(1).max(100),
@@ -52,8 +51,6 @@ async function loginRateLimited(request: Request) {
 export async function POST(request: Request) {
   if (!sameOrigin(request))
     return Response.redirect(redirectTo(request, 'invalid'), 303);
-  if (!getDemoAuthConfig())
-    return Response.redirect(redirectTo(request, 'unavailable'), 303);
 
   try {
     if (await loginRateLimited(request))
@@ -63,10 +60,13 @@ export async function POST(request: Request) {
       username: formData.get('username'),
       password: formData.get('password'),
     });
-    if (!authenticateDemoCredentials(input.username, input.password))
-      return Response.redirect(redirectTo(request, 'invalid'), 303);
+    const account = authenticateWorkspaceCredentials(
+      input.username,
+      input.password,
+    );
+    if (!account) return Response.redirect(redirectTo(request, 'invalid'), 303);
 
-    const token = await createDemoSessionToken();
+    const token = await createDemoSessionToken(account.username);
     return new Response(null, {
       status: 303,
       headers: {

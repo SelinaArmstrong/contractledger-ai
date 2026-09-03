@@ -57,3 +57,30 @@ If asked how phase scope is controlled, show `docs/execution-loop/phases/roadmap
 
 - **A reviewer asks whether the accuracy numbers are real:** answer no, immediately, and show the banner. The instrumentation is the claim, not the figure.
 - **Guest mode blocks something mid-demo:** that is the control working. Sign in for the full workflow, or narrate the refusal as the separation-of-duties boundary.
+
+## v1.2 additions to the demo path
+
+- **Signing in.** One method, username and password. The reviewer credentials
+  are `demo` / `demotest` and are printed in the README on purpose. If a
+  reviewer asks whether publishing a password is wise, that is the opening for
+  the next two points rather than an awkward moment.
+- **What the published account cannot do.** Try **Reset demo** while signed in
+  as `demo`: the server refuses it. The published account holds `demo_operator`,
+  which runs every workflow including approvals but cannot reset the workspace,
+  because one visitor should not be able to wipe the records another is
+  part-way through. Resetting needs the separate maintainer account.
+- **Why the AI bill is bounded.** Point at the line in **AI Accuracy &
+  Validation** showing how many shared AI units remain for the day. Explain the
+  three layers — per-actor burst limit, per-visitor hourly budget on a hashed
+  address, shared daily ceiling — and that a validation run costs 15 units
+  precisely because it makes 15 model calls. The design fails closed: if the
+  counters cannot be read, the call is refused rather than allowed.
+
+### Recovery paths
+
+- **AI is refused mid-demo:** that is the ceiling working, and it is worth
+  showing rather than hiding. Every saved record, the seeded validation report
+  and the exports stay browsable; move to those.
+- **Someone has left the workspace messy:** the demo account cannot reset it by
+  design. Sign in with the maintainer account, or run the demo locally where
+  loopback grants administrator.
