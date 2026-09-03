@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
-  DEFAULT_DEMO_PASSWORD,
-  DEFAULT_DEMO_USERNAME,
+  MINIMUM_SESSION_SECRET_LENGTH,
   authenticateWorkspaceCredentials,
   clearDemoSessionCookie,
   createDemoSessionToken,
   demoSessionCookie,
   demoSessionFromCookieHeader,
   findWorkspaceAccount,
+  signInAvailable,
   verifyDemoSessionToken,
   workspaceAccounts,
   workspaceAuthConfigurationError,
@@ -43,86 +43,137 @@ afterEach(() => {
   }
 });
 
-describe('workspace accounts', () => {
-  it('always offers the published demo account so a deployment is never locked out', () => {
-    const accounts = workspaceAccounts();
+function configureReviewer() {
+  process.env.WORKSPACE_SESSION_SECRET = STRONG_SECRET;
+  process.env.DEMO_AUTH_USERNAME = 'reviewer';
+  process.env.DEMO_AUTH_PASSWORD = 'a-private-reviewer-password';
+}
 
-    expect(accounts).toHaveLength(1);
-    expect(accounts[0].username).toBe(DEFAULT_DEMO_USERNAME);
-    expect(accounts[0].password).toBe(DEFAULT_DEMO_PASSWORD);
-    expect(accounts[0].role).toBe('demo_operator');
+describe('workspace accounts', () => {
+  it('ships no credentials, so a copy of the repository grants no access', () => {
+    expect(workspaceAccounts()).toEqual([]);
+    expect(signInAvailable()).toBe(false);
+    expect(authenticateWorkspaceCredentials('demo', 'demotest')).toBeNull();
   });
 
-  it('accepts the published demo credentials', () => {
-    expect(authenticateWorkspaceCredentials('demo', 'demotest')?.role).toBe(
-      'demo_operator',
+  it('refuses every account until a signing secret exists', () => {
+    process.env.DEMO_AUTH_USERNAME = 'reviewer';
+    process.env.DEMO_AUTH_PASSWORD = 'a-private-reviewer-password';
+
+    expect(workspaceAccounts()).toEqual([]);
+    expect(
+      authenticateWorkspaceCredentials(
+        'reviewer',
+        'a-private-reviewer-password',
+      ),
+    ).toBeNull();
+  });
+
+  it('refuses a signing secret that is too short to be worth signing with', () => {
+    process.env.DEMO_AUTH_USERNAME = 'reviewer';
+    process.env.DEMO_AUTH_PASSWORD = 'a-private-reviewer-password';
+    process.env.WORKSPACE_SESSION_SECRET = 'x'.repeat(
+      MINIMUM_SESSION_SECRET_LENGTH - 1,
     );
+
+    expect(workspaceAccounts()).toEqual([]);
+    expect(workspaceAuthConfigurationError()).toMatch(/at least 32/u);
+  });
+
+  it('enables the reviewer account once credentials and a secret are configured', () => {
+    configureReviewer();
+
+    expect(signInAvailable()).toBe(true);
+    expect(
+      authenticateWorkspaceCredentials(
+        'reviewer',
+        'a-private-reviewer-password',
+      )?.role,
+    ).toBe('demo_operator');
   });
 
   it('rejects a wrong password or a wrong username', () => {
-    expect(authenticateWorkspaceCredentials('demo', 'wrong')).toBeNull();
-    expect(authenticateWorkspaceCredentials('nobody', 'demotest')).toBeNull();
+    configureReviewer();
+
+    expect(authenticateWorkspaceCredentials('reviewer', 'wrong')).toBeNull();
+    expect(
+      authenticateWorkspaceCredentials('nobody', 'a-private-reviewer-password'),
+    ).toBeNull();
     expect(authenticateWorkspaceCredentials('', '')).toBeNull();
   });
 
-  it('lets a deployment override the demo credentials and role', () => {
-    process.env.DEMO_AUTH_USERNAME = 'reviewer';
-    process.env.DEMO_AUTH_PASSWORD = 'another-password';
+  it('lets a deployment choose the reviewer role', () => {
+    configureReviewer();
     process.env.DEMO_AUTH_ROLE = 'read_only_auditor';
 
-    expect(authenticateWorkspaceCredentials('demo', 'demotest')).toBeNull();
     expect(
-      authenticateWorkspaceCredentials('reviewer', 'another-password')?.role,
+      authenticateWorkspaceCredentials(
+        'reviewer',
+        'a-private-reviewer-password',
+      )?.role,
     ).toBe('read_only_auditor');
   });
 
   it('ignores an unknown role rather than failing open', () => {
+    configureReviewer();
     process.env.DEMO_AUTH_ROLE = 'superuser';
+
     expect(workspaceAccounts()[0].role).toBe('demo_operator');
+  });
+
+  it('reports a half-configured account instead of silently ignoring it', () => {
+    process.env.WORKSPACE_SESSION_SECRET = STRONG_SECRET;
+    process.env.DEMO_AUTH_USERNAME = 'reviewer';
+
+    expect(workspaceAuthConfigurationError()).toMatch(/reviewer username/u);
   });
 });
 
 describe('administrator account', () => {
-  it('is refused without a strong session secret, because the fallback key is public', () => {
+  it('is enabled alongside the reviewer once configured', () => {
+    configureReviewer();
     process.env.ADMIN_AUTH_USERNAME = 'selina';
-    process.env.ADMIN_AUTH_PASSWORD = 'a-real-password';
+    process.env.ADMIN_AUTH_PASSWORD = 'a-separate-maintainer-password';
 
-    expect(workspaceAccounts()).toHaveLength(1);
+    expect(workspaceAccounts()).toHaveLength(2);
     expect(
-      authenticateWorkspaceCredentials('selina', 'a-real-password'),
-    ).toBeNull();
-    expect(workspaceAuthConfigurationError()).toMatch(
-      /at least 32 characters/u,
-    );
-  });
-
-  it('is enabled once a strong session secret is configured', () => {
-    process.env.ADMIN_AUTH_USERNAME = 'selina';
-    process.env.ADMIN_AUTH_PASSWORD = 'a-real-password';
-    process.env.WORKSPACE_SESSION_SECRET = STRONG_SECRET;
-
-    expect(
-      authenticateWorkspaceCredentials('selina', 'a-real-password')?.role,
+      authenticateWorkspaceCredentials(
+        'selina',
+        'a-separate-maintainer-password',
+      )?.role,
     ).toBe('administrator');
     expect(workspaceAuthConfigurationError()).toBe('');
   });
 
-  it('reports an incomplete administrator configuration', () => {
+  it('can be the only account, so a deployment may omit the reviewer', () => {
+    process.env.WORKSPACE_SESSION_SECRET = STRONG_SECRET;
     process.env.ADMIN_AUTH_USERNAME = 'selina';
+    process.env.ADMIN_AUTH_PASSWORD = 'a-separate-maintainer-password';
+
+    expect(workspaceAccounts()).toHaveLength(1);
+    expect(workspaceAccounts()[0].role).toBe('administrator');
+  });
+
+  it('reports an incomplete administrator configuration', () => {
+    configureReviewer();
+    process.env.ADMIN_AUTH_USERNAME = 'selina';
+
     expect(workspaceAuthConfigurationError()).toMatch(
-      /must both be configured/u,
+      /administrator username/u,
     );
   });
 });
 
 describe('session tokens', () => {
+  beforeEach(configureReviewer);
+
   it('round-trips a signed session for a known account', async () => {
-    const token = await createDemoSessionToken('demo');
+    const token = await createDemoSessionToken('reviewer');
     const session = await verifyDemoSessionToken(token);
 
-    expect(session?.username).toBe('demo');
+    expect(session?.username).toBe('reviewer');
     expect(session?.role).toBe('demo_operator');
-    expect(session?.email).toBe('demo@contractledger.demo');
+    expect(session?.email).toBe('reviewer@contractledger.demo');
   });
 
   it('refuses to issue a session for an account that does not exist', async () => {
@@ -132,7 +183,7 @@ describe('session tokens', () => {
   });
 
   it('rejects a tampered payload or signature', async () => {
-    const token = await createDemoSessionToken('demo');
+    const token = await createDemoSessionToken('reviewer');
     const [payload, signature] = token.split('.');
 
     expect(await verifyDemoSessionToken(`${payload}x.${signature}`)).toBeNull();
@@ -143,7 +194,7 @@ describe('session tokens', () => {
 
   it('rejects an expired session', async () => {
     const issuedAt = Date.now();
-    const token = await createDemoSessionToken('demo', issuedAt);
+    const token = await createDemoSessionToken('reviewer', issuedAt);
 
     expect(
       await verifyDemoSessionToken(token, issuedAt + 13 * 60 * 60 * 1000),
@@ -151,7 +202,7 @@ describe('session tokens', () => {
   });
 
   it('reads the role from configuration at verification time, so a downgrade takes effect immediately', async () => {
-    const token = await createDemoSessionToken('demo');
+    const token = await createDemoSessionToken('reviewer');
     process.env.DEMO_AUTH_ROLE = 'read_only_auditor';
 
     expect((await verifyDemoSessionToken(token))?.role).toBe(
@@ -160,17 +211,23 @@ describe('session tokens', () => {
   });
 
   it('invalidates a session whose account was renamed away', async () => {
-    const token = await createDemoSessionToken('demo');
+    const token = await createDemoSessionToken('reviewer');
     process.env.DEMO_AUTH_USERNAME = 'someone-else';
 
     expect(await verifyDemoSessionToken(token)).toBeNull();
   });
 
   it('does not accept a session signed with a different secret', async () => {
-    process.env.WORKSPACE_SESSION_SECRET = STRONG_SECRET;
-    const token = await createDemoSessionToken('demo');
+    const token = await createDemoSessionToken('reviewer');
 
     process.env.WORKSPACE_SESSION_SECRET = `${STRONG_SECRET}-rotated`;
+    expect(await verifyDemoSessionToken(token)).toBeNull();
+  });
+
+  it('rejects every session once sign-in is unconfigured again', async () => {
+    const token = await createDemoSessionToken('reviewer');
+    delete process.env.WORKSPACE_SESSION_SECRET;
+
     expect(await verifyDemoSessionToken(token)).toBeNull();
   });
 });
@@ -205,7 +262,9 @@ describe('session cookie handling', () => {
 
 describe('account lookup', () => {
   it('finds a configured account and nothing else', () => {
-    expect(findWorkspaceAccount('demo')?.role).toBe('demo_operator');
+    configureReviewer();
+
+    expect(findWorkspaceAccount('reviewer')?.role).toBe('demo_operator');
     expect(findWorkspaceAccount('missing')).toBeNull();
   });
 });

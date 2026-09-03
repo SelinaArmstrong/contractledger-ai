@@ -5,25 +5,22 @@ export const DEMO_SESSION_COOKIE = 'contractledger_demo_session';
 const SESSION_TTL_SECONDS = 12 * 60 * 60;
 
 /**
- * The published demo account. Username and password are deliberately public:
- * this is a fictional portfolio workspace and a reviewer should be able to
- * sign in from the README without being sent a credential. Its role is
- * `demo_operator`, which can run every contract-operations workflow but
- * cannot reset the shared workspace out from under another visitor.
+ * Role the reviewer account carries unless the deployment says otherwise. It
+ * can run every contract-operations workflow but cannot reset the shared
+ * workspace out from under another visitor.
  */
-export const DEFAULT_DEMO_USERNAME = 'demo';
-export const DEFAULT_DEMO_PASSWORD = 'demotest';
 export const DEFAULT_DEMO_ROLE: WorkspaceRole = 'demo_operator';
 
 /**
- * Signing key used when no secret is configured. A forged cookie for the demo
- * account grants nothing that the published password does not already grant,
- * so a well-known fallback is acceptable *only* while every account it can
- * sign for is public. Configuring an administrator account therefore requires
- * a real `WORKSPACE_SESSION_SECRET`; see `workspaceAuthConfigurationError`.
+ * Minimum length for the session signing key.
+ *
+ * There is no fallback key. Credentials are supplied entirely by the
+ * deployment's secret store, so a well-known signing key would let anyone mint
+ * a valid session without knowing any password — the cookie would become the
+ * credential. No secret means no account can sign in; loopback development and
+ * read-only guest access are unaffected.
  */
-const PUBLIC_DEMO_SESSION_SECRET =
-  'contractledger-public-demo-session-key-not-a-secret';
+export const MINIMUM_SESSION_SECRET_LENGTH = 32;
 
 export type WorkspaceAccount = {
   username: string;
@@ -51,40 +48,55 @@ function roleValue(name: string, fallback: WorkspaceRole): WorkspaceRole {
     : fallback;
 }
 
+/** Returns the configured signing key, or '' when sign-in is not enabled. */
 function sessionSecret() {
-  return (
-    environmentValue('WORKSPACE_SESSION_SECRET') || PUBLIC_DEMO_SESSION_SECRET
-  );
+  const secret = environmentValue('WORKSPACE_SESSION_SECRET');
+  return secret.length >= MINIMUM_SESSION_SECRET_LENGTH ? secret : '';
 }
 
-function adminAccount(): WorkspaceAccount | null {
-  const username = environmentValue('ADMIN_AUTH_USERNAME');
-  const password = environmentValue('ADMIN_AUTH_PASSWORD');
-  // Refuse to enable an administrator that a well-known signing key could forge.
+function accountFrom(
+  userKey: string,
+  passwordKey: string,
+  displayKey: string,
+  fallbackDisplayName: string,
+  role: WorkspaceRole,
+): WorkspaceAccount | null {
+  const username = environmentValue(userKey);
+  const password = environmentValue(passwordKey);
   if (!username || !password) return null;
-  if (environmentValue('WORKSPACE_SESSION_SECRET').length < 32) return null;
   return {
     username,
     password,
-    displayName: environmentValue('ADMIN_AUTH_DISPLAY_NAME') || username,
-    role: 'administrator',
+    displayName: environmentValue(displayKey) || fallbackDisplayName,
+    role,
   };
 }
 
 /**
- * Every account that can sign in. The demo account always exists so the
- * deployment is never left with no way in; an optional administrator account
- * is what the maintainer uses to reset the workspace.
+ * Every account that can sign in. Credentials live only in the deployment's
+ * secret store: nothing here is defaulted, so a copy of this repository grants
+ * no access, and an unconfigured deployment has no sign-in rather than a
+ * guessable one.
  */
 export function workspaceAccounts(): WorkspaceAccount[] {
-  const demo: WorkspaceAccount = {
-    username: environmentValue('DEMO_AUTH_USERNAME') || DEFAULT_DEMO_USERNAME,
-    password: environmentValue('DEMO_AUTH_PASSWORD') || DEFAULT_DEMO_PASSWORD,
-    displayName: environmentValue('DEMO_AUTH_DISPLAY_NAME') || 'Demo reviewer',
-    role: roleValue('DEMO_AUTH_ROLE', DEFAULT_DEMO_ROLE),
-  };
-  const admin = adminAccount();
-  return admin ? [demo, admin] : [demo];
+  if (!sessionSecret()) return [];
+  const reviewer = accountFrom(
+    'DEMO_AUTH_USERNAME',
+    'DEMO_AUTH_PASSWORD',
+    'DEMO_AUTH_DISPLAY_NAME',
+    'Reviewer',
+    roleValue('DEMO_AUTH_ROLE', DEFAULT_DEMO_ROLE),
+  );
+  const admin = accountFrom(
+    'ADMIN_AUTH_USERNAME',
+    'ADMIN_AUTH_PASSWORD',
+    'ADMIN_AUTH_DISPLAY_NAME',
+    'Maintainer',
+    'administrator',
+  );
+  return [reviewer, admin].filter(
+    (account): account is WorkspaceAccount => account !== null,
+  );
 }
 
 export function findWorkspaceAccount(username: string) {
@@ -95,14 +107,29 @@ export function findWorkspaceAccount(username: string) {
 
 /** Surfaced on the sign-in page so a misconfiguration is visible, not silent. */
 export function workspaceAuthConfigurationError() {
-  const adminUser = environmentValue('ADMIN_AUTH_USERNAME');
-  const adminPassword = environmentValue('ADMIN_AUTH_PASSWORD');
-  if (!adminUser && !adminPassword) return '';
-  if (!adminUser || !adminPassword)
-    return 'The administrator username and password must both be configured.';
-  if (environmentValue('WORKSPACE_SESSION_SECRET').length < 32)
-    return 'An administrator account requires WORKSPACE_SESSION_SECRET of at least 32 characters.';
+  if (!environmentValue('WORKSPACE_SESSION_SECRET'))
+    return 'Sign-in is not configured on this deployment: WORKSPACE_SESSION_SECRET is missing.';
+  if (!sessionSecret())
+    return `WORKSPACE_SESSION_SECRET must contain at least ${MINIMUM_SESSION_SECRET_LENGTH} characters.`;
+  // A half-configured account is a more specific and more useful diagnosis
+  // than "nothing is configured", so it is reported first.
+  for (const [user, password, label] of [
+    ['DEMO_AUTH_USERNAME', 'DEMO_AUTH_PASSWORD', 'reviewer'],
+    ['ADMIN_AUTH_USERNAME', 'ADMIN_AUTH_PASSWORD', 'administrator'],
+  ] as const) {
+    const hasUser = Boolean(environmentValue(user));
+    const hasPassword = Boolean(environmentValue(password));
+    if (hasUser !== hasPassword)
+      return `The ${label} username and password must both be configured.`;
+  }
+  if (!workspaceAccounts().length)
+    return 'Sign-in is not configured on this deployment: no account credentials are set.';
   return '';
+}
+
+/** True when at least one account can sign in on this deployment. */
+export function signInAvailable() {
+  return workspaceAccounts().length > 0;
 }
 
 function constantTimeEqual(left: string, right: string) {
@@ -179,6 +206,8 @@ export async function createDemoSessionToken(
   username: string,
   now = Date.now(),
 ) {
+  const secret = sessionSecret();
+  if (!secret) throw new Error('Sign-in is not configured.');
   if (!findWorkspaceAccount(username))
     throw new Error('Unknown workspace account.');
   const payload = textToBase64Url(
@@ -187,18 +216,21 @@ export async function createDemoSessionToken(
       expiresAt: Math.floor(now / 1000) + SESSION_TTL_SECONDS,
     }),
   );
-  return `${payload}.${await sign(payload, sessionSecret())}`;
+  return `${payload}.${await sign(payload, secret)}`;
 }
 
 export async function verifyDemoSessionToken(
   token: string | null | undefined,
   now = Date.now(),
 ): Promise<DemoSession | null> {
-  if (!token) return null;
+  const secret = sessionSecret();
+  // No signing key means sign-in is switched off; every cookie is refused
+  // rather than verified against an empty key.
+  if (!secret || !token) return null;
   const [payload, suppliedSignature, ...extra] = token.split('.');
   if (!payload || !suppliedSignature || extra.length) return null;
 
-  const expectedSignature = await sign(payload, sessionSecret());
+  const expectedSignature = await sign(payload, secret);
   if (!constantTimeEqual(suppliedSignature, expectedSignature)) return null;
 
   try {

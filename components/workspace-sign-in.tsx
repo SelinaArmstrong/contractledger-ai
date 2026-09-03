@@ -20,9 +20,12 @@ const errorMessages: Record<string, string> = {
 
 export function WorkspaceSignIn({
   configurationError,
+  signInEnabled,
   error,
 }: {
   configurationError: string;
+  /** False when the deployment has no configured account to sign in to. */
+  signInEnabled: boolean;
   error?: string;
 }) {
   const errorMessage =
@@ -89,8 +92,9 @@ export function WorkspaceSignIn({
               Sign in to continue
             </h2>
             <p className="mt-3 text-sm leading-6 text-slate-500">
-              Sign in with the workspace demo account. Everything inside is
-              fictional portfolio data.
+              {signInEnabled
+                ? 'Sign in with the workspace credentials you were given. Everything inside is fictional portfolio data.'
+                : 'This deployment has no sign-in configured.'}
             </p>
 
             {errorMessage ? (
@@ -103,65 +107,65 @@ export function WorkspaceSignIn({
               </div>
             ) : null}
 
-            <form
-              action="/api/auth/login"
-              method="post"
-              className="mt-6 space-y-4"
-            >
-              <div className="block">
-                <label
-                  htmlFor="demo-username"
-                  className="mb-1.5 block text-xs font-medium text-[#294454]"
-                >
-                  Username
-                </label>
-                <Input
-                  id="demo-username"
-                  name="username"
-                  type="text"
-                  autoComplete="username"
-                  required
-                  maxLength={100}
-                  className="h-10 bg-white"
-                />
-              </div>
-              <div className="block">
-                <label
-                  htmlFor="demo-password"
-                  className="mb-1.5 block text-xs font-medium text-[#294454]"
-                >
-                  Password
-                </label>
-                <Input
-                  id="demo-password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  maxLength={300}
-                  className="h-10 bg-white"
-                />
-              </div>
-              <button
-                type="submit"
-                className={cn(
-                  buttonVariants({ size: 'lg' }),
-                  'h-11 w-full bg-[#1d718f] px-4 text-white hover:bg-[#185f78]',
-                )}
+            {signInEnabled ? (
+              <form
+                action="/api/auth/login"
+                method="post"
+                className="mt-6 space-y-4"
               >
-                Sign in to demo
-                <ArrowRight data-icon="inline-end" />
-              </button>
-            </form>
-
-            <div className="mt-5 rounded-lg border border-[#cfe2ea] bg-[#f2f8fb] px-4 py-3 text-xs leading-5 text-[#22536a]">
-              <p className="font-medium">Reviewer credentials</p>
-              <p className="mt-1">
-                Username <code className="font-mono">demo</code> · password{' '}
-                <code className="font-mono">demotest</code>. These are published
-                on purpose — the workspace holds only fictional records.
+                <div className="block">
+                  <label
+                    htmlFor="demo-username"
+                    className="mb-1.5 block text-xs font-medium text-[#294454]"
+                  >
+                    Username
+                  </label>
+                  <Input
+                    id="demo-username"
+                    name="username"
+                    type="text"
+                    autoComplete="username"
+                    required
+                    maxLength={100}
+                    className="h-10 bg-white"
+                  />
+                </div>
+                <div className="block">
+                  <label
+                    htmlFor="demo-password"
+                    className="mb-1.5 block text-xs font-medium text-[#294454]"
+                  >
+                    Password
+                  </label>
+                  <Input
+                    id="demo-password"
+                    name="password"
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    maxLength={300}
+                    className="h-10 bg-white"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className={cn(
+                    buttonVariants({ size: 'lg' }),
+                    'h-11 w-full bg-[#1d718f] px-4 text-white hover:bg-[#185f78]',
+                  )}
+                >
+                  Sign in to demo
+                  <ArrowRight data-icon="inline-end" />
+                </button>
+              </form>
+            ) : (
+              <p className="mt-6 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
+                No workspace account is configured on this deployment. The
+                credentials and the session signing key are supplied entirely by
+                the host&apos;s secret store, so nothing in the repository
+                grants access.
               </p>
-            </div>
+            )}
 
             <p className="mt-5 text-center text-[10px] leading-4 text-slate-400">
               The browser receives only a signed, HttpOnly, time-limited session

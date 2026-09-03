@@ -4,8 +4,6 @@
 
 **[▶ Open the live demo](https://contractledger.selinaq.com/)** · [Case study](PORTFOLIO_CASE_STUDY.md) · [Interview one-pager](docs/INTERVIEW_ONE_PAGER.md) · [中文文档](README.zh-CN.md)
 
-> **Reviewer sign-in:** username `demo`, password `demotest`. Published deliberately — every record in the workspace is fictional.
-
 ![ContractLedger AI social preview](public/og.jpg)
 
 **Version:** `v1.0.0` (portfolio baseline) · **Status:** roadmap complete; core lifecycle, demo data, automated tests and release evidence all committed.
@@ -214,13 +212,13 @@ All variables are server-side. Never add a `NEXT_PUBLIC_` prefix, and never comm
 | `DEEPSEEK_API_KEY`              | For AI features        | Contract/supplier analysis, Assistant, Insights, evaluations                |
 | `SITE_URL`                      | No                     | Canonical URL for social preview metadata (default `http://localhost:3000`) |
 | `DEMO_GUEST_ACCESS`             | No                     | `true` lets signed-out visitors browse read-only                            |
-| `DEMO_AUTH_USERNAME`            | No                     | Demo account username (default `demo`)                                      |
-| `DEMO_AUTH_PASSWORD`            | No                     | Demo account password (default `demotest`)                                  |
-| `DEMO_AUTH_DISPLAY_NAME`        | No                     | Display name for the demo account                                           |
-| `DEMO_AUTH_ROLE`                | No                     | Role granted to the demo account (default `demo_operator`)                  |
+| `WORKSPACE_SESSION_SECRET`      | **For any sign-in**    | Random session-signing secret, at least 32 characters                       |
+| `DEMO_AUTH_USERNAME`            | For a reviewer login   | Reviewer account username — no default                                      |
+| `DEMO_AUTH_PASSWORD`            | For a reviewer login   | Reviewer account password — no default                                      |
+| `DEMO_AUTH_DISPLAY_NAME`        | No                     | Display name for the reviewer account                                       |
+| `DEMO_AUTH_ROLE`                | No                     | Role granted to the reviewer account (default `demo_operator`)              |
 | `ADMIN_AUTH_USERNAME`           | For a maintainer login | Optional administrator account — the only way to reset a hosted workspace   |
 | `ADMIN_AUTH_PASSWORD`           | For a maintainer login | Use a strong password                                                       |
-| `WORKSPACE_SESSION_SECRET`      | With `ADMIN_AUTH_*`    | Random session-signing secret, at least 32 characters                       |
 | `AI_DAILY_UNIT_BUDGET`          | No                     | Shared ceiling on model calls per UTC day (default `250`)                   |
 | `AI_VISITOR_HOURLY_UNIT_BUDGET` | No                     | Ceiling per visitor per hour (default `40`)                                 |
 
@@ -232,14 +230,23 @@ There is one sign-in method: a username and password checked against the
 configured workspace accounts, which issues a signed, HttpOnly, 12-hour
 session cookie.
 
-**The demo account is `demo` / `demotest`, and that is published on purpose.**
-The workspace holds only fictional records, so a reviewer should be able to
-sign in straight from this README rather than asking for a credential.
+**No credentials ship in this repository.** Both accounts and the session
+signing key come from the host's secret store, so cloning this repository
+grants no access, and a deployment with nothing configured simply has no
+sign-in rather than a guessable one. `WORKSPACE_SESSION_SECRET` is required for
+any account to work at all — without it, a known signing key would let anyone
+mint a valid session without a password.
+
+Reviewers who need the full write and AI workflow are given credentials
+directly. Everyone else gets the read-only guest view below, which needs no
+account and cannot spend the AI budget.
 
 Loopback requests are treated as the local maintainer, so `npm run dev` needs
 no credentials. A signed-in session takes precedence over that shortcut, which
-lets you sign in locally as the demo account to see exactly what a reviewer
-sees.
+lets you sign in locally as the reviewer account to see exactly what they see.
+
+Generate a signing key with `openssl rand -base64 48` and set the secrets in
+your host's runtime configuration — never in the repository.
 
 ### Roles and permissions
 
@@ -248,10 +255,11 @@ Eight roles map to thirteen named permissions enforced on the server:
 `requester` · `contract_administrator` · `legal_reviewer` · `procurement_compliance_reviewer` · `approver` · `read_only_auditor` · `demo_operator` · `administrator`
 
 A contract administrator can verify operational data but **cannot approve their
-own exceptions**. `demo_operator` — the role the published account carries —
+own exceptions**. `demo_operator` — the role the reviewer account carries —
 can run every contract-operations workflow end to end, approvals included, but
-deliberately **cannot reset the workspace**: the password is public, and a
-reset would wipe the records another visitor is part-way through. Resetting a
+deliberately **cannot reset the workspace**: credentials are shared with more
+than one reviewer, and a reset would wipe the records another is part-way
+through. Resetting a
 hosted workspace requires the optional `ADMIN_AUTH_*` account.
 
 Set `DEMO_AUTH_ROLE` to any role in the policy to demonstrate the product from
@@ -267,10 +275,10 @@ not type anything.
 
 ### Keeping the AI budget bounded
 
-A published password means anyone can reach the model-backed routes, and per-user
-rate limiting alone does not bound the bill: every visitor shares the one demo
-identity, so they share one bucket, and a bucket that refills every ten minutes
-still has no ceiling over a day.
+Shared credentials mean several reviewers reach the model-backed routes under
+one identity, and per-user rate limiting alone does not bound the bill: they
+share one bucket, and a bucket that refills every ten minutes still has no
+ceiling over a day.
 
 Three layers sit in front of every model call:
 

@@ -23,6 +23,7 @@ const environmentKeys = [
   'DEMO_AUTH_ROLE',
   'DEMO_AUTH_USERNAME',
   'DEMO_AUTH_PASSWORD',
+  'WORKSPACE_SESSION_SECRET',
 ] as const;
 
 const original = Object.fromEntries(
@@ -39,8 +40,17 @@ afterEach(() => {
 
 const HOSTED = 'https://contractledger.example/api/workspace';
 
+/** Configures an account, since nothing is enabled without host secrets. */
+function configureReviewer() {
+  process.env.WORKSPACE_SESSION_SECRET =
+    'a-test-only-session-secret-that-is-long-enough';
+  process.env.DEMO_AUTH_USERNAME = 'reviewer';
+  process.env.DEMO_AUTH_PASSWORD = 'a-private-reviewer-password';
+}
+
 async function signedCookie() {
-  return demoSessionCookie(await createDemoSessionToken('demo'), true);
+  configureReviewer();
+  return demoSessionCookie(await createDemoSessionToken('reviewer'), true);
 }
 
 describe('workspace role authorization', () => {
@@ -179,7 +189,7 @@ describe('authorizeApiRequest', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.actor.role).toBe('demo_operator');
-      expect(result.actor.id).toBe('account:demo');
+      expect(result.actor.id).toBe('account:reviewer');
       expect(result.actor.demo).toBe(true);
     }
   });

@@ -5,6 +5,7 @@ import { WorkspaceSignIn } from '@/components/workspace-sign-in';
 import { viewForSlug } from '@/components/workspace/view-routing';
 import {
   DEMO_SESSION_COOKIE,
+  signInAvailable,
   verifyDemoSessionToken,
   workspaceAuthConfigurationError,
 } from '@/lib/workspace-auth';
@@ -94,6 +95,7 @@ export default async function Home({
     return (
       <WorkspaceSignIn
         configurationError={workspaceAuthConfigurationError()}
+        signInEnabled={signInAvailable()}
         error={
           typeof params.auth_error === 'string' ? params.auth_error : undefined
         }

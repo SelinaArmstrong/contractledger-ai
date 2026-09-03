@@ -4,8 +4,6 @@
 
 **[▶ 打开在线 Demo](https://contractledger.selinaq.com/)** · [作品集案例](PORTFOLIO_CASE_STUDY.md) · [面试速览](docs/INTERVIEW_ONE_PAGER.md) · [English](README.md)
 
-> **审阅账号：** 用户名 `demo`，密码 `demotest`。刻意公开 —— 工作区内全部为虚构记录。
-
 ![ContractLedger AI social preview](public/og.jpg)
 
 **当前版本：** `v1.0.0`（Portfolio-ready baseline，2026-09-02）
@@ -236,20 +234,20 @@ React 工作台
 
 全部为服务端变量，不要加 `NEXT_PUBLIC_` 前缀，也不要提交真实凭据。
 
-| 变量                            | 必填                       | 用途                                             |
-| ------------------------------- | -------------------------- | ------------------------------------------------ |
-| `DEEPSEEK_API_KEY`              | AI 功能必填                | 合同/供应商分析、Assistant、Insights、评估       |
-| `SITE_URL`                      | 否                         | Open Graph 等站点元数据的规范 URL                |
-| `DEMO_GUEST_ACCESS`             | 否                         | 设为 `true` 时未登录访客可只读浏览               |
-| `DEMO_AUTH_USERNAME`            | 否                         | Demo 账号用户名（默认 `demo`）                   |
-| `DEMO_AUTH_PASSWORD`            | 否                         | Demo 账号密码（默认 `demotest`）                 |
-| `DEMO_AUTH_DISPLAY_NAME`        | 否                         | Demo 账号显示名                                  |
-| `DEMO_AUTH_ROLE`                | 否                         | Demo 账号角色（默认 `demo_operator`）            |
-| `ADMIN_AUTH_USERNAME`           | 需要管理员登录时           | 可选管理员账号 —— 托管环境下重置工作区的唯一途径 |
-| `ADMIN_AUTH_PASSWORD`           | 需要管理员登录时           | 请使用强密码                                     |
-| `WORKSPACE_SESSION_SECRET`      | 配置 `ADMIN_AUTH_*` 时必填 | 至少 32 位的随机会话签名密钥                     |
-| `AI_DAILY_UNIT_BUDGET`          | 否                         | 全局每日模型调用上限（默认 `250`）               |
-| `AI_VISITOR_HOURLY_UNIT_BUDGET` | 否                         | 单访客每小时上限（默认 `40`）                    |
+| 变量                            | 必填               | 用途                                             |
+| ------------------------------- | ------------------ | ------------------------------------------------ |
+| `DEEPSEEK_API_KEY`              | AI 功能必填        | 合同/供应商分析、Assistant、Insights、评估       |
+| `SITE_URL`                      | 否                 | Open Graph 等站点元数据的规范 URL                |
+| `DEMO_GUEST_ACCESS`             | 否                 | 设为 `true` 时未登录访客可只读浏览               |
+| `WORKSPACE_SESSION_SECRET`      | **任何登录都必填** | 至少 32 位的随机会话签名密钥                     |
+| `DEMO_AUTH_USERNAME`            | 需要审阅账号时     | 审阅账号用户名 —— 无默认值                       |
+| `DEMO_AUTH_PASSWORD`            | 需要审阅账号时     | 审阅账号密码 —— 无默认值                         |
+| `DEMO_AUTH_DISPLAY_NAME`        | 否                 | 审阅账号显示名                                   |
+| `DEMO_AUTH_ROLE`                | 否                 | 审阅账号角色（默认 `demo_operator`）             |
+| `ADMIN_AUTH_USERNAME`           | 需要管理员登录时   | 可选管理员账号 —— 托管环境下重置工作区的唯一途径 |
+| `ADMIN_AUTH_PASSWORD`           | 需要管理员登录时   | 请使用强密码                                     |
+| `AI_DAILY_UNIT_BUDGET`          | 否                 | 全局每日模型调用上限（默认 `250`）               |
+| `AI_VISITOR_HOURLY_UNIT_BUDGET` | 否                 | 单访客每小时上限（默认 `40`）                    |
 
 ## 访问控制与成本控制
 
@@ -257,7 +255,11 @@ React 工作台
 
 只有一种登录方式：用户名 + 密码，校验通过后签发签名的 HttpOnly、12 小时有效的会话 Cookie。
 
-**Demo 账号是 `demo` / `demotest`，这是刻意公开的。** 工作区里只有虚构记录，招聘方应该能直接照着 README 登录，而不必先找你要账号。
+**仓库内不含任何凭据。** 账号和会话签名密钥全部来自托管平台的密钥存储，因此克隆这个仓库不会获得任何访问权限；未配置的部署是「没有登录入口」，而不是「有一个可猜的入口」。`WORKSPACE_SESSION_SECRET` 是任何账号生效的前提 —— 没有它，一个已知的签名密钥就能让任何人不凭密码伪造出有效会话。
+
+需要走完整写入 / AI 流程的招阅方，由你单独发放凭据；其他人走下面的只读访客视图，无需账号，也无法消耗 AI 额度。
+
+用 `openssl rand -base64 48` 生成签名密钥，并把这些值配置在托管平台的运行时变量里 —— 不要写进仓库。
 
 localhost 请求按本地维护者处理，所以 `npm run dev` 无需登录。已登录会话优先于该快捷方式 —— 这样你可以在本地用 demo 账号登录，看到的就是招聘方看到的画面。
 
@@ -267,7 +269,7 @@ localhost 请求按本地维护者处理，所以 `npm run dev` 无需登录。�
 
 `requester` · `contract_administrator` · `legal_reviewer` · `procurement_compliance_reviewer` · `approver` · `read_only_auditor` · `demo_operator` · `administrator`
 
-`contract_administrator` 可以核验业务数据，但**不能审批自己提出的例外**。公开账号所持的 `demo_operator` 可以走完整的合同运营流程（含审批），但**刻意不能重置工作区** —— 密码是公开的，一次重置会抹掉另一位访客正在进行到一半的记录。托管环境重置需要可选的 `ADMIN_AUTH_*` 账号。
+`contract_administrator` 可以核验业务数据，但**不能审批自己提出的例外**。审阅账号所持的 `demo_operator` 可以走完整的合同运营流程（含审批），但**刻意不能重置工作区** —— 凭据会发给不止一位审阅者，一次重置会抹掉另一位正在进行到一半的记录。托管环境重置需要可选的 `ADMIN_AUTH_*` 账号。
 
 把 `DEMO_AUTH_ROLE` 设为策略中的任意角色，即可从该角色视角演示产品，例如 `legal_reviewer` 或 `read_only_auditor`。
 
@@ -277,7 +279,7 @@ localhost 请求按本地维护者处理，所以 `npm run dev` 无需登录。�
 
 ### 如何防止 AI 接口被滥用
 
-密码公开意味着任何人都能触达模型接口，而仅靠按用户限流并不能约束账单：所有访客共用同一个 demo 身份，也就共用同一个令牌桶；而一个每十分钟就重新填满的桶，在一天的尺度上根本没有上限。
+共享凭据意味着多位审阅者以同一个身份触达模型接口，而仅靠按用户限流并不能约束账单：他们共用同一个令牌桶；而一个每十分钟就重新填满的桶，在一天的尺度上根本没有上限。
 
 每次模型调用前有三层防护：
 
