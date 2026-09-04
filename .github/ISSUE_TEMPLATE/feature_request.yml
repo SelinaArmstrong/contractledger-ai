@@ -1,0 +1,29 @@
+name: Feature or change proposal
+description: Suggest something the project should do differently
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is a portfolio project with a deliberately bounded scope — please
+        skim [ROADMAP.md](../blob/main/ROADMAP.md) first. Proposals that fit the
+        existing direction are much more likely to go anywhere.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve
+      description: Describe the problem, not the solution you have in mind.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What else you considered
+    validations:
+      required: false

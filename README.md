@@ -223,6 +223,9 @@ All variables are server-side. Never add a `NEXT_PUBLIC_` prefix, and never comm
 | `ADMIN_AUTH_PASSWORD`           | For a maintainer login | Use a strong password                                                       |
 | `AI_DAILY_UNIT_BUDGET`          | No                     | Shared ceiling on model calls per UTC day (default `250`)                   |
 | `AI_VISITOR_HOURLY_UNIT_BUDGET` | No                     | Ceiling per visitor per hour (default `40`)                                 |
+| `ALLOW_LOCAL_MAINTAINER`        | For local development  | `true` signs loopback requests in as the maintainer — **never set this on a hosted deployment** |
+| `TRUST_PROXY_ADDRESS_HEADER`    | No                     | `true` only when a proxy in front of the app overwrites `X-Forwarded-For`   |
+| `OPENAI_PROJECT_ID`             | For deploying          | Hosting project id, stamped into the build; deliberately not in the repository |
 
 ## Access and cost controls
 
@@ -246,6 +249,12 @@ account and cannot spend the AI budget.
 Loopback requests are treated as the local maintainer, so `npm run dev` needs
 no credentials. A signed-in session takes precedence over that shortcut, which
 lets you sign in locally as the reviewer account to see exactly what they see.
+
+`ALLOW_LOCAL_MAINTAINER` is what makes `npm run dev` work without credentials.
+A request's hostname comes from the client-supplied `Host` header, so the
+loopback shortcut is an explicit opt-in rather than something the app infers:
+a hosted deployment that never sets it cannot be talked into granting the
+administrator role, whatever `Host` a caller sends.
 
 Generate a signing key with `openssl rand -base64 48` and set the secrets in
 your host's runtime configuration — never in the repository.
@@ -410,8 +419,17 @@ These gates validate manifest structure, evidence paths, execution order and bou
 - [Product roadmap](ROADMAP.md) — phase order, release scope, acceptance criteria
 - [v1.0 release notes](docs/releases/v1.0.0.md) · [smoke test](docs/releases/V1_SMOKE_TEST.md) · [release evidence](docs/releases/v1.0-release-evidence.json)
 - [Definition of Done](docs/definition-of-done/README.md) · [Phase execution gate](docs/execution-loop/README.md)
+- [Security policy](SECURITY.md) — how to report a vulnerability, the deliberate security properties, and known advisories
+- [Contributing guide](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md)
 
 ## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the quality gate and what the
+codebase expects of a change, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for
+how people are expected to treat each other here.
+
+**Found a security problem?** Do not open an issue — follow
+[SECURITY.md](SECURITY.md), which uses GitHub private vulnerability reporting.
 
 Before adding a significant feature:
 

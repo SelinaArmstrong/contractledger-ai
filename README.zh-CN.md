@@ -250,6 +250,9 @@ React 工作台
 | `ADMIN_AUTH_PASSWORD`           | 需要管理员登录时   | 请使用强密码                                     |
 | `AI_DAILY_UNIT_BUDGET`          | 否                 | 全局每日模型调用上限（默认 `250`）               |
 | `AI_VISITOR_HOURLY_UNIT_BUDGET` | 否                 | 单访客每小时上限（默认 `40`）                    |
+| `ALLOW_LOCAL_MAINTAINER`        | 本地开发需要       | `true` 时回环请求以维护者身份登录 —— **托管部署绝不可设置** |
+| `TRUST_PROXY_ADDRESS_HEADER`    | 否                 | 仅当前置代理会覆写 `X-Forwarded-For` 时设为 `true` |
+| `OPENAI_PROJECT_ID`             | 部署时需要         | 托管项目 ID，构建时注入产物；有意不入库          |
 
 ## 访问控制与成本控制
 
@@ -351,7 +354,7 @@ npm run check:baseline
 │   ├── definition-of-done/      # 功能完成定义及可执行证据
 │   ├── execution-loop/          # 标准阶段执行清单
 │   └── releases/                # v1.0 发布说明与 smoke test
-├── .openai/hosting.json         # Sites 项目及 D1/R2 逻辑绑定
+├── .openai/hosting.json         # D1/R2 逻辑绑定（项目 ID 由环境变量在构建时注入）
 ├── ROADMAP.md
 ├── DEMO_RUNBOOK.md
 └── PORTFOLIO_CASE_STUDY.md
@@ -440,6 +443,13 @@ npm run start
 
 ## 参与开发
 
+参见 [CONTRIBUTING.md](CONTRIBUTING.md)（环境搭建、质量门禁、代码约定）与
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
+
+**发现安全问题？** 请勿提交公开 issue，按 [SECURITY.md](SECURITY.md) 走 GitHub
+私密漏洞报告流程。
+
+
 新增重大功能前：
 
 1. 从 `docs/execution-loop/phase-template.json` 创建阶段清单，定义用户故事、规则、非目标、验收标准和前置缺陷门禁。
@@ -461,6 +471,9 @@ npm run start
 - 在线 Demo：[contractledger.selinaq.com](https://contractledger.selinaq.com/)
 
 ## 相关文档
+
+- [安全策略](SECURITY.md)：漏洞报告方式、刻意保留的安全属性、已知依赖告警
+- [贡献指南](CONTRIBUTING.md) · [行为准则](CODE_OF_CONDUCT.md)
 
 - [面试速览](docs/INTERVIEW_ONE_PAGER.md)：300 字版本
 - [产品路线图](ROADMAP.md)：阶段顺序、发布范围、验收标准和当前完成状态
