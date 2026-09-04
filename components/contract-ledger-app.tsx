@@ -2,6 +2,14 @@
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { needsSourceOverride } from '@/lib/ai-governance';
 import type {
   AnalysisResponse,
@@ -19,6 +27,7 @@ import {
   FileText,
   LoaderCircle,
   LogOut,
+  MoreHorizontal,
   ShieldCheck,
   Sparkles,
   Upload,
@@ -61,6 +70,7 @@ import {
   registerTruncation,
 } from '@/lib/workspace-limits';
 import { pathForView, viewForSlug } from '@/components/workspace/view-routing';
+import { useDraggableDialog } from '@/components/workspace/use-draggable-dialog';
 
 const workspaceContentId = 'workspace-content';
 
@@ -113,6 +123,10 @@ export function ContractLedgerApp({
   const [managementInsightsRequest, setManagementInsightsRequest] = useState<
     'contracts' | 'suppliers' | null
   >(null);
+  const intakeDialogRef = useRef<HTMLDialogElement>(null);
+  const intakeDialogDrag = useDraggableDialog({
+    surfaceRef: intakeDialogRef,
+  });
   const fileInput = useRef<HTMLInputElement>(null);
   const [selectedFilePreviewUrl, setSelectedFilePreviewUrl] = useState('');
   const selectedFilePreviewUrlRef = useRef('');
@@ -468,6 +482,23 @@ export function ContractLedgerApp({
     if (label === 'Obligations & Evidence') return counts.alerts;
     return 0;
   };
+  const mobilePrimaryViews: ViewName[] = [
+    'Dashboard',
+    'New Contract Review',
+    'Approvals & Exceptions',
+  ];
+  const mobilePrimaryItems = navItems.filter((item) =>
+    mobilePrimaryViews.includes(item.label),
+  );
+  const mobileSecondaryItems = navItems.filter(
+    (item) => !mobilePrimaryViews.includes(item.label),
+  );
+  const mobileNavLabel = (label: ViewName) => {
+    if (label === 'New Contract Review') return 'Reviews';
+    if (label === 'Approvals & Exceptions') return 'Approvals';
+    if (label === 'Obligations & Evidence') return 'Obligations';
+    return label;
+  };
 
   const filteredContracts = useMemo(() => {
     const query = search.toLowerCase().trim();
@@ -728,18 +759,60 @@ export function ContractLedgerApp({
           </div>
         </header>
 
-        <div className="border-b border-[#dce3e8] bg-white px-4 py-2 lg:hidden">
-          <div className="flex gap-1 overflow-x-auto">
-            {navItems.map((item) => (
-              <button
-                key={item.label}
-                onClick={() => setActiveView(item.label)}
-                className={`shrink-0 rounded-md px-3 py-1.5 text-xs ${activeView === item.label ? 'bg-[#e4f2f6] font-medium text-[#1c647e]' : 'text-slate-500'}`}
+        <div className="border-b border-[#dce3e8] bg-white px-3 py-2 lg:hidden">
+          <nav
+            className="flex items-center gap-1"
+            aria-label="Mobile navigation"
+          >
+            <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
+              {mobilePrimaryItems.map((item) => (
+                <button
+                  key={item.label}
+                  onClick={() => setActiveView(item.label)}
+                  className={`shrink-0 rounded-md px-3 py-1.5 text-xs ${activeView === item.label ? 'bg-[#e4f2f6] font-medium text-[#1c647e]' : 'text-slate-500'}`}
+                >
+                  {mobileNavLabel(item.label)}
+                  {navCount(item.label) ? (
+                    <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+                      {navCount(item.label)}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className={`flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-[#5b9cb3] ${
+                  mobileSecondaryItems.some((item) => item.label === activeView)
+                    ? 'bg-[#e4f2f6] font-medium text-[#1c647e]'
+                    : 'text-slate-500'
+                }`}
               >
-                {item.label}
-              </button>
-            ))}
-          </div>
+                <MoreHorizontal className="size-4" /> More
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>More workspace views</DropdownMenuLabel>
+                  {mobileSecondaryItems.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <DropdownMenuItem
+                        key={item.label}
+                        onClick={() => setActiveView(item.label)}
+                        className="gap-2 px-2 py-2"
+                      >
+                        <Icon className="size-4 text-slate-500" />
+                        <span className="flex-1">{item.label}</span>
+                        {activeView === item.label ? (
+                          <Check className="size-4 text-[#1d718f]" />
+                        ) : null}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </nav>
         </div>
 
         <div
@@ -896,6 +969,12 @@ export function ContractLedgerApp({
           }}
         >
           <dialog
+            ref={intakeDialogRef}
+            style={intakeDialogDrag.surfaceStyle}
+            onPointerDown={intakeDialogDrag.onPointerDown}
+            onPointerMove={intakeDialogDrag.onPointerMove}
+            onPointerUp={intakeDialogDrag.onPointerUp}
+            onPointerCancel={intakeDialogDrag.onPointerCancel}
             open
             aria-modal="true"
             aria-labelledby="intake-dialog-title"
@@ -909,7 +988,11 @@ export function ContractLedgerApp({
             >
               ×
             </button>
-            <div className="border-b border-[#e1e7ea] px-6 py-4">
+            <div
+              data-dialog-drag-handle
+              title="Drag to move dialog"
+              className="cursor-move touch-none select-none border-b border-[#e1e7ea] px-6 py-4"
+            >
               <div className="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
                 <Sparkles className="size-3.5" />
                 DeepSeek document extraction

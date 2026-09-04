@@ -19,12 +19,16 @@ export function FilterSelect({
   onChange,
   options,
   titleCaseOptions = false,
+  allLabel = 'All',
+  includeAll = true,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  options: string[];
+  options: Array<string | { value: string; label: string }>;
   titleCaseOptions?: boolean;
+  allLabel?: string;
+  includeAll?: boolean;
 }) {
   return (
     <label className="text-[11px] font-medium text-slate-600">
@@ -34,12 +38,18 @@ export function FilterSelect({
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
       >
-        <option value="all">All</option>
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {titleCaseOptions ? titleCase(option) : option}
-          </option>
-        ))}
+        {includeAll ? <option value="all">{allLabel}</option> : null}
+        {options.map((option) => {
+          const optionValue =
+            typeof option === 'string' ? option : option.value;
+          const optionLabel =
+            typeof option === 'string' ? option : option.label;
+          return (
+            <option key={optionValue} value={optionValue}>
+              {titleCaseOptions ? titleCase(optionLabel) : optionLabel}
+            </option>
+          );
+        })}
       </select>
     </label>
   );

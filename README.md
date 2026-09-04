@@ -20,6 +20,8 @@ ContractLedger AI addresses that specific problem. It is deliberately **narrower
 
 The central design rule: **AI proposes, deterministic rules decide, and a human confirms anything material.**
 
+> **Enterprise deployment note:** The current release uses DeepSeek as the reference AI implementation, but the core business data, authorization, approval, audit and human-review workflows are not tied to a specific model provider. An enterprise may replace the server-side model calls with another commercial AI service or a privately hosted model to meet its data-residency, compliance, procurement and security requirements. Such a change requires server-side integration and credential updates followed by security and quality regression against the existing structured-output validation and evaluation baseline; it is not an unvalidated zero-configuration switch.
+
 | AI is responsible for                                   | Deterministic code is responsible for   |
 | ------------------------------------------------------- | --------------------------------------- |
 | Extracting and summarising document language            | Approval triggers and exception routing |
@@ -172,7 +174,7 @@ The full ten-minute demo path and recovery steps are in [DEMO_RUNBOOK.md](DEMO_R
 | Domain logic  | `lib/*.ts`                                                           | Approvals, amendments, obligations, imports, AI governance, risk, insights, exports, security |
 | Data access   | Drizzle ORM, Cloudflare D1 (SQLite)                                  | Registers, events, evaluations, audit, rate limits, migrations                                |
 | File storage  | Cloudflare R2                                                        | Uploaded contracts, qualification files, completion evidence                                  |
-| AI            | DeepSeek API, Zod strict structured output                           | Extraction, Assistant, Insights, evaluation runs                                              |
+| AI            | DeepSeek API (replaceable reference implementation), Zod validation  | Extraction, Assistant, Insights, evaluation runs                                              |
 | Exports       | ExcelJS, custom PDF/ICS generation                                   | Workbooks, review packages, calendars                                                         |
 | Runtime       | Vite 8, Cloudflare Workers, OpenAI Sites                             | Workers-compatible local environment, D1/R2 bindings, hosting                                 |
 | Quality       | Vitest, Oxlint, TypeScript, DoD / Phase gates                        | Unit tests, static analysis, evidence gates                                                   |
@@ -359,6 +361,7 @@ npm run quality
 ## Security and data handling
 
 - The DeepSeek key is read server-side only; raw file content and model output are never exposed as client environment variables.
+- DeepSeek is the current default AI provider, not a mandatory business-layer dependency. Any replacement AI product or privately hosted model must preserve server-side credential isolation, data minimization, structured-output validation, human review, audit logging and evaluation regression controls.
 - Uploads are treated as untrusted: extension, MIME type, file signature, size, UTF-8 text and PDF structure are all validated.
 - PDF preflight records page count, checked pages, character counts, blank/sparse pages and rotation. Risky documents are blocked or explicitly marked for manual review.
 - Hosted API access requires a signed session cookie or — when enabled — the read-only guest role. State-changing requests are same-origin checked.

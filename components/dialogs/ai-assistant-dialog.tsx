@@ -25,6 +25,7 @@ import {
 } from '@/components/workspace/formatters';
 import { StatusBadge } from '@/components/workspace/primitives';
 import type { AssistantConversationMessage } from '@/components/workspace/types';
+import { useDraggableDialog } from '@/components/workspace/use-draggable-dialog';
 
 export function AIAssistantDialog({
   open,
@@ -50,6 +51,8 @@ export function AIAssistantDialog({
   const [error, setError] = useState('');
   const conversationRef = useRef<HTMLDivElement>(null);
   const questionInputRef = useRef<HTMLTextAreaElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const draggable = useDraggableDialog({ surfaceRef: dialogRef });
 
   useEffect(() => {
     const scroller = conversationRef.current;
@@ -136,6 +139,12 @@ export function AIAssistantDialog({
       }}
     >
       <dialog
+        ref={dialogRef}
+        style={draggable.surfaceStyle}
+        onPointerDown={draggable.onPointerDown}
+        onPointerMove={draggable.onPointerMove}
+        onPointerUp={draggable.onPointerUp}
+        onPointerCancel={draggable.onPointerCancel}
         open
         aria-modal="true"
         aria-labelledby="ai-assistant-dialog-title"
@@ -149,7 +158,11 @@ export function AIAssistantDialog({
         >
           ×
         </button>
-        <div className="border-b border-[#dce3e8] bg-[#f8fbfc] px-6 py-4 pr-14">
+        <div
+          data-dialog-drag-handle
+          title="Drag to move dialog"
+          className="cursor-move touch-none select-none border-b border-[#dce3e8] bg-[#f8fbfc] px-6 py-4 pr-14"
+        >
           <div className="flex flex-wrap items-center gap-2">
             <span className="flex size-9 items-center justify-center rounded-lg bg-[#dceff5] text-[#1d718f]">
               <Bot className="size-[18px]" />

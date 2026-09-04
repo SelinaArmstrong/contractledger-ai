@@ -34,6 +34,7 @@ import {
   priorityClasses,
   titleCase,
 } from '@/components/workspace/formatters';
+import { useDraggableDialog } from '@/components/workspace/use-draggable-dialog';
 
 export const ManagementChartCard = lazy(() =>
   import('@/components/management-chart-card').then((module) => ({
@@ -67,6 +68,8 @@ export function ManagementInsightsSheet({
   const currentIdsKey = currentRecordIds.join('\u001f');
   const allIdsKey = allRecordIds.join('\u001f');
   const label = scope === 'contracts' ? 'Contract' : 'Supplier';
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const draggable = useDraggableDialog({ surfaceRef: sheetRef });
 
   const runAnalysis = useCallback(
     async (nextSelection: 'current' | 'all') => {
@@ -138,8 +141,20 @@ export function ManagementInsightsSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-[96vw] max-w-[1180px] gap-0 overflow-hidden p-0 sm:max-w-[1180px]">
-        <SheetHeader className="border-b border-[#dce3e8] bg-white px-6 py-5 pr-14">
+      <SheetContent
+        ref={sheetRef}
+        style={draggable.surfaceStyle}
+        onPointerDown={draggable.onPointerDown}
+        onPointerMove={draggable.onPointerMove}
+        onPointerUp={draggable.onPointerUp}
+        onPointerCancel={draggable.onPointerCancel}
+        className="w-[96vw] max-w-[1180px] gap-0 overflow-hidden p-0 sm:max-w-[1180px]"
+      >
+        <SheetHeader
+          data-dialog-drag-handle
+          title="Drag to move dialog"
+          className="cursor-move touch-none select-none border-b border-[#dce3e8] bg-white px-6 py-5 pr-14"
+        >
           <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#347d96]">
             <Sparkles className="size-3.5" />
             AI-assisted management analysis

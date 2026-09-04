@@ -25,7 +25,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AmendmentDialog } from '@/components/dialogs/amendment-dialog';
 import {
   amendmentExtractionFields,
@@ -43,6 +43,7 @@ import {
 import { StatusBadge } from '@/components/workspace/primitives';
 import { SupplierDocumentUpload } from '@/components/workspace/supplier-document-upload';
 import type { DetailSelection } from '@/components/workspace/types';
+import { useDraggableDialog } from '@/components/workspace/use-draggable-dialog';
 
 export function RecordDetailDialog({
   workspace,
@@ -83,6 +84,8 @@ export function RecordDetailDialog({
   const [amendmentOpen, setAmendmentOpen] = useState(false);
   const [reviewPackageExporting, setReviewPackageExporting] = useState(false);
   const [reviewPackageError, setReviewPackageError] = useState('');
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const draggable = useDraggableDialog({ surfaceRef: dialogRef });
   const exportReviewPackage = async () => {
     if (!contract) return;
     setReviewPackageExporting(true);
@@ -195,6 +198,12 @@ export function RecordDetailDialog({
       }}
     >
       <dialog
+        ref={dialogRef}
+        style={draggable.surfaceStyle}
+        onPointerDown={draggable.onPointerDown}
+        onPointerMove={draggable.onPointerMove}
+        onPointerUp={draggable.onPointerUp}
+        onPointerCancel={draggable.onPointerCancel}
         open
         aria-modal="true"
         aria-labelledby="detail-dialog-title"
@@ -208,7 +217,11 @@ export function RecordDetailDialog({
         >
           ×
         </button>
-        <div className="border-b border-[#e1e7ea] px-6 py-5">
+        <div
+          data-dialog-drag-handle
+          title="Drag to move dialog"
+          className="cursor-move touch-none select-none border-b border-[#e1e7ea] px-6 py-5"
+        >
           <div className="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
             {selection.type === 'contract' ? (
               <FileCheck2 className="size-3.5" />

@@ -16,7 +16,9 @@ import {
   ArrowRight,
   BookOpenCheck,
   Building2,
+  ChevronDown,
   CircleCheck,
+  Database,
   FileCheck2,
   FileSearch,
   FileText,
@@ -24,7 +26,6 @@ import {
   LoaderCircle,
   RotateCcw,
   ShieldCheck,
-  Upload,
   Users,
 } from 'lucide-react';
 import { KeyDateList } from '@/components/workspace/alerts';
@@ -105,10 +106,88 @@ export function DashboardView({
     workspace?.keyDates
       .filter((item) => item.status !== 'completed')
       .slice(0, 4) ?? [];
-  const supplierAlerts = workspace?.supplierAlerts.slice(0, 4) ?? [];
+  const allSupplierAlerts = workspace?.supplierAlerts ?? [];
+  const supplierAlerts = allSupplierAlerts.slice(0, 4);
   const supplierFollowUpCount = supplierRecords.filter(
     (item) => item.qualification_status !== 'complete',
   ).length;
+  const attentionItems: Array<{
+    label: string;
+    value: string;
+    note: string;
+    icon: typeof FileSearch;
+    tone: string;
+    view: ViewName;
+  }> = [
+    {
+      label: 'Records to verify',
+      value: String(workspace?.metrics.records_to_verify ?? '—'),
+      note: 'Human confirmation required',
+      icon: FileSearch,
+      tone: 'bg-sky-50 text-sky-700',
+      view: 'New Contract Review',
+    },
+    {
+      label: 'Open approvals',
+      value: String(workspace?.approvalMetrics.open_requests ?? '—'),
+      note: `${workspace?.approvalMetrics.overdue_requests ?? 0} overdue · ${workspace?.approvalMetrics.blocked_intakes ?? 0} blocked`,
+      icon: ShieldCheck,
+      tone: 'bg-violet-50 text-violet-700',
+      view: 'Approvals & Exceptions',
+    },
+    {
+      label: 'Open obligations',
+      value: String(workspace?.obligationMetrics.open_obligations ?? '—'),
+      note: `${workspace?.obligationMetrics.overdue_obligations ?? 0} calculated overdue`,
+      icon: AlertTriangle,
+      tone: 'bg-amber-50 text-amber-700',
+      view: 'Obligations & Evidence',
+    },
+    {
+      label: 'Supplier documents',
+      value: String(allSupplierAlerts.length),
+      note: `${supplierFollowUpCount} suppliers need follow-up`,
+      icon: Building2,
+      tone: 'bg-rose-50 text-rose-700',
+      view: 'Supplier Register',
+    },
+  ];
+  const startWorkItems: Array<{
+    eyebrow: string;
+    title: string;
+    description: string;
+    icon: typeof FileSearch;
+    action: () => void;
+    featured?: boolean;
+  }> = [
+    {
+      eyebrow: 'Pre-execution',
+      title: 'Review a draft',
+      description: 'Extract proposed terms without changing official records.',
+      icon: FileSearch,
+      action: () => onOpen('draft'),
+      featured: true,
+    },
+    {
+      eyebrow: 'Post-execution',
+      title: 'Register a signed contract',
+      description: 'Verify the source of truth and activate monitoring.',
+      icon: FileCheck2,
+      action: () => onOpen('executed'),
+    },
+    {
+      eyebrow: 'Legacy data',
+      title: 'Import a register',
+      description: 'Stage, normalize, and resolve data-quality exceptions.',
+      icon: Database,
+      action: () => onNavigate('Bulk Import & Data Quality'),
+    },
+  ];
+  const aiBudget = workspace?.aiBudget;
+  const showBudgetWarning =
+    aiBudget &&
+    aiBudget.remainingUnits <=
+      Math.max(15, Math.ceil(aiBudget.dailyUnitLimit * 0.2));
   return (
     <>
       <PageHeading
@@ -116,38 +195,48 @@ export function DashboardView({
         title="Contract operations dashboard"
         description="Turn draft and executed agreements into verified contract and supplier records—without mixing proposed data into the official register."
         action={
-          canReset ? (
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={onReset}
-              disabled={resetting}
-              className="h-10 border-[#cdd9df] bg-white px-4 text-slate-600 shadow-sm"
-            >
-              {resetting ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <RotateCcw />
-              )}
-              Reset demo
-            </Button>
+          canReset || showBudgetWarning ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {aiBudget && showBudgetWarning ? (
+                <StatusBadge tone={aiBudget.remainingUnits ? 'amber' : 'rose'}>
+                  {aiBudget.remainingUnits
+                    ? `${aiBudget.remainingUnits} shared AI units left today`
+                    : 'Shared AI budget resets at 00:00 UTC'}
+                </StatusBadge>
+              ) : null}
+              {canReset ? (
+                <Button
+                  variant="outline"
+                  onClick={onReset}
+                  disabled={resetting}
+                  className="h-9 border-[#cdd9df] bg-white px-3 text-slate-600 shadow-sm"
+                >
+                  {resetting ? (
+                    <LoaderCircle className="animate-spin" />
+                  ) : (
+                    <RotateCcw />
+                  )}
+                  Reset demo
+                </Button>
+              ) : null}
+            </div>
           ) : null
         }
       />
-      <section className="mb-7 grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
+      <section className="mb-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
         {metrics.map((metric) => {
           const Icon = metric.icon;
           return (
             <div
               key={metric.label}
-              className="rounded-xl border border-[#dce3e8] bg-white p-5 shadow-[0_1px_2px_rgb(15_23_42/3%)]"
+              className="rounded-xl border border-[#dce3e8] bg-white p-4 shadow-[0_1px_2px_rgb(15_23_42/3%)] sm:p-5"
             >
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-[12px] font-medium text-slate-500">
                     {metric.label}
                   </p>
-                  <p className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-[#172a38]">
+                  <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[#172a38] sm:text-[28px]">
                     {metric.value}
                   </p>
                 </div>
@@ -162,34 +251,84 @@ export function DashboardView({
           );
         })}
       </section>
-      <Panel className="mb-7 overflow-hidden">
+      <Panel className="mb-5 overflow-hidden border-[#c9dbe2]">
         <PanelHeader
-          title="Review a new contract"
-          description="Pre-execution AI review stays outside both official registers."
+          title="Needs attention"
+          description="Move directly from portfolio signals to the queue that needs a decision."
         />
-        <div className="bg-[#f8fafb] p-5">
-          <article className="relative overflow-hidden rounded-xl border border-[#b9d9e5] bg-[#edf8fb] p-5">
-            <div className="absolute right-5 top-5 flex size-10 items-center justify-center rounded-lg bg-white/80 text-[#257a98]">
-              <FileSearch className="size-5" />
-            </div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#43849a]">
-              Pre-execution intake
-            </p>
-            <h3 className="mt-2 text-lg font-semibold text-[#14364a]">
-              Upload and review a draft agreement
-            </h3>
-            <p className="mt-1 max-w-3xl text-[12px] leading-5 text-[#557280]">
-              Extract proposed terms and compare the draft to the demo playbook.
-              Only the proposed supplier name is retained; no Contract or
-              Supplier Register record is created.
-            </p>
-            <Button
-              onClick={() => onOpen('draft')}
-              className="mt-5 h-9 bg-[#1d718f] hover:bg-[#185f78]"
-            >
-              <Upload /> Upload draft <ArrowRight />
-            </Button>
-          </article>
+        <div className="grid grid-cols-2 gap-px bg-[#dce5e9] xl:grid-cols-4">
+          {attentionItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => onNavigate(item.view)}
+                className="group min-h-32 bg-white p-4 text-left transition hover:bg-[#f7fbfc] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b9cb3] sm:p-5"
+                aria-label={`Open ${item.label}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <span
+                    className={`flex size-9 items-center justify-center rounded-lg ${item.tone}`}
+                  >
+                    <Icon className="size-[17px]" />
+                  </span>
+                  <ArrowRight className="size-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-[#2e7188]" />
+                </div>
+                <p className="mt-4 text-2xl font-semibold tracking-tight text-[#183040]">
+                  {item.value}
+                </p>
+                <p className="mt-1 text-sm font-semibold text-[#294454]">
+                  {item.label}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  {item.note}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      </Panel>
+
+      <Panel className="mb-5 overflow-hidden">
+        <PanelHeader
+          title="Start work"
+          description="Choose the source and keep drafts, executed records, and legacy data in the right workflow."
+        />
+        <div className="grid gap-3 bg-[#f8fafb] p-4 sm:grid-cols-3 sm:p-5">
+          {startWorkItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.title}
+                type="button"
+                onClick={item.action}
+                className={`group flex min-h-36 flex-col rounded-xl border p-4 text-left shadow-[0_1px_2px_rgb(15_23_42/3%)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b9cb3] ${
+                  item.featured
+                    ? 'border-[#a9cfdd] bg-[#edf8fb] hover:border-[#79afc2]'
+                    : 'border-[#d7e1e6] bg-white hover:border-[#a9c6d1] hover:bg-[#fbfdfe]'
+                }`}
+              >
+                <div className="flex w-full items-start justify-between gap-3">
+                  <span
+                    className={`flex size-9 items-center justify-center rounded-lg ${item.featured ? 'bg-white text-[#257a98]' : 'bg-slate-100 text-slate-600'}`}
+                  >
+                    <Icon className="size-[17px]" />
+                  </span>
+                  <ArrowRight className="size-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-[#2e7188]" />
+                </div>
+                <p className="mt-4 text-xs font-semibold uppercase tracking-[0.1em] text-[#43849a]">
+                  {item.eyebrow}
+                </p>
+                <h3 className="mt-1 text-sm font-semibold text-[#173344]">
+                  {item.title}
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  {item.description}
+                </p>
+              </button>
+            );
+          })}
         </div>
       </Panel>
 
@@ -209,37 +348,6 @@ export function DashboardView({
           }
         />
         <IntakeTable intakes={reviewRecords} />
-      </Panel>
-
-      <Panel className="mb-7 overflow-hidden">
-        <PanelHeader
-          title="Register an executed contract"
-          description="Post-execution intake writes verified values to the official registers and monitoring schedule."
-        />
-        <div className="bg-[#f8fafb] p-5">
-          <article className="relative overflow-hidden rounded-xl border border-[#b9d9e5] bg-[#edf8fb] p-5">
-            <div className="absolute right-5 top-5 flex size-10 items-center justify-center rounded-lg bg-white/80 text-[#257a98]">
-              <FileCheck2 className="size-5" />
-            </div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#43849a]">
-              Post-execution intake
-            </p>
-            <h3 className="mt-2 text-lg font-semibold text-[#1b2e3a]">
-              Upload the signed source of truth
-            </h3>
-            <p className="mt-1 max-w-3xl text-[12px] leading-5 text-[#557280]">
-              Verify the signed source, update the official Contract Register,
-              link or create its supplier, and activate obligation and renewal
-              monitoring.
-            </p>
-            <Button
-              onClick={() => onOpen('executed')}
-              className="mt-5 h-9 bg-[#1d718f] hover:bg-[#185f78]"
-            >
-              <Upload /> Upload executed copy <ArrowRight />
-            </Button>
-          </article>
-        </div>
       </Panel>
 
       <Panel className="mb-7 overflow-hidden">
@@ -468,9 +576,28 @@ export function DashboardView({
         </div>
       </Panel>
 
-      <DemoTransactionComparison
-        comparison={workspace?.transactionComparisons[0]}
-      />
+      <details className="group mb-7 overflow-hidden rounded-xl border border-[#dce3e8] bg-white shadow-[0_1px_2px_rgb(15_23_42/3%)]">
+        <summary className="flex cursor-pointer list-none flex-col justify-between gap-3 px-5 py-4 marker:hidden hover:bg-[#fbfdfe] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b9cb3] sm:flex-row sm:items-center [&::-webkit-details-marker]:hidden">
+          <span>
+            <span className="block text-sm font-semibold text-[#1b2e3a]">
+              Draft-to-executed comparison
+            </span>
+            <span className="mt-1 block text-xs leading-5 text-slate-500">
+              Expand the human-verified comparison when presenting the demo
+              evidence.
+            </span>
+          </span>
+          <span className="flex items-center gap-2 text-xs font-medium text-[#2e7188]">
+            View comparison
+            <ChevronDown className="size-4 transition group-open:rotate-180" />
+          </span>
+        </summary>
+        <div className="border-t border-[#e3e9ed] [&>section]:!mb-0 [&>section]:rounded-none [&>section]:border-0 [&>section]:shadow-none">
+          <DemoTransactionComparison
+            comparison={workspace?.transactionComparisons[0]}
+          />
+        </div>
+      </details>
     </>
   );
 }

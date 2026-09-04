@@ -17,7 +17,7 @@ import {
   LoaderCircle,
   ShieldCheck,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { approvalActionLabels } from '@/components/workspace/constants';
 import {
   titleCase,
@@ -25,6 +25,7 @@ import {
   valueText,
 } from '@/components/workspace/formatters';
 import { StatusBadge } from '@/components/workspace/primitives';
+import { useDraggableDialog } from '@/components/workspace/use-draggable-dialog';
 
 export function ApprovalDecisionDialog({
   requestId,
@@ -45,6 +46,8 @@ export function ApprovalDecisionDialog({
     useState<keyof typeof approvalActionLabels>('start_review');
   const [reason, setReason] = useState('');
   const [assignedReviewer, setAssignedReviewer] = useState('');
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const draggable = useDraggableDialog({ surfaceRef: dialogRef });
 
   const loadDetails = useCallback(async () => {
     setLoading(true);
@@ -165,12 +168,22 @@ export function ApprovalDecisionDialog({
       }}
     >
       <dialog
+        ref={dialogRef}
+        style={draggable.surfaceStyle}
+        onPointerDown={draggable.onPointerDown}
+        onPointerMove={draggable.onPointerMove}
+        onPointerUp={draggable.onPointerUp}
+        onPointerCancel={draggable.onPointerCancel}
         open
         aria-modal="true"
         aria-labelledby="approval-decision-title"
         className="m-0 grid h-[86vh] min-h-[620px] w-[96vw] max-w-[1120px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl bg-white p-0 text-sm shadow-2xl ring-1 ring-slate-900/10"
       >
-        <header className="relative border-b border-[#e1e7ea] px-6 py-4 pr-14">
+        <header
+          data-dialog-drag-handle
+          title="Drag to move dialog"
+          className="relative cursor-move touch-none select-none border-b border-[#e1e7ea] px-6 py-4 pr-14"
+        >
           <button
             type="button"
             onClick={onClose}

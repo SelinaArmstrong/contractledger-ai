@@ -18,7 +18,7 @@ import {
   FileText,
   LoaderCircle,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { extractionFields } from '@/components/workspace/constants';
 import {
   moneyFromCents,
@@ -30,6 +30,7 @@ import {
   FieldConfidence,
   StatusBadge,
 } from '@/components/workspace/primitives';
+import { useDraggableDialog } from '@/components/workspace/use-draggable-dialog';
 
 export function IntakeReviewDialog({
   intakeId,
@@ -56,6 +57,8 @@ export function IntakeReviewDialog({
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(
     null,
   );
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const draggable = useDraggableDialog({ surfaceRef: dialogRef });
 
   const applyDetails = useCallback((nextDetails: IntakeDetails) => {
     setDetails(nextDetails);
@@ -173,12 +176,22 @@ export function IntakeReviewDialog({
       }}
     >
       <dialog
+        ref={dialogRef}
+        style={draggable.surfaceStyle}
+        onPointerDown={draggable.onPointerDown}
+        onPointerMove={draggable.onPointerMove}
+        onPointerUp={draggable.onPointerUp}
+        onPointerCancel={draggable.onPointerCancel}
         open
         aria-modal="true"
         aria-labelledby="intake-review-dialog-title"
         className="m-0 grid h-[88vh] min-h-[660px] w-[96vw] max-w-[1440px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl bg-white p-0 text-sm shadow-2xl ring-1 ring-slate-900/10"
       >
-        <header className="relative border-b border-[#e1e7ea] px-6 py-4">
+        <header
+          data-dialog-drag-handle
+          title="Drag to move dialog"
+          className="relative cursor-move touch-none select-none border-b border-[#e1e7ea] px-6 py-4"
+        >
           <button
             type="button"
             onClick={onClose}

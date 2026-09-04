@@ -49,6 +49,7 @@ import type {
   SupplierProfileEvidence,
   SupplierProfileFieldKey,
 } from '@/components/workspace/types';
+import { useDraggableDialog } from '@/components/workspace/use-draggable-dialog';
 
 export function SupplierOnboardingDialog({
   open,
@@ -59,6 +60,11 @@ export function SupplierOnboardingDialog({
   onOpenChange: (open: boolean) => void;
   onCreated: (workspace: Workspace, supplierName: string) => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const draggable = useDraggableDialog({
+    surfaceRef: dialogRef,
+    centered: true,
+  });
   const initialSupplier = {
     legalName: '',
     dbaName: '',
@@ -475,8 +481,20 @@ export function SupplierOnboardingDialog({
         }
       }}
     >
-      <DialogContent className="h-[84vh] min-h-[620px] w-[96vw] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-[1440px]">
-        <DialogHeader className="border-b border-[#e1e7ea] px-6 py-4">
+      <DialogContent
+        ref={dialogRef}
+        style={draggable.surfaceStyle}
+        onPointerDown={draggable.onPointerDown}
+        onPointerMove={draggable.onPointerMove}
+        onPointerUp={draggable.onPointerUp}
+        onPointerCancel={draggable.onPointerCancel}
+        className="h-[84vh] min-h-[620px] w-[96vw] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-[1440px]"
+      >
+        <DialogHeader
+          data-dialog-drag-handle
+          title="Drag to move dialog"
+          className="cursor-move touch-none select-none border-b border-[#e1e7ea] px-6 py-4"
+        >
           <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
             <Building2 className="size-3.5" />
             Independent supplier onboarding

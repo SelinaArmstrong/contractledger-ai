@@ -29,6 +29,7 @@ import {
 } from '@/components/workspace/formatters';
 import { DocumentQualitySummary } from '@/components/workspace/primitives';
 import { USDateInput } from '@/components/workspace/table';
+import { useDraggableDialog } from '@/components/workspace/use-draggable-dialog';
 
 export function AmendmentDialog({
   open,
@@ -54,6 +55,8 @@ export function AmendmentDialog({
   const [overrideReasons, setOverrideReasons] = useState<
     Partial<Record<AmendmentFieldKey, string>>
   >({});
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const draggable = useDraggableDialog({ surfaceRef: dialogRef });
 
   const selectFile = useCallback((nextFile: File | null) => {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
@@ -216,6 +219,12 @@ export function AmendmentDialog({
       }}
     >
       <dialog
+        ref={dialogRef}
+        style={draggable.surfaceStyle}
+        onPointerDown={draggable.onPointerDown}
+        onPointerMove={draggable.onPointerMove}
+        onPointerUp={draggable.onPointerUp}
+        onPointerCancel={draggable.onPointerCancel}
         open
         aria-modal="true"
         aria-labelledby="amendment-dialog-title"
@@ -230,7 +239,11 @@ export function AmendmentDialog({
         >
           ×
         </button>
-        <header className="border-b border-[#e1e7ea] px-6 py-4 pr-14">
+        <header
+          data-dialog-drag-handle
+          title="Drag to move dialog"
+          className="cursor-move touch-none select-none border-b border-[#e1e7ea] px-6 py-4 pr-14"
+        >
           <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
             <Sparkles className="size-3.5" /> AI-assisted contract versioning
           </div>

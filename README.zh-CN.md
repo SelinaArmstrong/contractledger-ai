@@ -14,6 +14,8 @@ ContractLedger AI 聚焦合同签署前后的运营管理：合同条款提取�
 
 本项目是一个完整的作品集级合同运营系统，不是通用型 CLM（合同全生命周期管理）平台，也不是法律意见或自动法律决策工具。
 
+> **企业部署说明：** 当前版本使用 DeepSeek 作为 AI 参考实现，但核心业务数据、权限、审批、审计和人工核验流程不绑定特定模型供应商。企业可根据数据驻留、合规、采购和安全策略，将服务端模型调用替换为其他商业 AI 服务或私有化部署模型。该替换需要调整服务端调用与凭据配置，并通过既有结构化输出校验和评估基线完成安全及质量回归，而不是未经验证地直接切换。
+
 ## 目录
 
 - [核心能力](#核心能力)
@@ -202,7 +204,7 @@ macOS 也可以双击 `Start ContractLedger AI.command` 启动面试演示环境
 | 领域逻辑   | `lib/*.ts`                                                               | 审批、修订、义务、导入、AI 治理、风险、洞察、导出和安全策略 |
 | 数据访问   | Drizzle ORM、Cloudflare D1（SQLite）                                     | 台账、事件、评估、审计、限流和 schema 迁移                  |
 | 文件存储   | Cloudflare R2                                                            | 上传合同、供应商资质和履约证据                              |
-| AI         | DeepSeek API、Zod 严格结构化输出                                         | 合同/文档提取、Assistant、Management Insights 和评估运行    |
+| AI         | DeepSeek API（可替换的参考实现）、Zod 严格结构化输出                     | 合同/文档提取、Assistant、Management Insights 和评估运行    |
 | 导出       | ExcelJS、自有 PDF/ICS 生成逻辑                                           | 工作簿、运营审查包和日历文件                                |
 | 运行与托管 | Vite 8、Cloudflare Workers、OpenAI Sites                                 | 本地 Workers 兼容环境、D1/R2 注入和托管                     |
 | 质量       | Vitest、Oxlint、TypeScript、Definition of Done / Phase gates             | 领域逻辑与路由包装器的确定性单元测试、静态检查和证据门禁    |
@@ -367,6 +369,7 @@ npm run check:baseline
 ## 数据与安全
 
 - DeepSeek Key 仅在服务端读取；原始文件内容和模型输出不会作为前端环境变量暴露。
+- DeepSeek 是当前默认 AI 供应商，而非业务层的强制依赖；替换其他 AI 产品或私有化模型时，必须保持服务端凭据隔离、最小化数据传输、结构化输出校验、人工复核、审计记录和评估回归等控制。
 - 上传内容按不可信输入处理，校验扩展名、MIME、文件签名、大小、UTF-8 文本和 PDF 结构。
 - PDF 预检记录页数、检查页数、字符数、空白/稀疏页及旋转状态；有风险的文档被阻止或明确标记为需要人工复核。
 - 托管 API 需要 Sites 身份或有效的临时演示会话；状态变更请求执行同源检查。
