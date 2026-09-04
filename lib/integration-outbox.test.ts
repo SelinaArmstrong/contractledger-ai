@@ -10,14 +10,14 @@ describe('integration outbox', () => {
       aggregateType: 'obligation',
       aggregateId: 'date-1',
       occurredAt: '2026-09-01T12:00:00.000Z',
-      actor: 'Selina Armstrong',
+      actor: 'Jordan Avery',
       payload: { contractId: 'con-1' },
     });
     expect(event.status).toBe('pending');
     expect(event.attemptCount).toBe(0);
     expect(JSON.parse(event.payloadJson)).toMatchObject({
       version: 'integration-outbox-2026.1',
-      actor: 'Selina Armstrong',
+      actor: 'Jordan Avery',
       contractId: 'con-1',
     });
   });

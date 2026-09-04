@@ -14,7 +14,7 @@ describe('review package PDF', () => {
         supplier_name: 'Pacific Safety Consulting Inc.',
         contract_type: 'Professional Services Agreement',
         department: 'Risk & Safety',
-        owner: 'Selina Armstrong',
+        owner: 'Jordan Avery',
         status: 'active',
         effective_date: '2026-03-15',
         expiration_date: '2027-03-14',
@@ -58,12 +58,12 @@ describe('review package PDF', () => {
           model: 'test-model',
           prompt_version: 'v1',
           correction_count: 1,
-          reviewed_by: 'Selina Armstrong',
+          reviewed_by: 'Jordan Avery',
           reviewed_at: '2026-03-14T12:00:00Z',
         },
       ],
       generatedAt: '2026-09-01T12:00:00Z',
-      generatedBy: 'Selina Armstrong',
+      generatedBy: 'Jordan Avery',
     });
     const text = new TextDecoder().decode(bytes);
     expect(text.startsWith('%PDF-1.4')).toBe(true);

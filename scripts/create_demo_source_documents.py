@@ -86,7 +86,7 @@ def build_contract():
             ("Effective date", "January 1, 2025"),
             ("Initial term", "January 1, 2025 through December 31, 2026"),
             ("Contract value", "$720,000 total not-to-exceed value"),
-            ("Contract owner", "Selina Armstrong, Contract Administrator"),
+            ("Contract owner", "Jordan Avery, Contract Administrator"),
         ]),
         heading("1", "Scope of Services"),
         p("Supplier will provide service-desk support, endpoint administration, network monitoring, cybersecurity incident coordination, scheduled maintenance, and technology asset reporting for Customer's California operations. Services include Tier 1 through Tier 3 support and coordination with approved hardware and software vendors."),
@@ -322,7 +322,7 @@ def build_good_standing():
             ("Formation date", "May 12, 2018"),
             ("Standing", "Active / Good Standing (fictional)"),
             ("Verification date", "January 18, 2026"),
-            ("Verified by", "Selina Armstrong, Contract Administrator"),
+            ("Verified by", "Jordan Avery, Contract Administrator"),
         ],
         [
             ("Name and status check", "The legal entity name matches the W-9, insurance certificate, executed agreement, and supplier master record. No DBA discrepancy was identified."),
@@ -364,7 +364,7 @@ def build_sam_screening():
             ("Search terms", "Legal name and fictional entity identifier"),
             ("Exclusion result", "No active exclusion identified (fictional result)"),
             ("SAM registration", "Not required for this private-sector demo contract"),
-            ("Reviewed by", "Selina Armstrong, Contract Administrator"),
+            ("Reviewed by", "Jordan Avery, Contract Administrator"),
             ("Next review", "At renewal or before a federally funded award"),
         ],
         [

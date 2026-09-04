@@ -105,7 +105,7 @@ describe('obligation evidence metrics and calendar export', () => {
         id: 'date-1',
         title: 'Renewal, review',
         due_date: '2026-11-01',
-        owner: 'Selina Armstrong',
+        owner: 'Jordan Avery',
         contract_number: 'CT-001',
         supplier_name: 'Harbor; Technology',
       },

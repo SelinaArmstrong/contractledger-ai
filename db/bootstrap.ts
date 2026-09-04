@@ -687,7 +687,7 @@ const contractsSeed = [
     'Technology Support Services Agreement',
     'Master Services Agreement',
     'Operations',
-    'Selina Armstrong',
+    'Jordan Avery',
     72000000,
     0,
     72000000,
@@ -705,7 +705,7 @@ const contractsSeed = [
     'Equipment Supply Agreement',
     'Equipment Purchase Agreement',
     'Procurement',
-    'Selina Armstrong',
+    'Jordan Avery',
     40000000,
     7500000,
     47500000,
@@ -723,7 +723,7 @@ const contractsSeed = [
     'Workplace Safety Consulting',
     'Professional Services Agreement',
     'Risk & Safety',
-    'Selina Armstrong',
+    'Jordan Avery',
     41000000,
     0,
     41000000,
@@ -741,7 +741,7 @@ const contractsSeed = [
     'Regional Logistics Services',
     'Master Services Agreement',
     'Operations',
-    'Selina Armstrong',
+    'Jordan Avery',
     98000000,
     0,
     98000000,
@@ -759,7 +759,7 @@ const contractsSeed = [
     'Facilities Maintenance Services',
     'Services Agreement',
     'Facilities',
-    'Selina Armstrong',
+    'Jordan Avery',
     36500000,
     0,
     36500000,
@@ -777,7 +777,7 @@ const contractsSeed = [
     'Environmental Compliance Support',
     'Professional Services Agreement',
     'Compliance',
-    'Selina Armstrong',
+    'Jordan Avery',
     52500000,
     0,
     52500000,
@@ -795,7 +795,7 @@ const contractsSeed = [
     'Industrial Consumables Supply',
     'Supply Agreement',
     'Procurement',
-    'Selina Armstrong',
+    'Jordan Avery',
     63000000,
     -5000000,
     58000000,
@@ -1101,7 +1101,7 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
     db
       .prepare(
         `UPDATE contract_intakes SET proposed_supplier_name = ?, title = ?, proposed_value_cents = ?,
-          owner = COALESCE(owner, 'Selina Armstrong'),
+          owner = COALESCE(owner, 'Jordan Avery'),
           target_review_date = COALESCE(target_review_date, '2026-09-05'),
           internal_notes = COALESCE(internal_notes, 'Confirm business acceptance of payment timing and governing-law position before releasing the next draft.'),
           approval_status = CASE WHEN approval_status = 'not_required' THEN 'pending' ELSE approval_status END,
@@ -1136,10 +1136,10 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
         'This Agreement is governed by and construed under the laws of the State of California, without regard to conflict-of-laws principles.',
         'finding-002',
       ),
-    db.prepare(`UPDATE contract_intakes SET owner = COALESCE(owner, 'Selina Armstrong'),
+    db.prepare(`UPDATE contract_intakes SET owner = COALESCE(owner, 'Jordan Avery'),
         target_review_date = COALESCE(target_review_date, '2026-08-30'),
         approval_status = COALESCE(approval_status, 'not_required') WHERE id = 'int-002'`),
-    db.prepare(`UPDATE contract_intakes SET owner = COALESCE(owner, 'Selina Armstrong'),
+    db.prepare(`UPDATE contract_intakes SET owner = COALESCE(owner, 'Jordan Avery'),
         target_review_date = COALESCE(target_review_date, '2026-08-29'),
         approval_status = COALESCE(approval_status, 'not_required') WHERE id = 'int-003'`),
     db.prepare(`UPDATE contracts SET intake_id = 'int-003'
@@ -1174,7 +1174,7 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
         30,
         30,
         'Added an auxiliary equipment package and related commissioning services.',
-        'Selina Armstrong',
+        'Jordan Avery',
         '2026-04-15T17:30:00.000Z',
       ),
     db
@@ -1184,7 +1184,7 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
       .bind(
         'audit-demo-apex-amendment-001',
         'con-002',
-        'Selina Armstrong',
+        'Jordan Avery',
         JSON.stringify({
           amendmentId: 'amd-demo-apex-001',
           amendmentNumber: 'Amendment No. 1',
@@ -1235,7 +1235,7 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
         'contract-analysis-v3',
         JSON.stringify(demoDraftAnalysis),
         JSON.stringify(demoDraftAnalysis),
-        'Selina Armstrong',
+        'Jordan Avery',
         now,
         now,
       ),
@@ -1503,11 +1503,11 @@ async function syncObligationDemoScenario(db: D1Database) {
         'Quarterly service review sign-off',
         '2026-08-15',
         '2026-08-08',
-        'Selina Armstrong',
+        'Jordan Avery',
         'Jordan Ellis',
         '2026-08-01T17:00:00.000Z',
         '2026-08-14T21:00:00.000Z',
-        'Selina Armstrong',
+        'Jordan Avery',
         'Reviewed the fictional Q3 service summary and confirmed that all follow-up items were closed.',
         'Closeout record CL-DEMO-2026-014',
         'Customer and Supplier will review service levels quarterly.',
@@ -1529,7 +1529,7 @@ async function syncObligationDemoScenario(db: D1Database) {
         'Monthly service report evidence',
         '2026-08-28',
         '2026-08-25',
-        'Selina Armstrong',
+        'Jordan Avery',
         'Jordan Ellis',
         '2026-08-20T17:00:00.000Z',
         'Supplier will provide a monthly service performance report.',
@@ -1545,7 +1545,7 @@ async function syncObligationDemoScenario(db: D1Database) {
       .bind(
         'obligation-event-demo-completed',
         'date-004',
-        'Selina Armstrong',
+        'Jordan Avery',
         'Completed with closeout reference CL-DEMO-2026-014.',
         '2026-08-14T21:00:00.000Z',
       ),
@@ -1557,7 +1557,7 @@ async function syncObligationDemoScenario(db: D1Database) {
       .bind(
         'obligation-event-demo-evidence-required',
         'date-005',
-        'Selina Armstrong',
+        'Jordan Avery',
         'Report received; supporting review evidence is still required.',
         '2026-08-29T17:00:00.000Z',
       ),
@@ -1635,7 +1635,7 @@ async function syncApprovalDemoScenario(db: D1Database) {
       sourceFindingId: 'finding-002',
       sourcePage: 9,
       sourceQuote: 'laws of the State of New York',
-      assignedReviewer: 'Selina Armstrong',
+      assignedReviewer: 'Jordan Avery',
     },
   ] as const;
   const rules = new Map(APPROVAL_RULES_V1.map((rule) => [rule.ruleKey, rule]));
@@ -1700,7 +1700,7 @@ async function syncApprovalDemoScenario(db: D1Database) {
             (id, request_id, step_id, action, from_status, to_status,
              actor, actor_role, reason, created_at)
             VALUES (?, ?, ?, 'start_review', 'pending', 'in_review',
-              'Selina Armstrong', ?, 'Legal review accepted for decision.', ?)`)
+              'Jordan Avery', ?, 'Legal review accepted for decision.', ?)`)
           .bind(
             `approval-history-demo-int-001-${scenario.suffix}-started`,
             requestId,
@@ -1986,7 +1986,7 @@ async function seedBulkImportDemo(db: D1Database, now: string) {
          rejected_rows, normalization_issue_count, started_by, created_at)
         VALUES (?, 'suppliers', 'fictional_legacy_supplier_master.csv', 'csv',
           892, 'fictional-supplier-import-fixture-2026-1', 'preview', ?, ?,
-          '2026.1', 4, 1, 1, 1, 1, 0, 0, 4, 'Selina Armstrong', ?)`)
+          '2026.1', 4, 1, 1, 1, 1, 0, 0, 4, 'Jordan Avery', ?)`)
       .bind(batchId, JSON.stringify(headers), JSON.stringify(mapping), now),
     ...rows.map((row) =>
       db
@@ -2010,7 +2010,7 @@ async function seedBulkImportDemo(db: D1Database, now: string) {
       .prepare(`INSERT OR IGNORE INTO audit_logs
         (id, entity_type, entity_id, action, actor, details, created_at)
         VALUES ('audit-import-demo-preview', 'import_batch', ?,
-          'import_preview_created', 'Selina Armstrong', ?, ?)`)
+          'import_preview_created', 'Jordan Avery', ?, ?)`)
       .bind(
         batchId,
         JSON.stringify({
@@ -2197,7 +2197,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
         '2026-11-01',
         '2026-10-01',
         'upcoming',
-        'Selina Armstrong',
+        'Jordan Avery',
         'Jordan Ellis',
         'high',
         '2026-08-20T16:00:00.000Z',
@@ -2222,7 +2222,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
         '2026-09-23',
         '2026-09-09',
         'upcoming',
-        'Selina Armstrong',
+        'Jordan Avery',
         'Morgan Lee',
         'high',
         '2026-08-25T17:00:00.000Z',
@@ -2246,7 +2246,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
         '2026-09-30',
         '2026-09-01',
         'upcoming',
-        'Selina Armstrong',
+        'Jordan Avery',
         'Jordan Ellis',
         'critical',
         '2026-08-01T17:00:00.000Z',
@@ -2270,11 +2270,11 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
         'Quarterly service review sign-off',
         '2026-08-15',
         '2026-08-08',
-        'Selina Armstrong',
+        'Jordan Avery',
         'Jordan Ellis',
         '2026-08-01T17:00:00.000Z',
         '2026-08-14T21:00:00.000Z',
-        'Selina Armstrong',
+        'Jordan Avery',
         'Reviewed the fictional Q3 service summary and confirmed that all follow-up items were closed.',
         'Closeout record CL-DEMO-2026-014',
         'Customer and Supplier will review service levels quarterly.',
@@ -2296,7 +2296,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
         'Monthly service report evidence',
         '2026-08-28',
         '2026-08-25',
-        'Selina Armstrong',
+        'Jordan Avery',
         'Jordan Ellis',
         '2026-08-20T17:00:00.000Z',
         'Supplier will provide a monthly service performance report.',
@@ -2312,7 +2312,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
       .bind(
         'obligation-event-demo-completed',
         'date-004',
-        'Selina Armstrong',
+        'Jordan Avery',
         'Completed with closeout reference CL-DEMO-2026-014.',
         '2026-08-14T21:00:00.000Z',
       ),
@@ -2326,7 +2326,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
         'date-004',
         JSON.stringify({
           version: 'integration-outbox-2026.1',
-          actor: 'Selina Armstrong',
+          actor: 'Jordan Avery',
           occurredAt: '2026-08-14T21:00:00.000Z',
           contractId: 'con-001',
           supplierId: 'sup-harbor',
@@ -2342,7 +2342,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
       .bind(
         'obligation-event-demo-evidence-required',
         'date-005',
-        'Selina Armstrong',
+        'Jordan Avery',
         'Report received; supporting review evidence is still required.',
         '2026-08-29T17:00:00.000Z',
       ),

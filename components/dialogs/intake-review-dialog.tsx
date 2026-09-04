@@ -63,7 +63,7 @@ export function IntakeReviewDialog({
   const applyDetails = useCallback((nextDetails: IntakeDetails) => {
     setDetails(nextDetails);
     setStatus(String(nextDetails.intake.status ?? 'under_review'));
-    setOwner(String(nextDetails.intake.owner ?? 'Selina Armstrong'));
+    setOwner(String(nextDetails.intake.owner ?? 'Jordan Avery'));
     setTargetReviewDate(String(nextDetails.intake.target_review_date ?? ''));
     setInternalNotes(String(nextDetails.intake.internal_notes ?? ''));
     setFindingStatuses(
