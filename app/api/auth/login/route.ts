@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 
 import { ensureWorkspaceDatabase } from '@/db/bootstrap';
+import { clientAddress, sameOrigin } from '@/lib/server/request-security';
 import {
   authenticateWorkspaceCredentials,
   createDemoSessionToken,
@@ -19,31 +20,18 @@ function redirectTo(request: Request, error?: string) {
   return url;
 }
 
-function sameOrigin(request: Request) {
-  const origin = request.headers.get('origin');
-  if (!origin) return true;
-  try {
-    return new URL(origin).origin === new URL(request.url).origin;
-  } catch {
-    return false;
-  }
-}
-
 async function loginRateLimited(request: Request) {
   await ensureWorkspaceDatabase();
   const nowSeconds = Math.floor(Date.now() / 1000);
   const windowSeconds = 15 * 60;
   const windowStart = Math.floor(nowSeconds / windowSeconds) * windowSeconds;
-  const clientAddress =
-    request.headers.get('cf-connecting-ip') ??
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    'unknown';
+  const address = clientAddress(request) || 'unknown';
   const result = await env.DB.prepare(`INSERT INTO api_rate_limits
       (key, window_start, request_count)
       VALUES (?, ?, 1)
       ON CONFLICT(key) DO UPDATE SET request_count = request_count + 1
       RETURNING request_count`)
-    .bind(`demo-login:${clientAddress}:${windowStart}`, windowStart)
+    .bind(`demo-login:${address}:${windowStart}`, windowStart)
     .first<{ request_count: number }>();
   return (result?.request_count ?? 1) > 5;
 }

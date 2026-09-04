@@ -12,6 +12,7 @@ import {
 import {
   guestAccessEnabled,
   guestIdentity,
+  localMaintainerRequest,
 } from '@/lib/server/request-security';
 import { permissionsForRole, type WorkspaceRole } from '@/lib/workspace-roles';
 
@@ -49,13 +50,10 @@ async function currentUser(): Promise<CurrentUser | null> {
     };
   }
 
+  // The loopback shortcut is an explicit opt-in rather than a property of the
+  // request, because `Host` is client-supplied. See `localMaintainerRequest`.
   const requestHeaders = await headers();
-  const host = requestHeaders.get('host')?.toLowerCase() ?? '';
-  const hostname = host.startsWith('[')
-    ? host.slice(1, host.indexOf(']'))
-    : host.split(':', 1)[0];
-
-  if (['localhost', '127.0.0.1', '::1'].includes(hostname ?? '')) {
+  if (localMaintainerRequest(requestHeaders.get('host'))) {
     return {
       displayName: 'Local maintainer',
       email: 'local@contractledger.invalid',

@@ -7,7 +7,7 @@ import {
   formatAmendmentNumber,
   subtractCalendarDays,
 } from '@/lib/amendment-lifecycle';
-import { isIsoDate } from '@/lib/validation';
+import { isIsoDate, storedDocumentMimeTypeSchema } from '@/lib/validation';
 import { validatedOverrideReason } from '@/lib/ai-governance';
 import { withApiRoute } from '@/lib/server/route-handler';
 
@@ -67,7 +67,7 @@ const saveSchema = z.object({
     fileName: z.string().min(1).max(255),
     totalPages: z.number().int().positive().max(40),
     storageKey: z.string().min(1).max(500),
-    mimeType: z.string().min(1).max(120),
+    mimeType: storedDocumentMimeTypeSchema,
   }),
   analysis: analysisSchema,
   review: z.object({

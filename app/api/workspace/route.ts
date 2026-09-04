@@ -17,7 +17,7 @@ import {
   type ObligationMetricRecord,
 } from '@/lib/obligation-workflow';
 import { calculateSupplierRiskProfile } from '@/lib/supplier-risk';
-import { isIsoDate } from '@/lib/validation';
+import { isIsoDate, storedDocumentMimeTypeSchema } from '@/lib/validation';
 import { withApiRoute } from '@/lib/server/route-handler';
 import { aiBudgetStatus } from '@/lib/server/ai-budget';
 import { WORKSPACE_REGISTER_LIMIT } from '@/lib/workspace-limits';
@@ -50,7 +50,7 @@ const saveSchema = z.object({
     fileName: z.string().min(1).max(255),
     totalPages: z.number().int().positive().max(40),
     storageKey: z.string().min(1).max(500),
-    mimeType: z.string().min(1).max(120),
+    mimeType: storedDocumentMimeTypeSchema,
   }),
   analysis: z.object({
     documentTitle: fieldSchema,

@@ -13,7 +13,10 @@ import {
   windowStart,
   type AIScope,
 } from '@/lib/ai-budget-policy';
-import type { RequestActor } from '@/lib/server/request-security';
+import {
+  clientAddress,
+  type RequestActor,
+} from '@/lib/server/request-security';
 
 /**
  * Enforces the AI cost policy against D1.
@@ -26,10 +29,7 @@ import type { RequestActor } from '@/lib/server/request-security';
 
 /** Derives a stable, non-identifying key for one visitor. */
 async function visitorKey(request: Request, actor: RequestActor) {
-  const address =
-    request.headers.get('cf-connecting-ip') ??
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    '';
+  const address = clientAddress(request);
   // Without a client address every visitor would share one bucket, so fall
   // back to the actor. The address is hashed because a raw IP is personal data
   // and nothing here needs to reverse it.

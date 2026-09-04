@@ -1,5 +1,36 @@
 import { env } from 'cloudflare:workers';
 import { withApiRoute } from '@/lib/server/route-handler';
+import { STORED_DOCUMENT_MIME_TYPES } from '@/lib/validation';
+
+/**
+ * Stored documents are returned inline so a reviewer can read a contract
+ * without downloading it. That makes the response's media type a security
+ * boundary: a browser renders whatever it is told this file is.
+ *
+ * Save routes constrain what may be recorded, but rows written before that
+ * constraint existed are still in the database, so the value is re-checked
+ * here. Anything unrecognised is served as an opaque download rather than
+ * trusted, and `nosniff` stops the browser from second-guessing either way.
+ */
+function safeContentType(recorded: string | null, fallback: string) {
+  const value = (recorded ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
+  return (STORED_DOCUMENT_MIME_TYPES as readonly string[]).includes(value)
+    ? value
+    : fallback;
+}
+
+function documentHeaders(fileName: string, contentType: string) {
+  return {
+    'Content-Type': contentType,
+    'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+    'Cache-Control': 'private, no-store',
+    'X-Content-Type-Options': 'nosniff',
+    // A stored document never needs to run script or be framed, whatever the
+    // deployment's default policy allows for the application itself.
+    'Content-Security-Policy':
+      "default-src 'none'; object-src 'none'; frame-ancestors 'none'; sandbox",
+  };
+}
 
 export const GET = withApiRoute(
   {
@@ -32,11 +63,10 @@ export const GET = withApiRoute(
           { status: 404 },
         );
       return new Response(asset.body, {
-        headers: {
-          'Content-Type': document.mime_type || 'application/pdf',
-          'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(document.file_name)}`,
-          'Cache-Control': 'private, no-store',
-        },
+        headers: documentHeaders(
+          document.file_name,
+          safeContentType(document.mime_type, 'application/pdf'),
+        ),
       });
     }
 
@@ -48,11 +78,10 @@ export const GET = withApiRoute(
       );
 
     return new Response(object.body, {
-      headers: {
-        'Content-Type': document.mime_type || 'application/octet-stream',
-        'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(document.file_name)}`,
-        'Cache-Control': 'private, no-store',
-      },
+      headers: documentHeaders(
+        document.file_name,
+        safeContentType(document.mime_type, 'application/octet-stream'),
+      ),
     });
   },
 );

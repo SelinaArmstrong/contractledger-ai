@@ -35,6 +35,12 @@ export type RequestActor = {
 
 export const GUEST_ACTOR_ID = 'guest-viewer';
 
+function isLoopback(hostname: string) {
+  return (
+    hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+  );
+}
+
 /**
  * Public read-only browsing lets a reviewer open the hosted demo without
  * credentials. It is opt-in per deployment because it exposes every read route
@@ -42,6 +48,55 @@ export const GUEST_ACTOR_ID = 'guest-viewer';
  */
 export function guestAccessEnabled() {
   return process.env.DEMO_GUEST_ACCESS === 'true';
+}
+
+/**
+ * Whether an unauthenticated loopback request may act as the maintainer.
+ *
+ * The hostname of a request is derived from the `Host` header, which the
+ * client supplies. Granting the administrator role on that basis alone means a
+ * deployment sitting behind any proxy that forwards an arbitrary `Host` hands
+ * out full access for free. The convenience is only ever wanted on a developer
+ * machine, so it is now an explicit opt-in that `.env.example` enables for
+ * local work and no hosted deployment turns on by accident.
+ */
+export function localMaintainerAccessEnabled() {
+  return process.env.ALLOW_LOCAL_MAINTAINER === 'true';
+}
+
+/** Hostname of a request, with an IPv6 literal's brackets removed. */
+export function requestHostname(host: string | null | undefined) {
+  const value = (host ?? '').toLowerCase().trim();
+  if (value.startsWith('[')) return value.slice(1, value.indexOf(']'));
+  return value.split(':', 1)[0] ?? '';
+}
+
+/**
+ * True only when this request may use the loopback shortcut: the opt-in is set
+ * *and* the request really did arrive on a loopback name.
+ */
+export function localMaintainerRequest(host: string | null | undefined) {
+  return localMaintainerAccessEnabled() && isLoopback(requestHostname(host));
+}
+
+/**
+ * Client address used to key rate limits and per-visitor AI budgets.
+ *
+ * `cf-connecting-ip` is written by Cloudflare and cannot be set by the client,
+ * so it is trusted whenever present. `x-forwarded-for` is just a request
+ * header: on a deployment that is not behind a proxy which overwrites it, a
+ * caller can rotate it freely and walk around both the login rate limit and
+ * the per-visitor budget. It is therefore only consulted when the operator
+ * confirms that something in front of this app rewrites it.
+ *
+ * Returns '' when no address can be established, which callers treat as a
+ * single shared bucket — stricter than trusting a forgeable value.
+ */
+export function clientAddress(request: Request) {
+  const connecting = request.headers.get('cf-connecting-ip')?.trim();
+  if (connecting) return connecting;
+  if (process.env.TRUST_PROXY_ADDRESS_HEADER !== 'true') return '';
+  return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? '';
 }
 
 export function guestIdentity() {
@@ -56,20 +111,26 @@ export function guestIdentity() {
   };
 }
 
-function isLoopback(hostname: string) {
-  return (
-    hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
-  );
-}
-
-function sameOrigin(request: Request) {
+/**
+ * Whether a state-changing request demonstrably came from this application.
+ *
+ * `Origin` is sent by every browser on a cross-site POST and cannot be forged
+ * by page script, so it is the check that matters. When it is absent the
+ * request did not come from a browser form or fetch at all; `Sec-Fetch-Site`
+ * is accepted as the same-origin witness for the navigations that legitimately
+ * omit `Origin`, and anything else is refused rather than assumed friendly.
+ */
+export function sameOrigin(request: Request) {
   const origin = request.headers.get('origin');
-  if (!origin) return true;
-  try {
-    return new URL(origin).origin === new URL(request.url).origin;
-  } catch {
-    return false;
+  if (origin) {
+    try {
+      return new URL(origin).origin === new URL(request.url).origin;
+    } catch {
+      return false;
+    }
   }
+  const site = request.headers.get('sec-fetch-site');
+  return site === 'same-origin' || site === 'none';
 }
 
 type AuthorizationOptions = {
@@ -93,7 +154,7 @@ export async function authorizeApiRequest(
   options: AuthorizationOptions = {},
 ): Promise<AuthorizationResult> {
   const url = new URL(request.url);
-  const local = isLoopback(url.hostname);
+  const local = localMaintainerRequest(url.hostname);
   const session = await verifyDemoSessionToken(
     demoSessionFromCookieHeader(request.headers.get('cookie')),
   );
@@ -109,10 +170,16 @@ export async function authorizeApiRequest(
     };
   }
 
-  const write = options.permission
-    ? !['view_workspace', 'view_documents'].includes(options.permission)
-    : false;
-  if (write && !sameOrigin(request)) {
+  // The origin check is keyed on the method, not the permission. Every browser
+  // sends `Origin` on POST and friends, so an unsafe method can be refused
+  // outright when it cannot prove where it came from. A GET is left alone even
+  // when its permission is a privileged one: CORS already stops another site
+  // from reading the response, and demanding a header that Safari only began
+  // sending in 16.4 would break exports for no security gain.
+  const unsafeMethod = !['GET', 'HEAD', 'OPTIONS'].includes(
+    request.method.toUpperCase(),
+  );
+  if (unsafeMethod && !sameOrigin(request)) {
     return {
       ok: false,
       response: Response.json(

@@ -5,8 +5,10 @@ vi.mock('cloudflare:workers', () => ({ env: {} }));
 import {
   GUEST_ACTOR_ID,
   authorizeApiRequest,
+  clientAddress,
   guestAccessEnabled,
   guestIdentity,
+  sameOrigin,
 } from './request-security';
 import {
   permissionsForRole,
@@ -24,6 +26,8 @@ const environmentKeys = [
   'DEMO_AUTH_USERNAME',
   'DEMO_AUTH_PASSWORD',
   'WORKSPACE_SESSION_SECRET',
+  'ALLOW_LOCAL_MAINTAINER',
+  'TRUST_PROXY_ADDRESS_HEADER',
 ] as const;
 
 const original = Object.fromEntries(
@@ -223,7 +227,8 @@ describe('authorizeApiRequest', () => {
     if (!result.ok) expect(result.response.status).toBe(403);
   });
 
-  it('treats a loopback request as the local maintainer', async () => {
+  it('treats a loopback request as the local maintainer when opted in', async () => {
+    process.env.ALLOW_LOCAL_MAINTAINER = 'true';
     const result = await authorizeApiRequest(
       new Request('http://localhost:3000/api/workspace'),
       { permission: 'reset_workspace' },
@@ -237,6 +242,7 @@ describe('authorizeApiRequest', () => {
   });
 
   it('lets a signed-in account override the loopback shortcut', async () => {
+    process.env.ALLOW_LOCAL_MAINTAINER = 'true';
     const result = await authorizeApiRequest(
       new Request('http://localhost:3000/api/workspace', {
         headers: { cookie: await signedCookie() },
@@ -246,5 +252,121 @@ describe('authorizeApiRequest', () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.actor.role).toBe('demo_operator');
+  });
+});
+
+describe('Host header cannot grant maintainer access', () => {
+  it('refuses a spoofed Host when the opt-in is not set', async () => {
+    delete process.env.ALLOW_LOCAL_MAINTAINER;
+    const result = await authorizeApiRequest(
+      new Request('http://localhost:3000/api/workspace', { method: 'POST' }),
+      { permission: 'reset_workspace' },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(401);
+  });
+
+  it('still refuses when the opt-in is set but the host is not loopback', async () => {
+    process.env.ALLOW_LOCAL_MAINTAINER = 'true';
+    const result = await authorizeApiRequest(
+      new Request('https://contractledger.example/api/workspace', {
+        method: 'POST',
+      }),
+      { permission: 'reset_workspace' },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(401);
+  });
+});
+
+describe('clientAddress', () => {
+  it('trusts cf-connecting-ip, which a client cannot set', () => {
+    const request = new Request('https://contractledger.example/', {
+      headers: { 'cf-connecting-ip': '203.0.113.7' },
+    });
+
+    expect(clientAddress(request)).toBe('203.0.113.7');
+  });
+
+  it('ignores a forgeable x-forwarded-for by default', () => {
+    delete process.env.TRUST_PROXY_ADDRESS_HEADER;
+    const request = new Request('https://contractledger.example/', {
+      headers: { 'x-forwarded-for': '203.0.113.9' },
+    });
+
+    // Empty means "one shared bucket", which throttles harder rather than
+    // letting a caller mint a fresh identity per request.
+    expect(clientAddress(request)).toBe('');
+  });
+
+  it('uses x-forwarded-for only when a proxy is declared', () => {
+    process.env.TRUST_PROXY_ADDRESS_HEADER = 'true';
+    const request = new Request('https://contractledger.example/', {
+      headers: { 'x-forwarded-for': '203.0.113.9, 198.51.100.2' },
+    });
+
+    expect(clientAddress(request)).toBe('203.0.113.9');
+  });
+});
+
+describe('sameOrigin', () => {
+  it('accepts a matching Origin', () => {
+    const request = new Request('https://contractledger.example/api/x', {
+      method: 'POST',
+      headers: { origin: 'https://contractledger.example' },
+    });
+
+    expect(sameOrigin(request)).toBe(true);
+  });
+
+  it('rejects a mismatched Origin', () => {
+    const request = new Request('https://contractledger.example/api/x', {
+      method: 'POST',
+      headers: { origin: 'https://attacker.example' },
+    });
+
+    expect(sameOrigin(request)).toBe(false);
+  });
+
+  it('refuses a request that carries neither Origin nor Sec-Fetch-Site', () => {
+    const request = new Request('https://contractledger.example/api/x', {
+      method: 'POST',
+    });
+
+    expect(sameOrigin(request)).toBe(false);
+  });
+
+  it('accepts Sec-Fetch-Site: same-origin when Origin is absent', () => {
+    const request = new Request('https://contractledger.example/api/x', {
+      method: 'POST',
+      headers: { 'sec-fetch-site': 'same-origin' },
+    });
+
+    expect(sameOrigin(request)).toBe(true);
+  });
+});
+
+describe('origin enforcement is keyed on the HTTP method', () => {
+  it('refuses an unsafe method that cannot prove its origin', async () => {
+    process.env.ALLOW_LOCAL_MAINTAINER = 'true';
+    const result = await authorizeApiRequest(
+      new Request('http://localhost:3000/api/workspace', { method: 'POST' }),
+      { permission: 'edit_verified_fields' },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(403);
+  });
+
+  it('allows a privileged GET without origin headers, since CORS covers it', async () => {
+    process.env.ALLOW_LOCAL_MAINTAINER = 'true';
+    const result = await authorizeApiRequest(
+      new Request('http://localhost:3000/api/evaluations'),
+      { permission: 'export_data' },
+    );
+
+    expect(result.ok).toBe(true);
   });
 });
