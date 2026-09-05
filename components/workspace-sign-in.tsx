@@ -21,11 +21,13 @@ const errorMessages: Record<string, string> = {
 export function WorkspaceSignIn({
   configurationError,
   signInEnabled,
+  guestBrowsePath,
   error,
 }: {
   configurationError: string;
   /** False when the deployment has no configured account to sign in to. */
   signInEnabled: boolean;
+  guestBrowsePath: string | null;
   error?: string;
 }) {
   const errorMessage =
@@ -166,6 +168,18 @@ export function WorkspaceSignIn({
                 grants access.
               </p>
             )}
+
+            {guestBrowsePath ? (
+              <a
+                href={guestBrowsePath}
+                className={cn(
+                  buttonVariants({ variant: 'outline', size: 'lg' }),
+                  'mt-3 h-11 w-full border-[#cbdde4] text-[#294454] hover:bg-[#f4f9fb]',
+                )}
+              >
+                Continue as read-only guest
+              </a>
+            ) : null}
 
             <p className="mt-5 text-center text-[10px] leading-4 text-slate-400">
               The browser receives only a signed, HttpOnly, time-limited session

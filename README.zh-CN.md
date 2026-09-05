@@ -206,7 +206,7 @@ macOS 也可以双击 `Start ContractLedger AI.command` 启动面试演示环境
 | 文件存储   | Cloudflare R2                                                            | 上传合同、供应商资质和履约证据                              |
 | AI         | DeepSeek API（可替换的参考实现）、Zod 严格结构化输出                     | 合同/文档提取、Assistant、Management Insights 和评估运行    |
 | 导出       | ExcelJS、自有 PDF/ICS 生成逻辑                                           | 工作簿、运营审查包和日历文件                                |
-| 运行与托管 | Vite 8、Cloudflare Workers、OpenAI Sites                                 | 本地 Workers 兼容环境、D1/R2 注入和托管                     |
+| 运行与托管 | Vite 8、Cloudflare Workers                                               | 本地 Workers 兼容环境、D1/R2 注入和托管                     |
 | 质量       | Vitest、Oxlint、TypeScript、Definition of Done / Phase gates             | 领域逻辑与路由包装器的确定性单元测试、静态检查和证据门禁    |
 
 核心请求路径如下：
@@ -252,7 +252,6 @@ React 工作台
 | `AI_VISITOR_HOURLY_UNIT_BUDGET` | 否                 | 单访客每小时上限（默认 `40`）                    |
 | `ALLOW_LOCAL_MAINTAINER`        | 本地开发需要       | `true` 时回环请求以维护者身份登录 —— **托管部署绝不可设置** |
 | `TRUST_PROXY_ADDRESS_HEADER`    | 否                 | 仅当前置代理会覆写 `X-Forwarded-For` 时设为 `true` |
-| `OPENAI_PROJECT_ID`             | 部署时需要         | 托管项目 ID，构建时注入产物；有意不入库          |
 
 ## 访问控制与成本控制
 
@@ -354,7 +353,7 @@ npm run check:baseline
 │   ├── definition-of-done/      # 功能完成定义及可执行证据
 │   ├── execution-loop/          # 标准阶段执行清单
 │   └── releases/                # v1.0 发布说明与 smoke test
-├── .openai/hosting.json         # D1/R2 逻辑绑定（项目 ID 由环境变量在构建时注入）
+├── wrangler.jsonc               # Cloudflare Worker、D1、R2、域名与非敏感变量配置
 ├── ROADMAP.md
 ├── DEMO_RUNBOOK.md
 └── PORTFOLIO_CASE_STUDY.md
@@ -406,12 +405,13 @@ npm run check:baseline
 
 ## 部署
 
-项目面向 OpenAI Sites / Cloudflare Workers 运行，逻辑资源绑定位于 `.openai/hosting.json`：
+项目直接运行在 Cloudflare Workers 上，Worker、D1、R2、自定义域名和非敏感变量统一配置在 `wrangler.jsonc`。凭据只存放在 Cloudflare Worker 的加密 secret 中，不写入仓库。
 
 ```json
 {
-  "d1": "DB",
-  "r2": "FILES"
+  "name": "contractledger-ai",
+  "d1_databases": [{ "binding": "DB", "database_name": "site-creator-d1" }],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "site-creator-r2" }]
 }
 ```
 
@@ -427,7 +427,13 @@ npm run build
 npm run start
 ```
 
-托管环境变量应通过 Sites 的运行时配置管理，不要写入仓库。仓库没有定义通用的公开发布脚本；正式发布由已关联的 Sites 项目完成，并由平台注入真实 D1、R2 和身份信息。
+确认 Cloudflare 登录、D1/R2 绑定和加密 secret 后，直接发布：
+
+```bash
+npm run deploy
+```
+
+托管凭据通过 Cloudflare Worker 的加密 secret 管理，不要写入仓库。`ALLOW_LOCAL_MAINTAINER` 只能保留在本地 `.env.local`，绝不能配置到托管环境。
 
 ## 已知边界
 

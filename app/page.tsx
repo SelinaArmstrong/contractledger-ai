@@ -15,6 +15,7 @@ import {
   localMaintainerRequest,
 } from '@/lib/server/request-security';
 import { permissionsForRole, type WorkspaceRole } from '@/lib/workspace-roles';
+import { GUEST_NOTICE_DISMISSED_COOKIE } from '@/lib/ui-preferences';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,22 +85,30 @@ export default async function Home({
 }: {
   searchParams: Promise<{
     auth_error?: string | string[];
+    login?: string | string[];
     view?: string | string[];
   }>;
 }) {
   const user = await currentUser();
   const params = await searchParams;
-  if (!user) {
+  const signInEnabled = signInAvailable();
+  const signInRequested =
+    user?.guest &&
+    (Array.isArray(params.login) ? params.login[0] : params.login) === '1';
+  if (!user || signInRequested) {
     return (
       <WorkspaceSignIn
         configurationError={workspaceAuthConfigurationError()}
-        signInEnabled={signInAvailable()}
+        signInEnabled={signInEnabled}
+        guestBrowsePath={guestAccessEnabled() ? '/' : null}
         error={
           typeof params.auth_error === 'string' ? params.auth_error : undefined
         }
       />
     );
   }
+
+  const cookieStore = await cookies();
 
   return (
     <ContractLedgerApp
@@ -112,7 +121,11 @@ export default async function Home({
         role: user.role,
         permissions: user.permissions,
       }}
+      signInPath={user.guest && signInEnabled ? '/?login=1' : null}
       signOutPath={user.local || user.guest ? null : '/api/auth/logout'}
+      showGuestNoticeInitially={
+        cookieStore.get(GUEST_NOTICE_DISMISSED_COOKIE)?.value !== '1'
+      }
       initialView={viewForSlug(
         Array.isArray(params.view) ? params.view[0] : params.view,
       )}

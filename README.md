@@ -176,7 +176,7 @@ The full ten-minute demo path and recovery steps are in [DEMO_RUNBOOK.md](DEMO_R
 | File storage  | Cloudflare R2                                                        | Uploaded contracts, qualification files, completion evidence                                  |
 | AI            | DeepSeek API (replaceable reference implementation), Zod validation  | Extraction, Assistant, Insights, evaluation runs                                              |
 | Exports       | ExcelJS, custom PDF/ICS generation                                   | Workbooks, review packages, calendars                                                         |
-| Runtime       | Vite 8, Cloudflare Workers, OpenAI Sites                             | Workers-compatible local environment, D1/R2 bindings, hosting                                 |
+| Runtime       | Vite 8, Cloudflare Workers                                      | Workers-compatible local environment, D1/R2 bindings, hosting                                 |
 | Quality       | Vitest, Oxlint, TypeScript, DoD / Phase gates                        | Unit tests, static analysis, evidence gates                                                   |
 
 Request path:
@@ -225,7 +225,6 @@ All variables are server-side. Never add a `NEXT_PUBLIC_` prefix, and never comm
 | `AI_VISITOR_HOURLY_UNIT_BUDGET` | No                     | Ceiling per visitor per hour (default `40`)                                 |
 | `ALLOW_LOCAL_MAINTAINER`        | For local development  | `true` signs loopback requests in as the maintainer — **never set this on a hosted deployment** |
 | `TRUST_PROXY_ADDRESS_HEADER`    | No                     | `true` only when a proxy in front of the app overwrites `X-Forwarded-For`   |
-| `OPENAI_PROJECT_ID`             | For deploying          | Hosting project id, stamped into the build; deliberately not in the repository |
 
 ## Access and cost controls
 

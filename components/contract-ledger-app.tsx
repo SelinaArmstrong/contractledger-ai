@@ -1,6 +1,11 @@
 'use client';
 
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -26,11 +31,11 @@ import {
   FileCheck2,
   FileText,
   LoaderCircle,
-  LogOut,
   MoreHorizontal,
   ShieldCheck,
   Sparkles,
   Upload,
+  X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AIAssistantDialog } from '@/components/dialogs/ai-assistant-dialog';
@@ -53,7 +58,6 @@ import {
   navigationGroups,
 } from '@/components/workspace/constants';
 import type { ExtractionFieldKey } from '@/components/workspace/constants';
-import { titleCase } from '@/components/workspace/formatters';
 import {
   LiveStatus,
   SkipToContentLink,
@@ -71,12 +75,16 @@ import {
 } from '@/lib/workspace-limits';
 import { pathForView, viewForSlug } from '@/components/workspace/view-routing';
 import { useDraggableDialog } from '@/components/workspace/use-draggable-dialog';
+import { AccountMenu } from '@/components/workspace/account-menu';
+import { GUEST_NOTICE_DISMISSED_COOKIE } from '@/lib/ui-preferences';
 
 const workspaceContentId = 'workspace-content';
 
 export function ContractLedgerApp({
   currentUser,
+  signInPath,
   signOutPath,
+  showGuestNoticeInitially,
   initialView,
 }: {
   currentUser: {
@@ -88,7 +96,9 @@ export function ContractLedgerApp({
     role: string;
     permissions: string[];
   };
+  signInPath: string | null;
   signOutPath: string | null;
+  showGuestNoticeInitially: boolean;
   /** Resolved on the server from `?view=`, so a deep link renders directly. */
   initialView: ViewName;
 }) {
@@ -120,6 +130,9 @@ export function ContractLedgerApp({
   const [intakeDetailId, setIntakeDetailId] = useState<string | null>(null);
   const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [showGuestNotice, setShowGuestNotice] = useState(
+    showGuestNoticeInitially,
+  );
   const [managementInsightsRequest, setManagementInsightsRequest] = useState<
     'contracts' | 'suppliers' | null
   >(null);
@@ -138,6 +151,11 @@ export function ContractLedgerApp({
     .join('');
   const can = (permission: string) =>
     currentUser.permissions.includes(permission);
+
+  const dismissGuestNotice = useCallback(() => {
+    document.cookie = `${GUEST_NOTICE_DISMISSED_COOKIE}=1; Path=/; Max-Age=315360000; SameSite=Lax${window.location.protocol === 'https:' ? '; Secure' : ''}`;
+    setShowGuestNotice(false);
+  }, []);
 
   const selectContractFile = useCallback((file: File | null) => {
     if (selectedFilePreviewUrlRef.current)
@@ -632,7 +650,7 @@ export function ContractLedgerApp({
         </div>
 
         <nav
-          className="flex-1 space-y-1 px-3 py-5"
+          className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-5 [scrollbar-gutter:stable]"
           aria-label="Primary navigation"
         >
           {navigationGroups.map((group, groupIndex) => (
@@ -653,21 +671,22 @@ export function ContractLedgerApp({
                         setActiveView(item.label);
                         setSearch('');
                       }}
-                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] transition ${
+                      className={`grid h-10 w-full grid-cols-[18px_minmax(0,1fr)_32px] items-center gap-3 rounded-lg px-3 text-left text-[13px] font-medium transition-colors duration-150 ${
                         active
-                          ? 'bg-white/12 font-medium text-white shadow-sm'
+                          ? 'bg-white/12 text-white shadow-sm'
                           : 'text-slate-300 hover:bg-white/7 hover:text-white'
                       }`}
                     >
                       <Icon
                         className={`size-[17px] ${active ? 'text-[#62c0dc]' : 'text-slate-400'}`}
                       />
-                      <span className="flex-1">{item.label}</span>
-                      {count ? (
-                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-slate-200">
-                          {count}
-                        </span>
-                      ) : null}
+                      <span className="min-w-0 truncate">{item.label}</span>
+                      <span
+                        aria-hidden={!count}
+                        className={`flex h-5 min-w-8 items-center justify-center rounded-full px-1.5 text-[10px] tabular-nums ${count ? 'bg-white/10 text-slate-200' : 'invisible'}`}
+                      >
+                        {count || 0}
+                      </span>
                     </button>
                   );
                 })}
@@ -729,33 +748,12 @@ export function ContractLedgerApp({
                 </span>
               ) : null}
             </button>
-            <div className="flex items-center gap-2">
-              <div className="flex min-w-0 items-center gap-2 rounded-lg px-1 py-1 text-left">
-                <span className="flex size-9 items-center justify-center rounded-lg bg-[#d7ebf2] text-xs font-semibold text-[#17425a]">
-                  {userInitials || 'U'}
-                </span>
-                <span className="hidden sm:block">
-                  <span className="block max-w-40 truncate text-xs font-semibold">
-                    {currentUser.displayName}
-                  </span>
-                  <span className="block text-[10px] text-slate-500">
-                    {titleCase(currentUser.role.replaceAll('_', ' '))}
-                  </span>
-                </span>
-              </div>
-              {signOutPath ? (
-                <form action={signOutPath} method="post" target="_top">
-                  <button
-                    type="submit"
-                    aria-label={`Sign out ${currentUser.email}`}
-                    className="flex h-9 items-center gap-1.5 rounded-lg border border-[#dce3e8] bg-white px-2.5 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50 hover:text-[#1d718f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6aa9bd]"
-                  >
-                    <LogOut className="size-3.5" />
-                    <span className="hidden xl:inline">Sign out</span>
-                  </button>
-                </form>
-              ) : null}
-            </div>
+            <AccountMenu
+              currentUser={currentUser}
+              initials={userInitials}
+              signInPath={signInPath}
+              signOutPath={signOutPath}
+            />
           </div>
         </header>
 
@@ -820,7 +818,7 @@ export function ContractLedgerApp({
           tabIndex={-1}
           className="mx-auto w-full max-w-[1800px] px-4 py-7 md:px-6 md:py-9 xl:px-7"
         >
-          {currentUser.guest ? (
+          {currentUser.guest && showGuestNotice ? (
             <Alert className="mb-5 border-sky-200 bg-sky-50 text-sky-900">
               <ShieldCheck />
               <AlertTitle>Read-only public demo</AlertTitle>
@@ -831,6 +829,19 @@ export function ContractLedgerApp({
                 workspace role. All organisations, people and agreements shown
                 here are fictional.
               </AlertDescription>
+              <AlertAction>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={dismissGuestNotice}
+                  aria-label="Dismiss the read-only public demo notice permanently"
+                  title="Don’t show this notice again"
+                  className="text-sky-700 hover:bg-sky-100 hover:text-sky-950"
+                >
+                  <X />
+                </Button>
+              </AlertAction>
             </Alert>
           ) : null}
           {workspaceError ? (

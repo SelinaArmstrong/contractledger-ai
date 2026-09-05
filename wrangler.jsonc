@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "contractledger-ai",
+  "main": "vinext/server/fetch-handler",
+  "compatibility_date": "2026-09-03",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": true,
+  "routes": [
+    {
+      "pattern": "contractledger.selinaq.com",
+      "custom_domain": true
+    }
+  ],
+  "vars": {
+    "SITE_URL": "https://contractledger.selinaq.com",
+    "DEMO_GUEST_ACCESS": "true"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "site-creator-d1",
+      "database_id": "370a8690-7fa1-44c7-8784-ea191f0e9023",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "site-creator-r2"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
