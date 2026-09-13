@@ -19,7 +19,10 @@ import {
   Upload,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { amendmentExtractionFields } from '@/components/workspace/constants';
+import {
+  amendmentExtractionFields,
+  dialogSurfaceClass,
+} from '@/components/workspace/constants';
 import type { AmendmentFieldKey } from '@/components/workspace/constants';
 import {
   moneyFromCents,
@@ -228,7 +231,7 @@ export function AmendmentDialog({
         open
         aria-modal="true"
         aria-labelledby="amendment-dialog-title"
-        className="relative m-0 grid h-[88vh] min-h-[660px] w-[96vw] max-w-[1440px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl bg-white p-0 text-sm shadow-2xl ring-1 ring-slate-900/10"
+        className={`${dialogSurfaceClass} grid grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden`}
       >
         <button
           type="button"
@@ -242,9 +245,9 @@ export function AmendmentDialog({
         <header
           data-dialog-drag-handle
           title="Drag to move dialog"
-          className="cursor-move touch-none select-none border-b border-[#e1e7ea] px-6 py-4 pr-14"
+          className="cursor-move touch-none select-none border-b border-border px-6 py-4 pr-14"
         >
-          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent-foreground">
             <Sparkles className="size-3.5" /> AI-assisted contract versioning
           </div>
           <h2 id="amendment-dialog-title" className="mt-1">
@@ -270,8 +273,8 @@ export function AmendmentDialog({
           </div>
         ) : (
           <div className="grid min-h-0 overflow-hidden xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-            <section className="min-h-0 overflow-y-auto border-b border-[#e1e7ea] bg-[#f8fafb] p-5 xl:border-b-0 xl:border-r">
-              <div className="rounded-xl border-2 border-dashed border-[#c9d8de] bg-white p-4">
+            <section className="min-h-0 overflow-y-auto border-b border-border bg-muted p-5 xl:border-b-0 xl:border-r">
+              <div className="rounded-xl border-2 border-dashed border-border bg-card p-4">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -282,15 +285,15 @@ export function AmendmentDialog({
                   }
                 />
                 <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:text-left">
-                  <span className="flex size-10 items-center justify-center rounded-lg bg-[#e4f2f6] text-[#287693]">
+                  <span className="flex size-10 items-center justify-center rounded-lg bg-accent text-accent-foreground">
                     <Upload className="size-5" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-[#203845]">
+                    <p className="truncate text-sm font-medium text-foreground">
                       {file?.name ??
                         'Choose a signed amendment or change order'}
                     </p>
-                    <p className="mt-1 text-[10px] text-slate-500">
+                    <p className="mt-1 text-[11px] text-slate-500">
                       Text-based PDF or TXT · maximum 8 MB
                     </p>
                   </div>
@@ -312,10 +315,10 @@ export function AmendmentDialog({
                   </div>
                 </div>
               </div>
-              <div className="mt-4 overflow-hidden rounded-xl border border-[#d7e1e6] bg-[#eef2f4]">
-                <div className="border-b border-[#d7e1e6] bg-white px-4 py-3">
+              <div className="mt-4 overflow-hidden rounded-xl border border-border bg-muted">
+                <div className="border-b border-border bg-card px-4 py-3">
                   <h3>Amendment source document</h3>
-                  <p className="mt-1 text-[10px] text-slate-500">
+                  <p className="mt-1 text-[11px] text-slate-500">
                     Read the signed language beside the extracted changes.
                   </p>
                 </div>
@@ -323,7 +326,7 @@ export function AmendmentDialog({
                   <iframe
                     title={file?.name ?? 'Amendment source'}
                     src={previewUrl}
-                    className="h-[56vh] min-h-[460px] w-full bg-white"
+                    className="h-[56vh] min-h-[460px] w-full bg-card"
                   />
                 ) : (
                   <div className="flex min-h-[380px] flex-col items-center justify-center px-6 text-center">
@@ -345,8 +348,8 @@ export function AmendmentDialog({
                 </Alert>
               ) : null}
               {status === 'analyzing' ? (
-                <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-[#dce3e8] bg-[#f8fafb] text-center">
-                  <LoaderCircle className="size-7 animate-spin text-[#287d9b]" />
+                <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-border bg-muted text-center">
+                  <LoaderCircle className="size-7 animate-spin text-accent-foreground" />
                   <p className="mt-3 text-sm font-medium">
                     Extracting amendment deltas…
                   </p>
@@ -358,36 +361,36 @@ export function AmendmentDialog({
               ) : result ? (
                 <div className="space-y-4">
                   <DocumentQualitySummary report={result.qualityReport} />
-                  <div className="grid gap-3 rounded-xl border border-[#bdd7e0] bg-[#f1f8fa] p-4 sm:grid-cols-2">
+                  <div className="grid gap-3 rounded-xl border border-border bg-[#f1f8fa] p-4 sm:grid-cols-2">
                     <div>
-                      <p className="text-[10px] uppercase tracking-[0.1em] text-slate-500">
+                      <p className="text-[11px] uppercase tracking-[0.1em] text-slate-500">
                         Current value
                       </p>
-                      <p className="mt-1 text-lg font-semibold text-[#203845]">
+                      <p className="mt-1 text-lg font-semibold text-foreground">
                         {moneyFromCents(contract.current_value_cents)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase tracking-[0.1em] text-[#2d788f]">
+                      <p className="text-[11px] uppercase tracking-[0.1em] text-[#2d788f]">
                         Resulting value
                       </p>
-                      <p className="mt-1 text-lg font-semibold text-[#1d718f]">
+                      <p className="mt-1 text-lg font-semibold text-accent-foreground">
                         {moneyFromCents(proposedValueCents)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-slate-500">
+                      <p className="text-[11px] text-slate-500">
                         Current expiration
                       </p>
-                      <p className="mt-1 text-xs font-semibold text-[#203845]">
+                      <p className="mt-1 text-xs font-semibold text-foreground">
                         {usDateText(contract.expiration_date)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-[#2d788f]">
+                      <p className="text-[11px] text-[#2d788f]">
                         Resulting expiration
                       </p>
-                      <p className="mt-1 text-xs font-semibold text-[#1d718f]">
+                      <p className="mt-1 text-xs font-semibold text-accent-foreground">
                         {usDateText(proposedExpiration)}
                       </p>
                     </div>
@@ -430,7 +433,7 @@ export function AmendmentDialog({
                       }
                       setConfirmed((current) => !current);
                     }}
-                    className={`flex w-full items-start gap-3 rounded-xl border p-4 text-left ${confirmed ? 'border-emerald-300 bg-emerald-50' : 'border-[#cbd7dd] bg-white'}`}
+                    className={`flex w-full items-start gap-3 rounded-xl border p-4 text-left ${confirmed ? 'border-emerald-300 bg-emerald-50' : 'border-border bg-card'}`}
                   >
                     <span
                       className={`mt-0.5 flex size-5 items-center justify-center rounded border ${confirmed ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300'}`}
@@ -438,10 +441,10 @@ export function AmendmentDialog({
                       {confirmed ? <Check className="size-3.5" /> : null}
                     </span>
                     <span>
-                      <span className="block text-xs font-semibold text-[#203845]">
+                      <span className="block text-xs font-semibold text-foreground">
                         Human verification complete
                       </span>
-                      <span className="mt-1 block text-[10px] leading-4 text-slate-500">
+                      <span className="mt-1 block text-[11px] leading-4 text-slate-500">
                         I compared these changes with the source and approve
                         updating the current effective terms and monitoring
                         schedule.
@@ -450,12 +453,12 @@ export function AmendmentDialog({
                   </button>
                 </div>
               ) : (
-                <div className="flex min-h-[420px] flex-col items-center justify-center rounded-xl border border-dashed border-[#cbd7dd] bg-[#f8fafb] px-6 text-center">
+                <div className="flex min-h-[420px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted px-6 text-center">
                   <Sparkles className="size-7 text-[#72a9ba]" />
-                  <p className="mt-3 text-xs font-semibold text-[#294354]">
+                  <p className="mt-3 text-xs font-semibold text-foreground">
                     Upload the signed amendment first
                   </p>
-                  <p className="mt-1 max-w-sm text-[10px] leading-4 text-slate-500">
+                  <p className="mt-1 max-w-sm text-[11px] leading-4 text-slate-500">
                     AI will extract only changed terms and preserve source-page
                     evidence.
                   </p>
@@ -465,11 +468,11 @@ export function AmendmentDialog({
           </div>
         )}
 
-        <footer className="flex flex-col-reverse gap-2 border-t border-[#e1e7ea] bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
+        <footer className="flex flex-col-reverse gap-2 border-t border-border bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
           {status === 'saved' ? (
             <Button
               onClick={closeDialog}
-              className="bg-[#1d718f] hover:bg-[#185f78]"
+              className="bg-primary hover:bg-primary/90"
             >
               Return to contract
             </Button>
@@ -485,7 +488,7 @@ export function AmendmentDialog({
                   missingAmendmentOverrideCount > 0 ||
                   status === 'saving'
                 }
-                className="bg-[#1d718f] hover:bg-[#185f78]"
+                className="bg-primary hover:bg-primary/90"
               >
                 {status === 'saving' ? (
                   <LoaderCircle className="animate-spin" />
@@ -501,7 +504,7 @@ export function AmendmentDialog({
             <Button
               onClick={analyze}
               disabled={!file || status === 'analyzing'}
-              className="bg-[#1d718f] hover:bg-[#185f78]"
+              className="bg-primary hover:bg-primary/90"
             >
               <Sparkles /> Analyze amendment with DeepSeek
             </Button>
@@ -540,9 +543,9 @@ export function AmendmentFieldControl({
   ].includes(fieldName);
   return (
     <div
-      className={`rounded-lg border border-[#dce3e8] bg-white p-3 ${fieldName === 'scopeSummary' ? 'sm:col-span-2' : ''}`}
+      className={`rounded-lg border border-border bg-card p-3 ${fieldName === 'scopeSummary' ? 'sm:col-span-2' : ''}`}
     >
-      <span className="flex items-center justify-between gap-2 text-[10px] font-semibold text-[#294454]">
+      <span className="flex items-center justify-between gap-2 text-[11px] font-semibold text-foreground">
         {label}
         <span className="font-normal text-slate-400">
           {Math.round(field.confidence * 100)}% · page {field.sourcePage ?? '—'}
@@ -553,7 +556,7 @@ export function AmendmentFieldControl({
           aria-label={label}
           value={stringValue || 'amendment'}
           onChange={(event) => onChange(event.target.value)}
-          className="mt-2 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
+          className="mt-2 h-9 w-full rounded-md border border-input bg-card px-3 text-xs"
         >
           {[
             'amendment',
@@ -574,7 +577,7 @@ export function AmendmentFieldControl({
           aria-label={label}
           value={stringValue}
           onChange={(event) => onChange(event.target.value || null)}
-          className="mt-2 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
+          className="mt-2 h-9 w-full rounded-md border border-input bg-card px-3 text-xs"
         >
           <option value="">Unchanged</option>
           <option value="automatic">Automatic</option>
@@ -587,7 +590,7 @@ export function AmendmentFieldControl({
           value={stringValue}
           onChange={(event) => onChange(event.target.value)}
           rows={3}
-          className="mt-2 w-full rounded-md border border-input bg-white px-3 py-2 text-xs outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
+          className="mt-2 w-full rounded-md border border-input bg-card px-3 py-2 text-xs outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
         />
       ) : dateField ? (
         <USDateInput
@@ -595,7 +598,7 @@ export function AmendmentFieldControl({
           value={stringValue}
           onChange={(value) => onChange(value || null)}
           ariaLabel={`${label} in month/day/year format`}
-          className="mt-2 h-9 bg-white text-xs"
+          className="mt-2 h-9 bg-card text-xs"
         />
       ) : (
         <Input
@@ -612,11 +615,11 @@ export function AmendmentFieldControl({
                 : event.target.value,
             )
           }
-          className="mt-2 h-9 bg-white text-xs"
+          className="mt-2 h-9 bg-card text-xs"
         />
       )}
       {field.sourceQuote ? (
-        <span className="mt-2 block line-clamp-2 text-[9px] leading-4 text-slate-400">
+        <span className="mt-2 block line-clamp-2 text-[11px] leading-4 text-slate-400">
           “{field.sourceQuote}”
         </span>
       ) : null}
@@ -624,7 +627,7 @@ export function AmendmentFieldControl({
         <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2">
           <label
             htmlFor={`amendment-override-${fieldName}`}
-            className="text-[9px] font-semibold text-amber-800"
+            className="text-[11px] font-semibold text-amber-800"
           >
             Required source override reason
           </label>
@@ -633,7 +636,7 @@ export function AmendmentFieldControl({
             value={overrideReason}
             onChange={(event) => onOverrideReasonChange(event.target.value)}
             placeholder="Explain independent verification"
-            className="mt-1 h-8 bg-white text-[10px]"
+            className="mt-1 h-8 bg-card text-[11px]"
           />
         </div>
       ) : null}

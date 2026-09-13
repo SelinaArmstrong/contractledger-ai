@@ -18,6 +18,7 @@ export const VIEW_SLUGS: Record<ViewName, string> = {
   'Obligations & Evidence': 'obligations',
   'Portfolio Case Study': 'case-study',
   'AI Accuracy & Validation': 'ai-validation',
+  'Playbook & Approval Rules': 'rules',
 };
 
 export const DEFAULT_VIEW: ViewName = 'Dashboard';

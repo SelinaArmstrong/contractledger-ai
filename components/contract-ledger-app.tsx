@@ -1,5 +1,8 @@
 'use client';
 
+import Link from 'next/link';
+import { BrandMark } from '@/components/brand-mark';
+
 import {
   Alert,
   AlertAction,
@@ -15,20 +18,13 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { needsSourceOverride } from '@/lib/ai-governance';
-import type {
-  AnalysisResponse,
-  ContractAnalysis,
-  ExtractedField,
-  Workspace,
-} from '@/lib/contract-ledger-types';
+import type { Workspace } from '@/lib/contract-ledger-types';
 import { exportCurrentRegisters } from '@/lib/export-registers';
 import {
   AlertCircle,
   BellRing,
   Check,
   Database,
-  FileCheck2,
   FileText,
   LoaderCircle,
   MoreHorizontal,
@@ -49,15 +45,16 @@ import { ContractRegisterView } from '@/components/views/contract-register-view'
 import { DashboardView } from '@/components/views/dashboard-view';
 import { NewContractReviewView } from '@/components/views/new-contract-review-view';
 import { AlertsExportsView } from '@/components/views/obligations-view';
+import { PlaybookRulesView } from '@/components/views/playbook-rules-view';
 import { PortfolioCaseStudyView } from '@/components/views/portfolio-case-study-view';
 import { SupplierRegisterView } from '@/components/views/supplier-register-view';
 import { AnalysisReview } from '@/components/workspace/analysis-review';
+import { DraftIntakePanel } from '@/components/workspace/draft-intake-panel';
 import {
-  extractionFields,
+  dialogSurfaceClass,
   navItems,
   navigationGroups,
 } from '@/components/workspace/constants';
-import type { ExtractionFieldKey } from '@/components/workspace/constants';
 import {
   LiveStatus,
   SkipToContentLink,
@@ -65,7 +62,6 @@ import {
 } from '@/components/workspace/primitives';
 import type {
   DetailSelection,
-  FieldReviewStatus,
   IntakeStage,
   ViewName,
 } from '@/components/workspace/types';
@@ -75,6 +71,8 @@ import {
 } from '@/lib/workspace-limits';
 import { pathForView, viewForSlug } from '@/components/workspace/view-routing';
 import { useDraggableDialog } from '@/components/workspace/use-draggable-dialog';
+import { useIntakeWorkflow } from '@/components/workspace/use-intake-workflow';
+import type { IntakeSaveResult } from '@/components/workspace/use-intake-workflow';
 import { AccountMenu } from '@/components/workspace/account-menu';
 import { GUEST_NOTICE_DISMISSED_COOKIE } from '@/lib/ui-preferences';
 
@@ -107,23 +105,6 @@ export function ContractLedgerApp({
   const [workspaceError, setWorkspaceError] = useState('');
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [stage, setStage] = useState<IntakeStage>('draft');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResponse | null>(
-    null,
-  );
-  const [originalAnalysis, setOriginalAnalysis] =
-    useState<ContractAnalysis | null>(null);
-  const [fieldReviews, setFieldReviews] = useState<
-    Partial<Record<ExtractionFieldKey, FieldReviewStatus>>
-  >({});
-  const [fieldOverrideReasons, setFieldOverrideReasons] = useState<
-    Partial<Record<ExtractionFieldKey, string>>
-  >({});
-  const [analysisStatus, setAnalysisStatus] = useState<
-    'idle' | 'analyzing' | 'ready' | 'saving' | 'saved' | 'error'
-  >('idle');
-  const [analysisError, setAnalysisError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [detail, setDetail] = useState<DetailSelection | null>(null);
@@ -136,13 +117,13 @@ export function ContractLedgerApp({
   const [managementInsightsRequest, setManagementInsightsRequest] = useState<
     'contracts' | 'suppliers' | null
   >(null);
+  /** Rule to highlight when the reader arrives from a finding or a decision. */
+  const [focusRuleKey, setFocusRuleKey] = useState<string | null>(null);
   const intakeDialogRef = useRef<HTMLDialogElement>(null);
   const intakeDialogDrag = useDraggableDialog({
     surfaceRef: intakeDialogRef,
   });
   const fileInput = useRef<HTMLInputElement>(null);
-  const [selectedFilePreviewUrl, setSelectedFilePreviewUrl] = useState('');
-  const selectedFilePreviewUrlRef = useRef('');
   const userInitials = currentUser.displayName
     .split(/\s+/)
     .filter(Boolean)
@@ -155,22 +136,6 @@ export function ContractLedgerApp({
   const dismissGuestNotice = useCallback(() => {
     document.cookie = `${GUEST_NOTICE_DISMISSED_COOKIE}=1; Path=/; Max-Age=315360000; SameSite=Lax${window.location.protocol === 'https:' ? '; Secure' : ''}`;
     setShowGuestNotice(false);
-  }, []);
-
-  const selectContractFile = useCallback((file: File | null) => {
-    if (selectedFilePreviewUrlRef.current)
-      URL.revokeObjectURL(selectedFilePreviewUrlRef.current);
-    const previewUrl =
-      file?.type === 'application/pdf' ? URL.createObjectURL(file) : '';
-    selectedFilePreviewUrlRef.current = previewUrl;
-    setSelectedFilePreviewUrl(previewUrl);
-    setSelectedFile(file);
-  }, []);
-  useEffect(() => {
-    return () => {
-      if (selectedFilePreviewUrlRef.current)
-        URL.revokeObjectURL(selectedFilePreviewUrlRef.current);
-    };
   }, []);
 
   useEffect(() => {
@@ -205,213 +170,6 @@ export function ContractLedgerApp({
     const timer = window.setTimeout(() => void loadWorkspace(), 0);
     return () => window.clearTimeout(timer);
   }, [loadWorkspace]);
-
-  const openIntake = (nextStage: IntakeStage) => {
-    setStage(nextStage);
-    selectContractFile(null);
-    setAnalysisResult(null);
-    setOriginalAnalysis(null);
-    setFieldReviews({});
-    setFieldOverrideReasons({});
-    setAnalysisError('');
-    setAnalysisStatus('idle');
-    setDialogOpen(true);
-  };
-
-  const loadDemoDocument = async () => {
-    const fileName =
-      stage === 'draft'
-        ? '01_Draft_Professional_Services_Agreement.pdf'
-        : '02_Executed_Professional_Services_Agreement.pdf';
-    const response = await fetch(`/demo-documents/${fileName}`);
-    const blob = await response.blob();
-    selectContractFile(new File([blob], fileName, { type: 'application/pdf' }));
-    setAnalysisResult(null);
-    setOriginalAnalysis(null);
-    setFieldReviews({});
-    setFieldOverrideReasons({});
-    setAnalysisStatus('idle');
-    setAnalysisError('');
-  };
-
-  const analyzeDocument = async () => {
-    if (!selectedFile) {
-      setAnalysisError('Choose a text-based PDF or TXT contract first.');
-      setAnalysisStatus('error');
-      return;
-    }
-    setAnalysisStatus('analyzing');
-    setAnalysisError('');
-    try {
-      const form = new FormData();
-      form.append('file', selectedFile);
-      form.append('stage', stage);
-      const response = await fetch('/api/analyze', {
-        method: 'POST',
-        body: form,
-      });
-      const body = (await response.json()) as AnalysisResponse & {
-        error?: string;
-      };
-      if (!response.ok)
-        throw new Error(body.error || 'The document could not be analyzed.');
-      setAnalysisResult(body);
-      setOriginalAnalysis(structuredClone(body.analysis));
-      setFieldReviews(
-        Object.fromEntries(
-          extractionFields.map(([key]) => [key, 'pending']),
-        ) as Record<ExtractionFieldKey, FieldReviewStatus>,
-      );
-      setFieldOverrideReasons({});
-      setAnalysisStatus('ready');
-    } catch (error) {
-      setAnalysisError(
-        error instanceof Error
-          ? error.message
-          : 'The document could not be analyzed.',
-      );
-      setAnalysisStatus('error');
-    }
-  };
-
-  const updateReviewedField = (
-    fieldName: ExtractionFieldKey,
-    value: string | number | null,
-  ) => {
-    setAnalysisResult((current) => {
-      if (!current) return current;
-      const field = current.analysis[fieldName] as ExtractedField;
-      return {
-        ...current,
-        analysis: {
-          ...current.analysis,
-          [fieldName]: { ...field, value },
-        },
-      };
-    });
-    setFieldReviews((current) => ({
-      ...current,
-      [fieldName]: 'corrected',
-    }));
-  };
-
-  const confirmReviewedField = (fieldName: ExtractionFieldKey) => {
-    if (!analysisResult || !originalAnalysis) return;
-    const originalValue = (originalAnalysis[fieldName] as ExtractedField).value;
-    const verifiedValue = (analysisResult.analysis[fieldName] as ExtractedField)
-      .value;
-    setFieldReviews((current) => ({
-      ...current,
-      [fieldName]:
-        JSON.stringify(originalValue) === JSON.stringify(verifiedValue)
-          ? 'accepted'
-          : 'corrected',
-    }));
-  };
-
-  const confirmAllUnchangedFields = () => {
-    if (!analysisResult || !originalAnalysis) return;
-    setFieldReviews((current) => ({
-      ...current,
-      ...Object.fromEntries(
-        extractionFields.map(([fieldName]) => {
-          if (current[fieldName] === 'corrected')
-            return [fieldName, 'corrected'];
-          const originalValue = (originalAnalysis[fieldName] as ExtractedField)
-            .value;
-          const verifiedValue = (
-            analysisResult.analysis[fieldName] as ExtractedField
-          ).value;
-          return [
-            fieldName,
-            JSON.stringify(originalValue) === JSON.stringify(verifiedValue)
-              ? 'accepted'
-              : 'corrected',
-          ];
-        }),
-      ),
-    }));
-  };
-
-  const pendingReviewCount = extractionFields.filter(
-    ([fieldName]) =>
-      !fieldReviews[fieldName] || fieldReviews[fieldName] === 'pending',
-  ).length;
-  const missingOverrideCount = analysisResult
-    ? extractionFields.filter(([fieldName]) => {
-        const originalField = (originalAnalysis?.[fieldName] ??
-          analysisResult.analysis[fieldName]) as ExtractedField;
-        const verifiedField = analysisResult.analysis[
-          fieldName
-        ] as ExtractedField;
-        return (
-          needsSourceOverride(fieldName, {
-            ...originalField,
-            value: verifiedField.value,
-          }) && (fieldOverrideReasons[fieldName]?.trim().length ?? 0) < 12
-        );
-      }).length
-    : 0;
-
-  const saveVerifiedRecord = async () => {
-    if (!analysisResult) return;
-    if (pendingReviewCount || missingOverrideCount) {
-      setAnalysisError(
-        pendingReviewCount
-          ? `Confirm the remaining ${pendingReviewCount} extracted field${pendingReviewCount === 1 ? '' : 's'} before saving.`
-          : `Add a specific reviewer override reason for the remaining ${missingOverrideCount} critical field${missingOverrideCount === 1 ? '' : 's'} without source evidence.`,
-      );
-      setAnalysisStatus('error');
-      return;
-    }
-    setAnalysisStatus('saving');
-    setAnalysisError('');
-    try {
-      const response = await fetch('/api/workspace', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          analysisRunId: analysisResult.analysisRunId,
-          stage,
-          analysis: analysisResult.analysis,
-          document: analysisResult.document,
-          review: {
-            fields: extractionFields.map(([fieldName]) => ({
-              fieldName,
-              status: fieldReviews[fieldName],
-              overrideReason: fieldOverrideReasons[fieldName],
-            })),
-          },
-        }),
-      });
-      const body = (await response.json()) as {
-        saved?: boolean;
-        workspace?: Workspace;
-        registeredContract?: { id: string; contractNumber: string } | null;
-        error?: string;
-      };
-      if (!response.ok || !body.workspace)
-        throw new Error(
-          body.error || 'The verified record could not be saved.',
-        );
-      setWorkspace(body.workspace);
-      if (stage === 'executed' && body.registeredContract) {
-        setActiveView('Contract Register');
-        setSearch(body.registeredContract.contractNumber);
-        setDialogOpen(false);
-        setAnalysisStatus('idle');
-      } else {
-        setAnalysisStatus('saved');
-      }
-    } catch (error) {
-      setAnalysisError(
-        error instanceof Error
-          ? error.message
-          : 'The verified record could not be saved.',
-      );
-      setAnalysisStatus('error');
-    }
-  };
 
   const exportRegisters = async () => {
     if (!workspace) return;
@@ -603,6 +361,56 @@ export function ContractLedgerApp({
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
+  /**
+   * The executed-contract dialog and the inline draft workspace run the same
+   * upload → extract → verify flow, but they keep separate state so switching
+   * views never discards half-finished work in the other one.
+   */
+  const handleIntakeSaved = useCallback(
+    (result: IntakeSaveResult) => {
+      setWorkspace(result.workspace);
+      if (result.stage === 'executed' && result.registeredContract) {
+        setActiveView('Contract Register');
+        setSearch(result.registeredContract.contractNumber);
+        setDialogOpen(false);
+        return true;
+      }
+      return false;
+    },
+    [setActiveView],
+  );
+  const dialogIntake = useIntakeWorkflow({
+    initialStage: 'draft',
+    onSaved: handleIntakeSaved,
+  });
+  const draftIntake = useIntakeWorkflow({
+    initialStage: 'draft',
+    onSaved: handleIntakeSaved,
+  });
+  const {
+    analysisError,
+    analysisResult,
+    analysisStatus,
+    fieldOverrideReasons,
+    fieldReviews,
+    missingOverrideCount,
+    originalAnalysis,
+    pendingReviewCount,
+    previewUrl: selectedFilePreviewUrl,
+    selectedFile,
+    stage,
+  } = dialogIntake;
+
+  const openRuleReference = (ruleKey: string) => {
+    setFocusRuleKey(ruleKey);
+    setActiveView('Playbook & Approval Rules');
+  };
+
+  const openIntake = (nextStage: IntakeStage) => {
+    dialogIntake.begin(nextStage);
+    setDialogOpen(true);
+  };
+
   // Each register snapshot in the workspace payload is capped, so the views
   // need to know when they are showing a partial list.
   const contractTruncation = registerTruncation(
@@ -622,40 +430,55 @@ export function ContractLedgerApp({
     if (workspaceError) return `Workspace unavailable. ${workspaceError}`;
     if (resetting) return 'Resetting the demonstration workspace.';
     if (exporting) return 'Preparing the register export.';
-    if (analysisStatus === 'analyzing') return 'Analyzing the document.';
-    if (analysisStatus === 'saving') return 'Saving the verified record.';
-    if (analysisStatus === 'saved') return 'The verified record was saved.';
-    if (analysisError) return `Analysis failed. ${analysisError}`;
+    if (
+      analysisStatus === 'analyzing' ||
+      draftIntake.analysisStatus === 'analyzing'
+    )
+      return 'Analyzing the document.';
+    if (analysisStatus === 'saving' || draftIntake.analysisStatus === 'saving')
+      return 'Saving the verified record.';
+    if (analysisStatus === 'saved' || draftIntake.analysisStatus === 'saved')
+      return 'The verified record was saved.';
+    const failure = analysisError || draftIntake.analysisError;
+    if (failure) return `Analysis failed. ${failure}`;
     return '';
-  }, [analysisError, analysisStatus, exporting, resetting, workspaceError]);
+  }, [
+    analysisError,
+    analysisStatus,
+    draftIntake.analysisError,
+    draftIntake.analysisStatus,
+    exporting,
+    resetting,
+    workspaceError,
+  ]);
 
   return (
-    <main className="contract-ledger-app min-h-screen bg-[#f3f6f8] text-[#17212b]">
+    <main className="contract-ledger-app min-h-screen bg-background text-foreground">
       <SkipToContentLink targetId={workspaceContentId} />
       <LiveStatus message={activityMessage} />
       <LiveStatus message={`${activeView} view`} />
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-[252px] border-r border-[#dce3e8] bg-[#0d2638] text-white lg:flex lg:flex-col">
-        <div className="flex h-[78px] items-center gap-3 border-b border-white/10 px-6">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-[#2f86a6] shadow-lg shadow-black/10">
-            <FileCheck2 className="size-5" />
+      <aside className="workspace-sidebar fixed inset-y-0 left-0 z-20 hidden w-[272px] bg-sidebar text-sidebar-foreground lg:flex lg:flex-col">
+        <div className="flex h-[88px] items-center gap-3 border-b border-sidebar-border px-5">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl ring-1 ring-white/15">
+            <BrandMark />
           </div>
           <div>
             <div className="text-[15px] font-semibold tracking-[-0.01em]">
               ContractLedger AI
             </div>
             <div className="mt-0.5 text-[11px] text-slate-300">
-              Register automation
+              Contract & supplier operations
             </div>
           </div>
         </div>
 
         <nav
-          className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-5 [scrollbar-gutter:stable]"
+          className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-6 [scrollbar-gutter:stable]"
           aria-label="Primary navigation"
         >
           {navigationGroups.map((group, groupIndex) => (
             <div key={group.label} className={groupIndex ? 'pt-5' : ''}>
-              <p className="mb-3 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+              <p className="mb-2 px-3 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400">
                 {group.label}
               </p>
               <div className="space-y-1">
@@ -671,19 +494,23 @@ export function ContractLedgerApp({
                         setActiveView(item.label);
                         setSearch('');
                       }}
-                      className={`grid h-10 w-full grid-cols-[18px_minmax(0,1fr)_32px] items-center gap-3 rounded-lg px-3 text-left text-[13px] font-medium transition-colors duration-150 ${
+                      aria-current={active ? 'page' : undefined}
+                      title={item.label}
+                      className={`workspace-nav-item grid min-h-11 w-full grid-cols-[18px_minmax(0,1fr)_24px] items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors duration-150 ${
                         active
-                          ? 'bg-white/12 text-white shadow-sm'
-                          : 'text-slate-300 hover:bg-white/7 hover:text-white'
+                          ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                          : 'text-slate-300 hover:bg-sidebar-accent hover:text-white'
                       }`}
                     >
                       <Icon
-                        className={`size-[17px] ${active ? 'text-[#62c0dc]' : 'text-slate-400'}`}
+                        className={`size-[17px] ${active ? 'text-sidebar-primary-foreground' : 'text-slate-400'}`}
                       />
-                      <span className="min-w-0 truncate">{item.label}</span>
+                      <span className="min-w-0 leading-[1.4]">
+                        {item.label}
+                      </span>
                       <span
                         aria-hidden={!count}
-                        className={`flex h-5 min-w-8 items-center justify-center rounded-full px-1.5 text-[10px] tabular-nums ${count ? 'bg-white/10 text-slate-200' : 'invisible'}`}
+                        className={`flex h-5 min-w-6 items-center justify-center rounded-md px-1 text-[10px] tabular-nums ${count ? (active ? 'bg-sidebar/10 text-sidebar' : 'bg-white/8 text-slate-300') : 'invisible'}`}
                       >
                         {count || 0}
                       </span>
@@ -695,23 +522,29 @@ export function ContractLedgerApp({
           ))}
         </nav>
 
-        <div className="m-3 rounded-xl border border-white/10 bg-white/5 p-4">
+        <div className="m-3 rounded-xl border border-white/10 bg-card/5 p-4">
           <div className="flex items-center gap-2 text-xs font-medium">
             <ShieldCheck className="size-4 text-[#62c0dc]" />
             Demo workspace
           </div>
           <p className="mt-2 text-[11px] leading-5 text-slate-400">
+            <Link
+              href="/about"
+              className="mb-2 block text-slate-200 underline underline-offset-4"
+            >
+              About this project
+            </Link>
             All contracts, suppliers, and company policies are fictional.
           </p>
         </div>
       </aside>
 
-      <div className="lg:pl-[252px]">
-        <header className="sticky top-0 z-10 flex h-[78px] items-center justify-between border-b border-[#dce3e8] bg-white/95 px-5 backdrop-blur md:px-8">
+      <div className="workspace-shell lg:pl-[272px]">
+        <header className="workspace-topbar sticky top-0 z-10 flex h-[88px] items-center justify-between gap-3 border-b border-border bg-background/95 px-4 backdrop-blur md:px-8">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <div className="flex shrink-0 items-center gap-3 lg:hidden">
               <div className="flex size-9 items-center justify-center rounded-lg bg-[#12344a] text-white">
-                <FileCheck2 className="size-4" />
+                <BrandMark className="size-9" />
               </div>
               <span className="hidden text-sm font-semibold sm:inline">
                 ContractLedger AI
@@ -721,29 +554,29 @@ export function ContractLedgerApp({
               type="button"
               onClick={() => setAssistantOpen(true)}
               aria-label="Open AI Contract Operations Assistant"
-              className="group flex h-10 min-w-0 max-w-[560px] flex-1 items-center gap-3 rounded-lg border border-[#cbdde4] bg-[#f4f9fb] px-3 text-left shadow-sm transition hover:border-[#8ebdce] hover:bg-white"
+              className="workspace-assistant-trigger group flex h-10 min-w-0 max-w-[480px] flex-1 items-center gap-3 rounded-lg border border-border bg-card px-3 text-left transition hover:border-ring hover:bg-card"
             >
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[#dceff5] text-[#1d718f]">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-accent text-accent-foreground">
                 <Sparkles className="size-3.5" />
               </span>
               <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
-                Ask ContractLedger AI about contracts, suppliers, or renewals…
+                Ask about your contracts, suppliers or renewals…
               </span>
-              <span className="hidden shrink-0 rounded border border-[#d4e0e5] bg-white px-1.5 py-0.5 text-[9px] font-medium text-slate-400 sm:inline">
+              <span className="hidden shrink-0 rounded border border-border bg-card px-1.5 py-0.5 text-[11px] font-medium text-slate-400 sm:inline">
                 ⌘ K
               </span>
             </button>
           </div>
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex shrink-0 items-center gap-3">
             <button
               type="button"
               onClick={() => setActiveView('Obligations & Evidence')}
               aria-label="Notifications"
-              className="relative flex size-9 items-center justify-center rounded-lg border border-[#dce3e8] bg-white text-slate-600"
+              className="relative flex size-9 items-center justify-center rounded-lg border border-border bg-card text-slate-600"
             >
               <BellRing className="size-4" />
               {counts.alerts ? (
-                <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-semibold text-white">
+                <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-rose-500 text-[11px] font-semibold text-white">
                   {counts.alerts}
                 </span>
               ) : null}
@@ -757,7 +590,7 @@ export function ContractLedgerApp({
           </div>
         </header>
 
-        <div className="border-b border-[#dce3e8] bg-white px-3 py-2 lg:hidden">
+        <div className="workspace-mobile-nav border-b border-border bg-background px-3 py-2 lg:hidden">
           <nav
             className="flex items-center gap-1"
             aria-label="Mobile navigation"
@@ -767,11 +600,12 @@ export function ContractLedgerApp({
                 <button
                   key={item.label}
                   onClick={() => setActiveView(item.label)}
-                  className={`shrink-0 rounded-md px-3 py-1.5 text-xs ${activeView === item.label ? 'bg-[#e4f2f6] font-medium text-[#1c647e]' : 'text-slate-500'}`}
+                  aria-current={activeView === item.label ? 'page' : undefined}
+                  className={`shrink-0 rounded-md px-3 py-1.5 text-xs ${activeView === item.label ? 'bg-accent font-medium text-accent-foreground' : 'text-slate-500'}`}
                 >
                   {mobileNavLabel(item.label)}
                   {navCount(item.label) ? (
-                    <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+                    <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">
                       {navCount(item.label)}
                     </span>
                   ) : null}
@@ -780,9 +614,9 @@ export function ContractLedgerApp({
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger
-                className={`flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-[#5b9cb3] ${
+                className={`flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   mobileSecondaryItems.some((item) => item.label === activeView)
-                    ? 'bg-[#e4f2f6] font-medium text-[#1c647e]'
+                    ? 'bg-accent font-medium text-accent-foreground'
                     : 'text-slate-500'
                 }`}
               >
@@ -802,7 +636,7 @@ export function ContractLedgerApp({
                         <Icon className="size-4 text-slate-500" />
                         <span className="flex-1">{item.label}</span>
                         {activeView === item.label ? (
-                          <Check className="size-4 text-[#1d718f]" />
+                          <Check className="size-4 text-accent-foreground" />
                         ) : null}
                       </DropdownMenuItem>
                     );
@@ -816,10 +650,10 @@ export function ContractLedgerApp({
         <div
           id={workspaceContentId}
           tabIndex={-1}
-          className="mx-auto w-full max-w-[1800px] px-4 py-7 md:px-6 md:py-9 xl:px-7"
+          className="workspace-content mx-auto w-full max-w-[1660px] px-4 py-7 md:px-7 md:py-9 xl:px-9"
         >
           {currentUser.guest && showGuestNotice ? (
-            <Alert className="mb-5 border-sky-200 bg-sky-50 text-sky-900">
+            <Alert className="mb-6 border-border bg-accent text-foreground">
               <ShieldCheck />
               <AlertTitle>Read-only public demo</AlertTitle>
               <AlertDescription>
@@ -864,8 +698,10 @@ export function ContractLedgerApp({
           {activeView === 'New Contract Review' ? (
             <NewContractReviewView
               workspace={workspace}
-              onOpen={() => openIntake('draft')}
+              intakePanel={<DraftIntakePanel intake={draftIntake} />}
+              canEditWorkflow={can('edit_verified_fields')}
               onSelectIntake={setIntakeDetailId}
+              onUpdated={setWorkspace}
             />
           ) : null}
           {activeView === 'Approvals & Exceptions' ? (
@@ -873,10 +709,11 @@ export function ContractLedgerApp({
               workspace={workspace}
               onUpdated={setWorkspace}
               onOpenIntake={setIntakeDetailId}
+              onOpenRule={openRuleReference}
             />
           ) : null}
           {activeView === 'Bulk Import & Data Quality' ? (
-            <BulkImportView onUpdated={setWorkspace} />
+            <BulkImportView workspace={workspace} onUpdated={setWorkspace} />
           ) : null}
           {activeView === 'Contract Register' ? (
             <ContractRegisterView
@@ -924,6 +761,13 @@ export function ContractLedgerApp({
               onRefresh={loadWorkspace}
               onSelectContract={(id) => setDetail({ type: 'contract', id })}
               onSelectSupplier={(id) => setDetail({ type: 'supplier', id })}
+            />
+          ) : null}
+          {activeView === 'Playbook & Approval Rules' ? (
+            <PlaybookRulesView
+              workspace={workspace}
+              focusRuleKey={focusRuleKey}
+              onFocusHandled={() => setFocusRuleKey(null)}
             />
           ) : null}
           {activeView === 'Portfolio Case Study' ? (
@@ -989,7 +833,7 @@ export function ContractLedgerApp({
             open
             aria-modal="true"
             aria-labelledby="intake-dialog-title"
-            className="relative m-0 grid h-[84vh] min-h-[620px] w-[96vw] max-w-[1440px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl bg-white p-0 text-sm shadow-2xl ring-1 ring-slate-900/10"
+            className={`${dialogSurfaceClass} grid grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden`}
           >
             <button
               type="button"
@@ -1002,9 +846,9 @@ export function ContractLedgerApp({
             <div
               data-dialog-drag-handle
               title="Drag to move dialog"
-              className="cursor-move touch-none select-none border-b border-[#e1e7ea] px-6 py-4"
+              className="cursor-move touch-none select-none border-b border-border px-6 py-4"
             >
-              <div className="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
+              <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent-foreground">
                 <Sparkles className="size-3.5" />
                 DeepSeek document extraction
               </div>
@@ -1033,15 +877,15 @@ export function ContractLedgerApp({
                 ].map(([number, title, description]) => (
                   <div
                     key={number}
-                    className="rounded-lg border border-[#d9e6eb] bg-[#f8fbfc] px-3 py-2"
+                    className="rounded-lg border border-[#d9e6eb] bg-muted px-3 py-2"
                   >
-                    <span className="text-[9px] font-semibold text-[#43849a]">
+                    <span className="text-[11px] font-semibold text-accent-foreground">
                       STEP {number}
                     </span>
-                    <span className="ml-2 text-[10px] font-semibold text-[#203845]">
+                    <span className="ml-2 text-[11px] font-semibold text-foreground">
                       {title}
                     </span>
-                    <span className="ml-2 text-[9px] text-slate-500">
+                    <span className="ml-2 text-[11px] text-slate-500">
                       {description}
                     </span>
                   </div>
@@ -1069,29 +913,25 @@ export function ContractLedgerApp({
                 </div>
               ) : (
                 <div className="grid h-full min-h-0 overflow-hidden xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-                  <section className="min-h-0 overflow-y-auto border-b border-[#e1e7ea] bg-[#f8fafb] px-5 py-4 xl:border-b-0 xl:border-r">
-                    <div className="rounded-xl border-2 border-dashed border-[#c9d8de] bg-white p-4">
+                  <section className="min-h-0 overflow-y-auto border-b border-border bg-muted px-5 py-4 xl:border-b-0 xl:border-r">
+                    <div className="rounded-xl border-2 border-dashed border-border bg-card p-4">
                       <input
                         ref={fileInput}
                         type="file"
                         accept=".pdf,.txt,application/pdf,text/plain"
                         className="sr-only"
-                        onChange={(event) => {
-                          selectContractFile(event.target.files?.[0] ?? null);
-                          setAnalysisResult(null);
-                          setOriginalAnalysis(null);
-                          setFieldReviews({});
-                          setFieldOverrideReasons({});
-                          setAnalysisStatus('idle');
-                          setAnalysisError('');
-                        }}
+                        onChange={(event) =>
+                          dialogIntake.selectFile(
+                            event.target.files?.[0] ?? null,
+                          )
+                        }
                       />
                       <div className="flex flex-col items-center text-center sm:flex-row sm:text-left">
-                        <span className="mb-3 flex size-10 items-center justify-center rounded-lg bg-[#e4f2f6] text-[#287693] sm:mb-0 sm:mr-4">
+                        <span className="mb-3 flex size-10 items-center justify-center rounded-lg bg-accent text-accent-foreground sm:mb-0 sm:mr-4">
                           <Upload className="size-5" />
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-[#203845]">
+                          <p className="truncate text-sm font-medium text-foreground">
                             {selectedFile
                               ? selectedFile.name
                               : stage === 'executed'
@@ -1107,15 +947,15 @@ export function ContractLedgerApp({
                           <Button
                             variant="outline"
                             size="sm"
-                            className="bg-white"
-                            onClick={loadDemoDocument}
+                            className="bg-card"
+                            onClick={() => void dialogIntake.loadDemoDocument()}
                           >
                             Use demo PDF
                           </Button>
                           <Button
                             variant="outline"
                             size="sm"
-                            className="bg-white"
+                            className="bg-card"
                             onClick={() => fileInput.current?.click()}
                           >
                             {selectedFile ? 'Replace file' : 'Browse files'}
@@ -1123,14 +963,14 @@ export function ContractLedgerApp({
                         </div>
                       </div>
                     </div>
-                    <div className="mt-4 overflow-hidden rounded-xl border border-[#d7e1e6] bg-[#eef2f4]">
-                      <div className="border-b border-[#d7e1e6] bg-white px-4 py-3">
-                        <h3 className="text-xs font-semibold text-[#203845]">
+                    <div className="mt-4 overflow-hidden rounded-xl border border-border bg-muted">
+                      <div className="border-b border-border bg-card px-4 py-3">
+                        <h3 className="text-xs font-semibold text-foreground">
                           {stage === 'executed'
                             ? 'Executed source copy'
                             : 'Draft source copy'}
                         </h3>
-                        <p className="mt-0.5 text-[10px] text-slate-500">
+                        <p className="mt-0.5 text-[11px] text-slate-500">
                           Verify the source while reviewing extracted values on
                           the right.
                         </p>
@@ -1141,7 +981,7 @@ export function ContractLedgerApp({
                             selectedFile?.name ?? 'Contract source preview'
                           }
                           src={selectedFilePreviewUrl}
-                          className="h-[52vh] min-h-[430px] w-full bg-white"
+                          className="h-[52vh] min-h-[430px] w-full bg-card"
                         />
                       ) : (
                         <div className="flex min-h-[360px] flex-col items-center justify-center px-6 text-center">
@@ -1159,10 +999,10 @@ export function ContractLedgerApp({
                   <section className="min-h-0 overflow-y-auto px-5 py-4">
                     <div className="mb-4 flex items-start justify-between gap-3">
                       <div>
-                        <h3 className="text-sm font-semibold text-[#203845]">
+                        <h3 className="text-sm font-semibold text-foreground">
                           AI extraction and human verification
                         </h3>
-                        <p className="mt-1 text-[10px] text-slate-500">
+                        <p className="mt-1 text-[11px] text-slate-500">
                           Database values remain unchanged until every field is
                           confirmed.
                         </p>
@@ -1174,8 +1014,8 @@ export function ContractLedgerApp({
                       </StatusBadge>
                     </div>
                     {analysisStatus === 'analyzing' ? (
-                      <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-[#dce3e8] bg-white text-center">
-                        <LoaderCircle className="size-7 animate-spin text-[#287d9b]" />
+                      <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-border bg-card text-center">
+                        <LoaderCircle className="size-7 animate-spin text-accent-foreground" />
                         <p className="mt-3 text-sm font-medium">
                           Extracting traceable contract fields…
                         </p>
@@ -1199,23 +1039,18 @@ export function ContractLedgerApp({
                         stage={stage}
                         fieldReviews={fieldReviews}
                         fieldOverrideReasons={fieldOverrideReasons}
-                        onOverrideReasonChange={(fieldName, reason) =>
-                          setFieldOverrideReasons((current) => ({
-                            ...current,
-                            [fieldName]: reason,
-                          }))
-                        }
-                        onFieldChange={updateReviewedField}
-                        onConfirmField={confirmReviewedField}
-                        onConfirmAll={confirmAllUnchangedFields}
+                        onOverrideReasonChange={dialogIntake.setOverrideReason}
+                        onFieldChange={dialogIntake.updateField}
+                        onConfirmField={dialogIntake.confirmField}
+                        onConfirmAll={dialogIntake.confirmAllUnchangedFields}
                       />
                     ) : analysisStatus !== 'analyzing' ? (
-                      <div className="flex min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed border-[#cbd7dd] bg-[#f8fafb] px-6 text-center">
+                      <div className="flex min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted px-6 text-center">
                         <Sparkles className="size-7 text-[#72a9ba]" />
-                        <p className="mt-3 text-xs font-semibold text-[#294354]">
+                        <p className="mt-3 text-xs font-semibold text-foreground">
                           Upload the source document first
                         </p>
-                        <p className="mt-1 max-w-sm text-[10px] leading-4 text-slate-500">
+                        <p className="mt-1 max-w-sm text-[11px] leading-4 text-slate-500">
                           Analyze the file to extract register fields, source
                           pages, key dates, and playbook differences.
                         </p>
@@ -1227,29 +1062,23 @@ export function ContractLedgerApp({
             </div>
 
             {analysisStatus !== 'saved' ? (
-              <div className="flex flex-col-reverse gap-2 border-t border-[#e1e7ea] bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
+              <div className="flex flex-col-reverse gap-2 border-t border-border bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
                 {analysisResult ? (
                   <>
                     <Button
                       variant="outline"
-                      onClick={() => {
-                        setAnalysisResult(null);
-                        setOriginalAnalysis(null);
-                        setFieldReviews({});
-                        setFieldOverrideReasons({});
-                        setAnalysisStatus('idle');
-                      }}
+                      onClick={dialogIntake.clearAnalysis}
                     >
                       Start over
                     </Button>
                     <Button
-                      onClick={saveVerifiedRecord}
+                      onClick={() => void dialogIntake.save()}
                       disabled={
                         analysisStatus === 'saving' ||
                         pendingReviewCount > 0 ||
                         missingOverrideCount > 0
                       }
-                      className="bg-[#1d718f] hover:bg-[#185f78]"
+                      className="bg-primary hover:bg-primary/90"
                     >
                       {analysisStatus === 'saving' ? (
                         <LoaderCircle className="animate-spin" />
@@ -1267,9 +1096,9 @@ export function ContractLedgerApp({
                   </>
                 ) : (
                   <Button
-                    onClick={analyzeDocument}
+                    onClick={() => void dialogIntake.analyze()}
                     disabled={!selectedFile || analysisStatus === 'analyzing'}
-                    className="bg-[#1d718f] hover:bg-[#185f78]"
+                    className="bg-primary hover:bg-primary/90"
                   >
                     <Sparkles />
                     Analyze with DeepSeek
@@ -1296,6 +1125,10 @@ export function ContractLedgerApp({
           onOpenSupplier={(supplierId) => {
             setIntakeDetailId(null);
             setDetail({ type: 'supplier', id: supplierId });
+          }}
+          onOpenRule={(ruleKey) => {
+            setIntakeDetailId(null);
+            openRuleReference(ruleKey);
           }}
         />
       ) : null}

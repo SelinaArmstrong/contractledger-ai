@@ -488,18 +488,18 @@ export function SupplierOnboardingDialog({
         onPointerMove={draggable.onPointerMove}
         onPointerUp={draggable.onPointerUp}
         onPointerCancel={draggable.onPointerCancel}
-        className="h-[84vh] min-h-[620px] w-[96vw] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-[1440px]"
+        className="h-[84dvh] min-h-[min(620px,90dvh)] max-h-[94dvh] w-[96vw] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-[1440px]"
       >
         <DialogHeader
           data-dialog-drag-handle
           title="Drag to move dialog"
-          className="cursor-move touch-none select-none border-b border-[#e1e7ea] px-6 py-4"
+          className="cursor-move touch-none select-none border-b border-border px-6 py-4"
         >
-          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent-foreground">
             <Building2 className="size-3.5" />
             Independent supplier onboarding
           </div>
-          <DialogTitle className="text-xl text-[#183040]">
+          <DialogTitle className="text-xl text-foreground">
             Create supplier from documentation
           </DialogTitle>
           <DialogDescription className="max-w-3xl text-xs leading-5">
@@ -516,15 +516,15 @@ export function SupplierOnboardingDialog({
             ].map(([number, title, description]) => (
               <div
                 key={number}
-                className="rounded-lg border border-[#d9e6eb] bg-[#f8fbfc] px-3 py-2"
+                className="rounded-lg border border-[#d9e6eb] bg-muted px-3 py-2"
               >
-                <span className="text-[9px] font-semibold text-[#43849a]">
+                <span className="text-[11px] font-semibold text-accent-foreground">
                   STEP {number}
                 </span>
-                <span className="ml-2 text-[10px] font-semibold text-[#203845]">
+                <span className="ml-2 text-[11px] font-semibold text-foreground">
                   {title}
                 </span>
-                <span className="ml-2 text-[9px] text-slate-500">
+                <span className="ml-2 text-[11px] text-slate-500">
                   {description}
                 </span>
               </div>
@@ -533,10 +533,10 @@ export function SupplierOnboardingDialog({
         </DialogHeader>
 
         <div className="grid min-h-0 overflow-hidden xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-          <section className="order-2 min-h-0 overflow-y-auto border-t border-[#e1e7ea] px-6 py-5 xl:border-l xl:border-t-0">
+          <section className="order-2 min-h-0 overflow-y-auto border-t border-border px-6 py-5 xl:border-l xl:border-t-0">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-sm font-semibold text-[#203845]">
+                <h3 className="text-sm font-semibold text-foreground">
                   AI-generated supplier master
                 </h3>
                 <p className="mt-1 text-[11px] text-slate-500">
@@ -552,7 +552,7 @@ export function SupplierOnboardingDialog({
               </StatusBadge>
             </div>
             {profileGenerated ? (
-              <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-[10px] leading-4 text-sky-900">
+              <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-[11px] leading-4 text-sky-900">
                 AI values remain editable because uploaded files may be
                 incomplete or inconsistent. Vendor number, relationship status,
                 documentation status, and the initial medium risk tier are
@@ -578,11 +578,11 @@ export function SupplierOnboardingDialog({
                   disabled={packageAnalyzing || saving}
                   className="mt-3 flex min-h-28 w-full flex-col items-center justify-center rounded-xl border border-dashed border-[#8dbdcd] bg-[#f4fafc] px-5 text-center transition-colors hover:border-[#347d96] hover:bg-[#eaf6f9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#347d96] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <Upload className="size-6 text-[#347d96]" />
+                  <Upload className="size-6 text-accent-foreground" />
                   <span className="mt-2 text-xs font-semibold text-[#245a70]">
                     Upload qualification files
                   </span>
-                  <span className="mt-1 max-w-sm text-[10px] leading-4 text-slate-500">
+                  <span className="mt-1 max-w-sm text-[11px] leading-4 text-slate-500">
                     Click to choose one or more PDF, PNG, or JPEG files. They
                     will appear in the qualification package on the left.
                   </span>
@@ -633,7 +633,7 @@ export function SupplierOnboardingDialog({
                   updateSupplier('riskTier', event.target.value)
                 }
                 aria-label="Supplier risk tier"
-                className="h-9 rounded-md border border-input bg-white px-3 text-xs"
+                className="h-9 rounded-md border border-input bg-card px-3 text-xs"
               >
                 <option value="low">Low risk</option>
                 <option value="medium">Medium risk</option>
@@ -741,17 +741,17 @@ export function SupplierOnboardingDialog({
               />
             </div>
             {profileGenerated && Object.keys(profileEvidence).length ? (
-              <details className="mt-4 rounded-lg border border-[#dce3e8] bg-[#f8fafb]">
-                <summary className="cursor-pointer px-3 py-2 text-[10px] font-semibold text-[#2c667b]">
+              <details className="mt-4 rounded-lg border border-border bg-muted">
+                <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold text-[#2c667b]">
                   View AI field sources ({Object.keys(profileEvidence).length})
                 </summary>
-                <div className="grid gap-2 border-t border-[#e3e9ed] p-3 sm:grid-cols-2">
+                <div className="grid gap-2 border-t border-border p-3 sm:grid-cols-2">
                   {Object.entries(profileEvidence).map(([field, evidence]) => (
                     <div
                       key={field}
-                      className="rounded-md bg-white px-2.5 py-2 text-[9px] text-slate-600"
+                      className="rounded-md bg-card px-2.5 py-2 text-[11px] text-slate-600"
                     >
-                      <span className="font-semibold text-[#294354]">
+                      <span className="font-semibold text-foreground">
                         {titleCase(field)}
                       </span>
                       <span className="mt-0.5 block">
@@ -771,7 +771,7 @@ export function SupplierOnboardingDialog({
           <section className="order-1 min-h-0 overflow-y-auto px-6 py-5">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
               <div>
-                <h3 className="text-sm font-semibold text-[#203845]">
+                <h3 className="text-sm font-semibold text-foreground">
                   Start here: qualification package
                 </h3>
                 <p className="mt-1 text-[11px] text-slate-500">
@@ -816,10 +816,10 @@ export function SupplierOnboardingDialog({
               {documents.map((document, index) => (
                 <div
                   key={document.id}
-                  className="rounded-xl border border-[#d8e2e7] bg-[#f8fafb] p-4"
+                  className="rounded-xl border border-[#d8e2e7] bg-muted p-4"
                 >
                   <div className="mb-3 flex items-center justify-between">
-                    <p className="text-xs font-semibold text-[#294354]">
+                    <p className="text-xs font-semibold text-foreground">
                       Qualification file {index + 1}
                     </p>
                     {documents.length > 1 ? (
@@ -856,7 +856,7 @@ export function SupplierOnboardingDialog({
                         document.analyzing || packageAnalyzing || saving
                       }
                       aria-label={`Qualification file ${index + 1} type`}
-                      className="h-9 rounded-md border border-input bg-white px-3 text-xs"
+                      className="h-9 rounded-md border border-input bg-card px-3 text-xs"
                     >
                       {SUPPLIER_DOCUMENT_TYPES.map((type) => (
                         <option key={type} value={type}>
@@ -884,7 +884,7 @@ export function SupplierOnboardingDialog({
                         document.analyzing || packageAnalyzing || saving
                       }
                       aria-label={`Qualification file ${index + 1}`}
-                      className="bg-white text-xs file:mr-2 file:border-0 file:bg-transparent"
+                      className="bg-card text-xs file:mr-2 file:border-0 file:bg-transparent"
                     />
                     <Button
                       type="button"
@@ -898,7 +898,7 @@ export function SupplierOnboardingDialog({
                         saving ||
                         Boolean(document.aiResult)
                       }
-                      className="bg-white"
+                      className="bg-card"
                     >
                       {document.analyzing ? (
                         <LoaderCircle className="animate-spin" />
@@ -911,7 +911,7 @@ export function SupplierOnboardingDialog({
                     </Button>
                   </div>
                   {document.aiResult ? (
-                    <div className="mt-3 grid gap-3 rounded-lg border border-sky-100 bg-white p-3 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="mt-3 grid gap-3 rounded-lg border border-sky-100 bg-card p-3 md:grid-cols-2 xl:grid-cols-4">
                       <Input
                         value={document.issuer}
                         onChange={(event) =>
@@ -921,7 +921,7 @@ export function SupplierOnboardingDialog({
                         }
                         placeholder="Issuer / source"
                         aria-label={`Qualification file ${index + 1} issuer`}
-                        className="bg-white text-xs"
+                        className="bg-card text-xs"
                       />
                       <Input
                         value={document.documentNumber}
@@ -932,7 +932,7 @@ export function SupplierOnboardingDialog({
                         }
                         placeholder="Document number"
                         aria-label={`Qualification file ${index + 1} number`}
-                        className="bg-white text-xs"
+                        className="bg-card text-xs"
                       />
                       <Input
                         type="date"
@@ -943,7 +943,7 @@ export function SupplierOnboardingDialog({
                           })
                         }
                         aria-label={`Qualification file ${index + 1} effective date`}
-                        className="bg-white text-xs"
+                        className="bg-card text-xs"
                       />
                       <Input
                         type="date"
@@ -954,7 +954,7 @@ export function SupplierOnboardingDialog({
                           })
                         }
                         aria-label={`Qualification file ${index + 1} expiration date`}
-                        className="bg-white text-xs"
+                        className="bg-card text-xs"
                       />
                       <Input
                         value={document.coverageSummary}
@@ -965,17 +965,17 @@ export function SupplierOnboardingDialog({
                         }
                         placeholder="Coverage / qualification summary"
                         aria-label={`Qualification file ${index + 1} coverage or qualification summary`}
-                        className="bg-white text-xs md:col-span-2 xl:col-span-4"
+                        className="bg-card text-xs md:col-span-2 xl:col-span-4"
                       />
                       {sourceOverrideFields(document).length ? (
                         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 md:col-span-2 xl:col-span-4">
                           <label
                             htmlFor={`supplier-onboarding-override-${document.id}`}
-                            className="text-[10px] font-semibold text-amber-900"
+                            className="text-[11px] font-semibold text-amber-900"
                           >
                             Required source override reason
                           </label>
-                          <p className="mt-1 text-[9px] text-amber-700">
+                          <p className="mt-1 text-[11px] text-amber-700">
                             Missing page-and-quote support:{' '}
                             {sourceOverrideFields(document)
                               .map((fieldName) => titleCase(fieldName))
@@ -990,19 +990,19 @@ export function SupplierOnboardingDialog({
                               })
                             }
                             placeholder="Explain independent verification"
-                            className="mt-2 h-8 bg-white text-[10px]"
+                            className="mt-2 h-8 bg-card text-[11px]"
                           />
                         </div>
                       ) : null}
                     </div>
                   ) : (
-                    <p className="mt-2 text-[10px] text-slate-500">
+                    <p className="mt-2 text-[11px] text-slate-500">
                       The document metadata and supplier master fields will
                       appear after AI analysis.
                     </p>
                   )}
                   {document.documentType === 'insurance_certificate' ? (
-                    <p className="mt-2 text-[10px] text-amber-700">
+                    <p className="mt-2 text-[11px] text-amber-700">
                       Insurance expiration date is required.
                     </p>
                   ) : null}
@@ -1018,7 +1018,7 @@ export function SupplierOnboardingDialog({
                     />
                   ) : null}
                   {document.aiError ? (
-                    <p className="mt-2 text-[10px] text-rose-700">
+                    <p className="mt-2 text-[11px] text-rose-700">
                       {document.aiError}
                     </p>
                   ) : null}
@@ -1050,7 +1050,7 @@ export function SupplierOnboardingDialog({
             <Button
               onClick={submit}
               disabled={saving || packageAnalyzing}
-              className="bg-[#1d718f] hover:bg-[#185f78]"
+              className="bg-primary hover:bg-primary/90"
             >
               {saving ? (
                 <LoaderCircle className="animate-spin" />
@@ -1067,7 +1067,7 @@ export function SupplierOnboardingDialog({
                 packageAnalyzing ||
                 documents.some((item) => !item.file)
               }
-              className="bg-[#1d718f] hover:bg-[#185f78]"
+              className="bg-primary hover:bg-primary/90"
             >
               {packageAnalyzing ? (
                 <LoaderCircle className="animate-spin" />

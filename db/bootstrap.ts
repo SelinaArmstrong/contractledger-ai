@@ -527,7 +527,7 @@ const schemaStatements = [
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_contracts_intake_id_unique ON contracts(intake_id) WHERE intake_id IS NOT NULL',
 ];
 
-const CURRENT_SCHEMA_VERSION = 21;
+const CURRENT_SCHEMA_VERSION = 25;
 const DEMO_RESET_TIMESTAMP = '2026-09-02T00:00:00.000Z';
 
 const runtimeMigrationStatements = [
@@ -1205,6 +1205,70 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
         }),
         '2026-04-15T17:30:00.000Z',
       ),
+    // CT-2025-027 carries a -$50,000 amendment value, so it needs the amendment
+    // record and audit entry that justify it. Without them the register shows a
+    // value change with nothing behind it.
+    db
+      .prepare(`INSERT OR IGNORE INTO amendments
+        (id, contract_id, document_id, amendment_number, amendment_type,
+         version_number, version_status, signed_date, effective_date,
+         previous_value_cents, value_change_cents, resulting_value_cents,
+         previous_expiration_date, new_expiration_date,
+         previous_payment_terms, new_payment_terms,
+         previous_renewal_type, new_renewal_type,
+         previous_notice_days, new_notice_days, scope_summary,
+         created_by, created_at)
+        VALUES (?, ?, NULL, ?, 'amendment', 2, 'current', ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(
+        'amd-demo-northbay-001',
+        'con-007',
+        'Amendment No. 1',
+        '2026-03-02',
+        '2026-03-02',
+        63000000,
+        -5000000,
+        58000000,
+        '2026-09-30',
+        '2026-09-30',
+        'Net 45',
+        'Net 45',
+        'none',
+        'none',
+        null,
+        null,
+        'Removed the on-site consumables stocking scope after it moved in house.',
+        'Jordan Avery',
+        '2026-03-02T16:10:00.000Z',
+      ),
+    db
+      .prepare(`INSERT OR IGNORE INTO audit_logs
+        (id, entity_type, entity_id, action, actor, details, created_at)
+        VALUES (?, 'contract', ?, 'amendment_applied', ?, ?, ?)`)
+      .bind(
+        'audit-demo-northbay-amendment-001',
+        'con-007',
+        'Jordan Avery',
+        JSON.stringify({
+          amendmentId: 'amd-demo-northbay-001',
+          amendmentNumber: 'Amendment No. 1',
+          amendmentType: 'amendment',
+          versionNumber: 2,
+          source: 'Historical register migration',
+          correctionCount: 0,
+          before: {
+            currentValueCents: 63000000,
+            expirationDate: '2026-09-30',
+            paymentTerms: 'Net 45',
+          },
+          after: {
+            currentValueCents: 58000000,
+            expirationDate: '2026-09-30',
+            paymentTerms: 'Net 45',
+          },
+        }),
+        '2026-03-02T16:10:00.000Z',
+      ),
     db
       .prepare(`INSERT OR IGNORE INTO documents
       (id, supplier_id, intake_id, file_name, file_type, lifecycle_stage, storage_key, mime_type, page_count, review_status, ai_status, uploaded_at)
@@ -1354,7 +1418,13 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
   ]);
   await syncObligationDemoScenario(db);
   await syncApprovalDemoScenario(db);
+  await db
+    .prepare(
+      `UPDATE approval_rules SET active = 0 WHERE id = 'approval-rule-financial-v1'`,
+    )
+    .run();
   await seedBulkImportDemo(db, now);
+  await seedReversedImportDemo(db);
   await seedDemonstrationEvaluationRun(db, now);
 }
 
@@ -2023,6 +2093,290 @@ async function seedBulkImportDemo(db: D1Database, now: string) {
           invalid: 1,
         }),
         now,
+      ),
+  ]);
+}
+
+/**
+ * A second, completed batch so the migration metrics are not all em-dashes and
+ * the audit history shows more than a dry run. It is seeded as `rolled_back`
+ * deliberately: the rows it created are gone, so the fixture demonstrates the
+ * reversible path without adding phantom records to the official registers.
+ */
+async function seedReversedImportDemo(db: D1Database) {
+  const batchId = 'import-demo-contract-migration';
+  const createdAt = '2026-08-24T14:05:00.000Z';
+  const committedAt = '2026-08-24T14:23:00.000Z';
+  const rolledBackAt = '2026-08-25T09:40:00.000Z';
+  const headers = [
+    'Agreement No',
+    'Vendor',
+    'Description',
+    'Agreement Type',
+    'Cost Centre',
+    'Responsible',
+    'Value (USD)',
+    'Start',
+    'End',
+    'Terms',
+  ];
+  const mapping = {
+    contract_number: 'Agreement No',
+    supplier_legal_name: 'Vendor',
+    title: 'Description',
+    contract_type: 'Agreement Type',
+    department: 'Cost Centre',
+    owner: 'Responsible',
+    current_value: 'Value (USD)',
+    effective_date: 'Start',
+    expiration_date: 'End',
+    payment_terms: 'Terms',
+  };
+  const rows = [
+    {
+      id: 'import-row-demo-reversed-1',
+      rowNumber: 2,
+      raw: {
+        'Agreement No': 'CT-LEG-2201',
+        Vendor: 'Harbor Technology Solutions Inc.',
+        Description: 'Legacy Helpdesk Coverage',
+        'Agreement Type': 'Technology Support Agreement',
+        'Cost Centre': 'Information Technology',
+        Responsible: 'Jordan Avery',
+        'Value (USD)': '$182,000.00',
+        Start: '01/15/2025',
+        End: '01/14/2026',
+        Terms: 'Net 30',
+      },
+      normalized: {
+        contract_number: 'CT-LEG-2201',
+        supplier_legal_name: 'Harbor Technology Solutions Inc.',
+        supplier_id: 'sup-harbor',
+        title: 'Legacy Helpdesk Coverage',
+        contract_type: 'Technology Support Agreement',
+        department: 'Information Technology',
+        owner: 'Jordan Avery',
+        current_value_cents: 18200000,
+        effective_date: '2025-01-15',
+        expiration_date: '2026-01-14',
+        renewal_type: null,
+        notice_days: null,
+        payment_terms: 'Net 30',
+        governing_law: null,
+        status: null,
+      },
+      status: 'ready',
+      decision: 'accept',
+      issues: [],
+      createdRecordId: 'con-legacy-2201',
+    },
+    {
+      id: 'import-row-demo-reversed-2',
+      rowNumber: 3,
+      raw: {
+        'Agreement No': 'CT-LEG-2202',
+        Vendor: 'Redwood Facilities Services LLC',
+        Description: 'Legacy Grounds Maintenance',
+        'Agreement Type': 'Facilities Services Agreement',
+        'Cost Centre': 'Facilities',
+        Responsible: 'Jordan Avery',
+        'Value (USD)': '96,500',
+        Start: '3/1/2025',
+        End: '2/28/2026',
+        Terms: 'Net 45',
+      },
+      normalized: {
+        contract_number: 'CT-LEG-2202',
+        supplier_legal_name: 'Redwood Facilities Services LLC',
+        supplier_id: 'sup-redwood',
+        title: 'Legacy Grounds Maintenance',
+        contract_type: 'Facilities Services Agreement',
+        department: 'Facilities',
+        owner: 'Jordan Avery',
+        current_value_cents: 9650000,
+        effective_date: '2025-03-01',
+        expiration_date: '2026-02-28',
+        renewal_type: null,
+        notice_days: null,
+        payment_terms: 'Net 45',
+        governing_law: null,
+        status: null,
+      },
+      status: 'warning',
+      decision: 'accept',
+      issues: [
+        {
+          code: 'normalized_currency',
+          severity: 'warning',
+          message: 'Value (USD) was normalized from "96,500" to USD 96,500.00.',
+        },
+      ],
+      createdRecordId: 'con-legacy-2202',
+    },
+    {
+      id: 'import-row-demo-reversed-3',
+      rowNumber: 4,
+      raw: {
+        'Agreement No': 'CT-LEG-2203',
+        Vendor: 'Pacific Safety Consulting Inc.',
+        Description: 'Legacy Safety Audit Retainer',
+        'Agreement Type': 'Professional Services Agreement',
+        'Cost Centre': 'Operations',
+        Responsible: 'Jordan Avery',
+        'Value (USD)': '54,000',
+        Start: '2025-06-01',
+        End: '2026-05-31',
+        Terms: 'Net 30',
+      },
+      normalized: {
+        contract_number: 'CT-LEG-2203',
+        supplier_legal_name: 'Pacific Safety Consulting Inc.',
+        supplier_id: 'sup-pacific',
+        title: 'Legacy Safety Audit Retainer',
+        contract_type: 'Professional Services Agreement',
+        department: 'Operations',
+        owner: 'Jordan Avery',
+        current_value_cents: 5400000,
+        effective_date: '2025-06-01',
+        expiration_date: '2026-05-31',
+        renewal_type: null,
+        notice_days: null,
+        payment_terms: 'Net 30',
+        governing_law: null,
+        status: null,
+      },
+      status: 'ready',
+      decision: 'accept',
+      issues: [],
+      createdRecordId: 'con-legacy-2203',
+    },
+    {
+      id: 'import-row-demo-reversed-4',
+      rowNumber: 5,
+      raw: {
+        'Agreement No': 'CT-2026-012',
+        Vendor: 'Golden State Logistics LLC',
+        Description: 'Regional Logistics Services',
+        'Agreement Type': 'Logistics Services Agreement',
+        'Cost Centre': 'Operations',
+        Responsible: 'Jordan Avery',
+        'Value (USD)': '980,000',
+        Start: '2026-01-01',
+        End: '2026-12-31',
+        Terms: 'Net 30',
+      },
+      normalized: {
+        contract_number: 'CT-2026-012',
+        supplier_legal_name: 'Golden State Logistics LLC',
+        supplier_id: 'sup-goldenstate',
+        title: 'Regional Logistics Services',
+        contract_type: 'Logistics Services Agreement',
+        department: 'Operations',
+        owner: 'Jordan Avery',
+        current_value_cents: 98000000,
+        effective_date: '2026-01-01',
+        expiration_date: '2026-12-31',
+        renewal_type: null,
+        notice_days: null,
+        payment_terms: 'Net 30',
+        governing_law: null,
+        status: null,
+      },
+      status: 'duplicate',
+      decision: 'skip',
+      issues: [
+        {
+          code: 'exact_duplicate',
+          severity: 'warning',
+          message: 'Exact contract duplicate: CT-2026-012.',
+        },
+      ],
+      createdRecordId: null,
+    },
+  ] as const;
+
+  await db.batch([
+    db
+      .prepare(`INSERT OR IGNORE INTO import_batches
+        (id, entity_type, file_name, file_type, file_size_bytes, source_hash,
+         status, headers_json, mapping_json, mapping_version, total_rows,
+         ready_rows, warning_rows, duplicate_rows, invalid_rows, accepted_rows,
+         rejected_rows, normalization_issue_count, started_by, created_at,
+         committed_by, committed_at, rolled_back_by, rolled_back_at,
+         rollback_reason)
+        VALUES (?, 'contracts', 'fictional_legacy_contract_register.xlsx', 'xlsx',
+          14208, 'fictional-contract-import-fixture-2026-1', 'rolled_back', ?, ?,
+          '2026.1', 4, 2, 1, 1, 0, 3, 1, 5, 'Jordan Avery', ?,
+          'Jordan Avery', ?, 'Jordan Avery', ?,
+          'Legacy values were superseded by the signed originals located during migration review.')`)
+      .bind(
+        batchId,
+        JSON.stringify(headers),
+        JSON.stringify(mapping),
+        createdAt,
+        committedAt,
+        rolledBackAt,
+      ),
+    ...rows.map((row) =>
+      db
+        .prepare(`INSERT OR IGNORE INTO import_rows
+          (id, batch_id, row_number, raw_data_json, normalized_data_json,
+           status, decision, issues_json, duplicate_record_id, duplicate_type,
+           created_record_id, created_record_type, committed_at, rolled_back_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(
+          row.id,
+          batchId,
+          row.rowNumber,
+          JSON.stringify(row.raw),
+          JSON.stringify(row.normalized),
+          row.status,
+          row.decision,
+          JSON.stringify(row.issues),
+          row.status === 'duplicate' ? 'con-005' : null,
+          row.status === 'duplicate' ? 'exact' : null,
+          row.createdRecordId,
+          row.createdRecordId ? 'contract' : null,
+          row.createdRecordId ? committedAt : null,
+          row.createdRecordId ? rolledBackAt : null,
+        ),
+    ),
+    db
+      .prepare(`INSERT OR IGNORE INTO audit_logs
+        (id, entity_type, entity_id, action, actor, details, created_at)
+        VALUES ('audit-import-demo-committed', 'import_batch', ?,
+          'import_batch_committed', 'Jordan Avery', ?, ?)`)
+      .bind(
+        batchId,
+        JSON.stringify({
+          target: 'contracts',
+          acceptedRows: 3,
+          rejectedRows: 1,
+          createdRecordIds: [
+            'con-legacy-2201',
+            'con-legacy-2202',
+            'con-legacy-2203',
+          ],
+        }),
+        committedAt,
+      ),
+    db
+      .prepare(`INSERT OR IGNORE INTO audit_logs
+        (id, entity_type, entity_id, action, actor, details, created_at)
+        VALUES ('audit-import-demo-rolled-back', 'import_batch', ?,
+          'import_batch_rolled_back', 'Jordan Avery', ?, ?)`)
+      .bind(
+        batchId,
+        JSON.stringify({
+          reason:
+            'Legacy values were superseded by the signed originals located during migration review.',
+          reversedRecordIds: [
+            'con-legacy-2201',
+            'con-legacy-2202',
+            'con-legacy-2203',
+          ],
+        }),
+        rolledBackAt,
       ),
   ]);
 }

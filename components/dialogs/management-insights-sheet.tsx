@@ -153,13 +153,13 @@ export function ManagementInsightsSheet({
         <SheetHeader
           data-dialog-drag-handle
           title="Drag to move dialog"
-          className="cursor-move touch-none select-none border-b border-[#dce3e8] bg-white px-6 py-5 pr-14"
+          className="cursor-move touch-none select-none border-b border-border bg-card px-6 py-5 pr-14"
         >
-          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#347d96]">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-accent-foreground">
             <Sparkles className="size-3.5" />
             AI-assisted management analysis
           </div>
-          <SheetTitle className="mt-1 text-xl text-[#183040]">
+          <SheetTitle className="mt-1 text-xl text-foreground">
             {label} management insights
           </SheetTitle>
           <SheetDescription className="max-w-3xl text-xs leading-5">
@@ -168,8 +168,8 @@ export function ManagementInsightsSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f3f6f8]">
-          <div className="flex flex-col justify-between gap-3 border-b border-[#dce3e8] bg-white px-6 py-3 md:flex-row md:items-center">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-muted">
+          <div className="flex flex-col justify-between gap-3 border-b border-border bg-card px-6 py-3 md:flex-row md:items-center">
             <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
@@ -178,8 +178,8 @@ export function ManagementInsightsSheet({
                 disabled={loading || !currentRecordIds.length}
                 className={
                   selection === 'current'
-                    ? 'bg-[#1d718f] hover:bg-[#185f78]'
-                    : 'bg-white'
+                    ? 'bg-primary hover:bg-primary/90'
+                    : 'bg-card'
                 }
               >
                 Current view · {currentRecordIds.length}
@@ -191,15 +191,15 @@ export function ManagementInsightsSheet({
                 disabled={loading || !allRecordIds.length}
                 className={
                   selection === 'all'
-                    ? 'bg-[#1d718f] hover:bg-[#185f78]'
-                    : 'bg-white'
+                    ? 'bg-primary hover:bg-primary/90'
+                    : 'bg-card'
                 }
               >
                 Entire register · {allRecordIds.length}
               </Button>
             </div>
             {result ? (
-              <div className="text-[10px] text-slate-500">
+              <div className="text-[11px] text-slate-500">
                 Generated {new Date(result.generatedAt).toLocaleString('en-US')}{' '}
                 · {result.model}
               </div>
@@ -210,7 +210,7 @@ export function ManagementInsightsSheet({
             {loading ? (
               <div className="flex min-h-[420px] flex-col items-center justify-center text-center">
                 <LoaderCircle className="size-8 animate-spin text-[#2b819f]" />
-                <p className="mt-4 text-sm font-medium text-[#203845]">
+                <p className="mt-4 text-sm font-medium text-foreground">
                   Calculating facts and generating management insights…
                 </p>
                 <p className="mt-1 max-w-md text-xs leading-5 text-slate-500">
@@ -229,18 +229,15 @@ export function ManagementInsightsSheet({
                 <section>
                   <div className="mb-3 flex items-end justify-between gap-3">
                     <div>
-                      <h2 className="text-sm font-semibold text-[#203845]">
+                      <h2 className="text-sm font-semibold text-foreground">
                         Portfolio overview
                       </h2>
-                      <p className="mt-0.5 text-[10px] text-slate-500">
+                      <p className="mt-0.5 text-[11px] text-slate-500">
                         Deterministic database calculations as of{' '}
                         {result.report.asOfDate}
                       </p>
                     </div>
-                    <Badge
-                      variant="outline"
-                      className="bg-white text-slate-600"
-                    >
+                    <Badge variant="outline" className="bg-card text-slate-600">
                       {result.report.recordCount} verified records
                     </Badge>
                   </div>
@@ -248,12 +245,12 @@ export function ManagementInsightsSheet({
                     {result.report.metrics.map((metric) => (
                       <div
                         key={metric.key}
-                        className="rounded-xl border border-[#dce3e8] bg-white px-4 py-3"
+                        className="rounded-xl border border-border bg-card px-4 py-3"
                       >
-                        <p className="text-[10px] font-medium text-slate-500">
+                        <p className="text-[11px] font-medium text-slate-500">
                           {metric.label}
                         </p>
-                        <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#183040]">
+                        <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-foreground">
                           {managementMetricValue(metric)}
                         </p>
                       </div>
@@ -266,7 +263,7 @@ export function ManagementInsightsSheet({
                     fallback={result.report.charts.map((chart) => (
                       <div
                         key={chart.key}
-                        className="h-[286px] animate-pulse rounded-xl border border-[#dce3e8] bg-white"
+                        className="h-[286px] animate-pulse rounded-xl border border-border bg-card"
                       />
                     ))}
                   >
@@ -276,13 +273,13 @@ export function ManagementInsightsSheet({
                   </Suspense>
                 </section>
 
-                <section className="rounded-xl border border-[#dce3e8] bg-white">
-                  <div className="flex flex-col justify-between gap-3 border-b border-[#e3e9ed] px-5 py-4 sm:flex-row sm:items-center">
+                <section className="rounded-xl border border-border bg-card">
+                  <div className="flex flex-col justify-between gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center">
                     <div>
-                      <h2 className="text-sm font-semibold text-[#203845]">
+                      <h2 className="text-sm font-semibold text-foreground">
                         Priority attention preview
                       </h2>
-                      <p className="mt-0.5 text-[10px] text-slate-500">
+                      <p className="mt-0.5 text-[11px] text-slate-500">
                         Top 3 of {result.report.attentionCount} rule-generated
                         items
                       </p>
@@ -296,17 +293,17 @@ export function ManagementInsightsSheet({
                       View all in Alerts &amp; Exports
                     </Button>
                   </div>
-                  <div className="divide-y divide-[#edf1f3]">
+                  <div className="divide-y divide-border">
                     {result.report.attentionItems.slice(0, 3).map((item) => (
                       <button
                         key={item.id}
                         type="button"
                         onClick={() => openRecord(item.entityId)}
-                        className="flex w-full flex-col gap-2 px-5 py-4 text-left hover:bg-[#f8fafb] sm:flex-row sm:items-start sm:justify-between"
+                        className="flex w-full flex-col gap-2 px-5 py-4 text-left hover:bg-muted sm:flex-row sm:items-start sm:justify-between"
                       >
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-xs font-semibold text-[#1d718f]">
+                            <span className="text-xs font-semibold text-accent-foreground">
                               {item.reference || item.label}
                             </span>
                             <Badge
@@ -316,14 +313,14 @@ export function ManagementInsightsSheet({
                               {titleCase(item.priority)}
                             </Badge>
                           </div>
-                          <p className="mt-1 text-xs font-medium text-[#203845]">
+                          <p className="mt-1 text-xs font-medium text-foreground">
                             {item.issue}
                           </p>
-                          <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                          <p className="mt-1 text-[11px] leading-4 text-slate-500">
                             {item.label} · {item.reason}
                           </p>
                         </div>
-                        <span className="shrink-0 text-[10px] text-slate-500">
+                        <span className="shrink-0 text-[11px] text-slate-500">
                           {item.dueDate ?? 'No due date'}
                         </span>
                       </button>
@@ -337,8 +334,8 @@ export function ManagementInsightsSheet({
                 </section>
 
                 <section className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.75fr)]">
-                  <article className="rounded-xl border border-[#b9d9e5] bg-[#edf8fb] p-5">
-                    <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
+                  <article className="rounded-xl border border-[#b9d9e5] bg-accent p-5">
+                    <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent-foreground">
                       <Sparkles className="size-3.5" />
                       AI management insights
                     </div>
@@ -349,9 +346,9 @@ export function ManagementInsightsSheet({
                       {result.ai.insights.map((insight) => (
                         <div
                           key={`${insight.title}-${insight.explanation}`}
-                          className="rounded-lg border border-[#c9e1e9] bg-white/80 p-4"
+                          className="rounded-lg border border-[#c9e1e9] bg-card/80 p-4"
                         >
-                          <h3 className="text-xs font-semibold text-[#203845]">
+                          <h3 className="text-xs font-semibold text-foreground">
                             {insight.title}
                           </h3>
                           <p className="mt-1 text-[11px] leading-5 text-slate-600">
@@ -364,7 +361,7 @@ export function ManagementInsightsSheet({
                                   key={id}
                                   type="button"
                                   onClick={() => openRecord(id)}
-                                  className="rounded-md border border-[#b9d9e5] bg-white px-2 py-1 text-[9px] font-medium text-[#1d718f] hover:bg-[#edf8fb]"
+                                  className="rounded-md border border-[#b9d9e5] bg-card px-2 py-1 text-[11px] font-medium text-accent-foreground hover:bg-accent"
                                 >
                                   Open supporting record
                                 </button>
@@ -376,8 +373,8 @@ export function ManagementInsightsSheet({
                     </div>
                   </article>
 
-                  <article className="rounded-xl border border-[#dce3e8] bg-white p-5">
-                    <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  <article className="rounded-xl border border-border bg-card p-5">
+                    <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
                       <CircleCheck className="size-3.5" />
                       Recommended actions
                     </div>
@@ -385,10 +382,10 @@ export function ManagementInsightsSheet({
                       {result.ai.recommendedActions.map((action) => (
                         <div
                           key={`${action.action}-${action.reason}`}
-                          className="rounded-lg border border-[#e1e7ea] p-3"
+                          className="rounded-lg border border-border p-3"
                         >
                           <div className="flex items-start justify-between gap-3">
-                            <h3 className="text-xs font-semibold text-[#203845]">
+                            <h3 className="text-xs font-semibold text-foreground">
                               {action.action}
                             </h3>
                             <Badge
@@ -398,19 +395,19 @@ export function ManagementInsightsSheet({
                               {titleCase(action.priority)}
                             </Badge>
                           </div>
-                          <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                          <p className="mt-1 text-[11px] leading-4 text-slate-500">
                             {action.reason}
                           </p>
                         </div>
                       ))}
                     </div>
-                    <div className="mt-4 rounded-lg bg-slate-50 px-3 py-3 text-[10px] leading-4 text-slate-500">
+                    <div className="mt-4 rounded-lg bg-slate-50 px-3 py-3 text-[11px] leading-4 text-slate-500">
                       Decision support only. AI does not change register data,
                       approve suppliers, make legal determinations, or decide
                       renewal and termination actions.
                     </div>
                     {result.ai.dataLimitations.length ? (
-                      <div className="mt-3 text-[10px] leading-4 text-slate-500">
+                      <div className="mt-3 text-[11px] leading-4 text-slate-500">
                         <span className="font-semibold text-slate-600">
                           Data limitations:{' '}
                         </span>

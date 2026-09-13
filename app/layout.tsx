@@ -1,4 +1,5 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
+import { pageMetadata, resolveSiteOrigin } from '@/lib/seo';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 
@@ -13,22 +14,32 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.SITE_URL ?? 'http://localhost:3000'),
-  title: 'ContractLedger AI — Contract & Supplier Register Automation',
-  description:
-    'An AI-assisted workflow for reviewing new contracts and maintaining accurate contract and supplier registers.',
-  openGraph: {
-    title: 'ContractLedger AI',
-    description: 'AI-assisted contract & supplier register automation',
-    images: ['/og.jpg'],
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'ContractLedger AI',
-    description: 'AI-assisted contract & supplier register automation',
-    images: ['/og.jpg'],
+  metadataBase: new URL(resolveSiteOrigin()),
+  ...pageMetadata(),
+  applicationName: 'ContractLedger AI',
+  authors: [
+    {
+      name: 'Selina Armstrong',
+      url: 'https://www.linkedin.com/in/selinaarmstrong/',
+    },
+  ],
+  creator: 'Selina Armstrong',
+  category: 'business',
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: '16x16 32x32 48x48' },
+      { url: '/favicon.svg', type: 'image/svg+xml', sizes: 'any' },
+      { url: '/favicon-48.png', type: 'image/png', sizes: '48x48' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+    shortcut: '/favicon.ico',
   },
 };
+
+export const viewport: Viewport = { themeColor: '#0d2638' };
 
 export default function RootLayout({
   children,

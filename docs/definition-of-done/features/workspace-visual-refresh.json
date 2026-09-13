@@ -1,0 +1,160 @@
+{
+  "schemaVersion": "dod-2026.1",
+  "featureId": "workspace-visual-refresh",
+  "title": "Apply the approved brand identity across the operations workspace",
+  "owner": "ContractLedger AI maintainers",
+  "userStory": "As a contract operations user, I can scan records and navigate workflows through a consistent, readable interface.",
+  "updatedAt": "2026-09-12",
+  "status": "complete",
+  "criteria": [
+    {
+      "id": "user-story",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/design/WORKSPACE_VISUAL_REFRESH.md"
+        }
+      ]
+    },
+    {
+      "id": "happy-and-failure-paths",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/design/WORKSPACE_VISUAL_REFRESH.md"
+        }
+      ]
+    },
+    {
+      "id": "interaction-states",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/design/WORKSPACE_VISUAL_REFRESH.md"
+        }
+      ]
+    },
+    {
+      "id": "server-validation",
+      "status": "not_applicable",
+      "rationale": "The visual refresh has no new data inputs, business mutations, API contracts, migrations, audit events, object storage operations or domain-model consumers."
+    },
+    {
+      "id": "transactional-writes",
+      "status": "not_applicable",
+      "rationale": "The visual refresh has no new data inputs, business mutations, API contracts, migrations, audit events, object storage operations or domain-model consumers."
+    },
+    {
+      "id": "auditability",
+      "status": "not_applicable",
+      "rationale": "The visual refresh has no new data inputs, business mutations, API contracts, migrations, audit events, object storage operations or domain-model consumers."
+    },
+    {
+      "id": "migration-strategy",
+      "status": "not_applicable",
+      "rationale": "The visual refresh has no new data inputs, business mutations, API contracts, migrations, audit events, object storage operations or domain-model consumers."
+    },
+    {
+      "id": "r2-consistency",
+      "status": "not_applicable",
+      "rationale": "The visual refresh has no new data inputs, business mutations, API contracts, migrations, audit events, object storage operations or domain-model consumers."
+    },
+    {
+      "id": "unit-tests",
+      "status": "not_applicable",
+      "rationale": "Visual token and layout changes are verified through browser inspection and the existing 233 tests; no new tests duplicating CSS implementation are added."
+    },
+    {
+      "id": "api-tests",
+      "status": "not_applicable",
+      "rationale": "The visual refresh has no new data inputs, business mutations, API contracts, migrations, audit events, object storage operations or domain-model consumers."
+    },
+    {
+      "id": "fictional-fixture",
+      "status": "not_applicable",
+      "rationale": "The visual refresh has no new data inputs, business mutations, API contracts, migrations, audit events, object storage operations or domain-model consumers."
+    },
+    {
+      "id": "data-model-consumers",
+      "status": "not_applicable",
+      "rationale": "The visual refresh has no new data inputs, business mutations, API contracts, migrations, audit events, object storage operations or domain-model consumers."
+    },
+    {
+      "id": "accessibility",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/design/WORKSPACE_VISUAL_REFRESH.md"
+        }
+      ]
+    },
+    {
+      "id": "quality-gate",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "command",
+          "ref": "npm test"
+        },
+        {
+          "kind": "command",
+          "ref": "npm run lint"
+        },
+        {
+          "kind": "command",
+          "ref": "npx tsc --noEmit"
+        },
+        {
+          "kind": "command",
+          "ref": "npm run build"
+        }
+      ]
+    },
+    {
+      "id": "documentation",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "README.md"
+        },
+        {
+          "kind": "documentation",
+          "ref": "DEMO_RUNBOOK.md"
+        },
+        {
+          "kind": "documentation",
+          "ref": "ROADMAP.md"
+        },
+        {
+          "kind": "documentation",
+          "ref": "docs/design/WORKSPACE_VISUAL_REFRESH.md#bounded-metric-and-limitations"
+        },
+        {
+          "kind": "documentation",
+          "ref": "PORTFOLIO_CASE_STUDY.md"
+        }
+      ]
+    },
+    {
+      "id": "metric",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/design/WORKSPACE_VISUAL_REFRESH.md"
+        }
+      ]
+    }
+  ],
+  "metric": {
+    "name": "Workspace views checked for navigation and mobile page width",
+    "value": "10 existing views at a 320 px viewport; no page-level width expansion",
+    "sampleSize": 10,
+    "source": "docs/design/WORKSPACE_VISUAL_REFRESH.md"
+  }
+}

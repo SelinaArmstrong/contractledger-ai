@@ -5,7 +5,7 @@ import type {
   DocumentQualityReport,
   ExtractedField,
 } from '@/lib/contract-ledger-types';
-import { FileText, Sparkles } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { titleCase } from '@/components/workspace/formatters';
 
@@ -21,9 +21,13 @@ export function StatusBadge({
     blue: 'border-sky-200 bg-sky-50 text-sky-800',
     rose: 'border-rose-200 bg-rose-50 text-rose-800',
     green: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    slate: 'border-slate-300 bg-slate-100 text-slate-700',
   };
   return (
-    <Badge variant="outline" className={colors[tone] ?? colors.blue}>
+    <Badge
+      variant="outline"
+      className={`workspace-status ${colors[tone] ?? colors.blue}`}
+    >
       {children}
     </Badge>
   );
@@ -38,7 +42,7 @@ export function Panel({
 }) {
   return (
     <section
-      className={`rounded-xl border border-[#dce3e8] bg-white shadow-[0_1px_2px_rgb(15_23_42/3%)] ${className}`}
+      className={`workspace-panel rounded-xl border border-border bg-card ${className}`}
     >
       {children}
     </section>
@@ -55,7 +59,7 @@ export function PanelHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col justify-between gap-3 border-b border-[#e3e9ed] px-5 py-4 sm:flex-row sm:items-center">
+    <div className="workspace-panel-header flex flex-col justify-between gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center">
       <div>
         <h2 className="app-section-title">{title}</h2>
         {description ? (
@@ -103,10 +107,10 @@ export function DocumentQualitySummary({
         ? 'amber'
         : 'rose';
   return (
-    <div className="rounded-xl border border-[#d7e1e6] bg-[#f8fafb] p-3">
+    <div className="rounded-xl border border-border bg-muted p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
             Document preflight
           </p>
           <p className="mt-1 text-[11px] text-slate-600">
@@ -119,11 +123,11 @@ export function DocumentQualitySummary({
         </StatusBadge>
       </div>
       {report.issues.length ? (
-        <p className="mt-2 text-[10px] leading-4 text-amber-800">
+        <p className="mt-2 text-[11px] leading-4 text-amber-800">
           {report.issues.join(' ')}
         </p>
       ) : (
-        <p className="mt-2 text-[10px] text-emerald-700">
+        <p className="mt-2 text-[11px] text-emerald-700">
           Text layer and page orientation passed pre-analysis checks.
         </p>
       )}
@@ -143,14 +147,17 @@ export function PageHeading({
   action?: ReactNode;
 }) {
   return (
-    <section className="mb-7 flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
+    <section className="workspace-page-heading mb-7 flex flex-col justify-between gap-5 xl:flex-row xl:items-end">
       <div>
-        <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#397d96]">
-          <Sparkles className="size-3.5" />
+        <div className="workspace-eyebrow mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-accent-foreground">
+          <span
+            aria-hidden="true"
+            className="h-3 w-0.5 rounded-full bg-accent-foreground"
+          />
           {eyebrow}
         </div>
         <h1 className="app-page-title">{title}</h1>
-        <p className="app-body-copy mt-2 max-w-2xl">{description}</p>
+        <p className="app-body-copy mt-3 max-w-2xl">{description}</p>
       </div>
       {action}
     </section>

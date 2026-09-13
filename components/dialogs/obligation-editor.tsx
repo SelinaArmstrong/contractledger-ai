@@ -177,7 +177,7 @@ export function ObligationEditor({
           ? 'border-emerald-200 bg-emerald-50/40'
           : effectiveStatus === 'overdue'
             ? 'border-rose-200 bg-rose-50/30'
-            : 'border-[#dce3e8] bg-white'
+            : 'border-border bg-card'
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -190,7 +190,7 @@ export function ObligationEditor({
           />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-medium text-[#203845]">
+              <p className="text-sm font-medium text-foreground">
                 {valueText(item.title)}
               </p>
               <StatusBadge tone={toneForStatus(effectiveStatus)}>
@@ -232,7 +232,7 @@ export function ObligationEditor({
               href={`/api/document?id=${encodeURIComponent(String(item.source_document_id))}`}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d4dfe4] bg-white px-3 text-[11px] font-medium text-[#27657c]"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-[11px] font-medium text-accent-foreground"
             >
               <ExternalLink className="size-3.5" /> Source
             </a>
@@ -247,7 +247,7 @@ export function ObligationEditor({
       </div>
 
       {item.source_clause ? (
-        <p className="mt-3 rounded-lg border border-[#e1e8eb] bg-slate-50 px-3 py-2 text-[10px] leading-4 text-slate-600">
+        <p className="mt-3 rounded-lg border border-[#e1e8eb] bg-slate-50 px-3 py-2 text-[11px] leading-4 text-slate-600">
           <span className="font-semibold text-slate-700">Source clause:</span>{' '}
           {valueText(item.source_clause)}
         </p>
@@ -263,7 +263,7 @@ export function ObligationEditor({
             id={`obligation-owner-${String(item.id)}`}
             value={owner}
             onChange={(event) => setOwner(event.target.value)}
-            className="mt-1 h-9 bg-white text-xs"
+            className="mt-1 h-9 bg-card text-xs"
           />
         </label>
         <label
@@ -275,7 +275,7 @@ export function ObligationEditor({
             id={`obligation-backup-owner-${String(item.id)}`}
             value={backupOwner}
             onChange={(event) => setBackupOwner(event.target.value)}
-            className="mt-1 h-9 bg-white text-xs"
+            className="mt-1 h-9 bg-card text-xs"
           />
         </label>
         <label className="text-[11px] font-medium text-slate-600">
@@ -283,7 +283,7 @@ export function ObligationEditor({
           <select
             value={priority}
             onChange={(event) => setPriority(event.target.value)}
-            className="mt-1 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
+            className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-xs"
           >
             {['low', 'medium', 'high', 'critical'].map((value) => (
               <option key={value} value={value}>
@@ -297,7 +297,7 @@ export function ObligationEditor({
           <select
             value={status}
             onChange={(event) => setStatus(event.target.value)}
-            className="mt-1 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
+            className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-xs"
           >
             {statusOptions.map((value) => (
               <option key={value} value={value}>
@@ -312,7 +312,7 @@ export function ObligationEditor({
             <select
               value={decision}
               onChange={(event) => setDecision(event.target.value)}
-              className="mt-1 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
+              className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-xs"
             >
               <option value="">Select decision</option>
               <option value="under_review">Under review</option>
@@ -334,7 +334,7 @@ export function ObligationEditor({
             id={`obligation-evidence-reference-${String(item.id)}`}
             value={evidenceReference}
             onChange={(event) => setEvidenceReference(event.target.value)}
-            className="mt-1 h-9 bg-white text-xs"
+            className="mt-1 h-9 bg-card text-xs"
             placeholder="Closeout record, ticket, or repository reference"
           />
         </label>
@@ -346,7 +346,7 @@ export function ObligationEditor({
             onChange={(event) =>
               setEvidenceFile(event.target.files?.[0] ?? null)
             }
-            className="mt-1 block h-9 w-full rounded-md border border-input bg-white px-2 py-1.5 text-[10px] text-slate-600 file:mr-2 file:rounded file:border-0 file:bg-[#e4f2f6] file:px-2 file:py-1 file:text-[10px] file:font-medium file:text-[#1d647d]"
+            className="mt-1 block h-9 w-full rounded-md border border-input bg-card px-2 py-1.5 text-[11px] text-slate-600 file:mr-2 file:rounded file:border-0 file:bg-accent file:px-2 file:py-1 file:text-[11px] file:font-medium file:text-[#1d647d]"
           />
         </label>
       </div>
@@ -356,7 +356,7 @@ export function ObligationEditor({
           <select
             value={evidenceDocumentId}
             onChange={(event) => setEvidenceDocumentId(event.target.value)}
-            className="mt-1 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
+            className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-xs"
           >
             <option value="">No existing file selected</option>
             {details.eligibleDocuments.map((document) => (
@@ -369,7 +369,7 @@ export function ObligationEditor({
         </label>
       ) : null}
       {evidenceFile ? (
-        <p className="mt-2 text-[10px] text-[#246a83]">
+        <p className="mt-2 text-[11px] text-[#246a83]">
           New evidence ready: {evidenceFile.name}
         </p>
       ) : item.evidence_document_id ? (
@@ -377,7 +377,7 @@ export function ObligationEditor({
           href={`/api/document?id=${encodeURIComponent(String(item.evidence_document_id))}`}
           target="_blank"
           rel="noreferrer"
-          className="mt-2 inline-flex items-center gap-1 text-[10px] font-medium text-[#246a83]"
+          className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-[#246a83]"
         >
           <FileCheck2 className="size-3.5" />
           Open linked evidence: {valueText(item.evidence_file_name)}
@@ -390,7 +390,7 @@ export function ObligationEditor({
           value={completionNote}
           onChange={(event) => setCompletionNote(event.target.value)}
           rows={2}
-          className="mt-1 w-full rounded-md border border-input bg-white px-3 py-2 text-xs"
+          className="mt-1 w-full rounded-md border border-input bg-card px-3 py-2 text-xs"
           placeholder="Required when completing: what was done and what the evidence proves…"
         />
       </label>
@@ -401,7 +401,7 @@ export function ObligationEditor({
             value={notes}
             onChange={(event) => setNotes(event.target.value)}
             rows={2}
-            className="mt-1 w-full rounded-md border border-input bg-white px-3 py-2 text-xs"
+            className="mt-1 w-full rounded-md border border-input bg-card px-3 py-2 text-xs"
             placeholder="Follow-up, decision rationale, or next step…"
           />
         </label>
@@ -411,14 +411,14 @@ export function ObligationEditor({
             value={transitionNote}
             onChange={(event) => setTransitionNote(event.target.value)}
             rows={2}
-            className="mt-1 w-full rounded-md border border-input bg-white px-3 py-2 text-xs"
+            className="mt-1 w-full rounded-md border border-input bg-card px-3 py-2 text-xs"
             placeholder="Explain this transition or an overdue escalation…"
           />
         </label>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-current/10 pt-3">
-        <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-500">
+        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
           <span>Escalation level {valueText(item.escalation_level ?? 0)}</span>
           {item.completed_by ? (
             <span>
@@ -469,38 +469,38 @@ export function ObligationEditor({
       </div>
 
       {showDetails ? (
-        <div className="mt-3 rounded-lg border border-[#dce3e8] bg-white">
-          <div className="border-b border-[#e8edef] px-3 py-2 text-[10px] font-semibold tracking-[0.1em] text-slate-500 uppercase">
+        <div className="mt-3 rounded-lg border border-border bg-card">
+          <div className="border-b border-border px-3 py-2 text-[11px] font-semibold tracking-[0.1em] text-slate-500 uppercase">
             Immutable event history
           </div>
-          <div className="divide-y divide-[#edf1f3]">
+          <div className="divide-y divide-border">
             {details?.events.map((event) => (
               <div key={String(event.id)} className="px-3 py-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[11px] font-medium text-[#294454]">
+                  <span className="text-[11px] font-medium text-foreground">
                     {titleCase(event.event_type)}
                     {event.from_status && event.to_status
                       ? ` · ${titleCase(event.from_status)} → ${titleCase(event.to_status)}`
                       : ''}
                   </span>
-                  <span className="text-[10px] text-slate-400">
+                  <span className="text-[11px] text-slate-400">
                     {valueText(event.actor)} · {valueText(event.created_at)}
                   </span>
                 </div>
                 {event.note ? (
-                  <p className="mt-1 text-[10px] leading-4 text-slate-600">
+                  <p className="mt-1 text-[11px] leading-4 text-slate-600">
                     {valueText(event.note)}
                   </p>
                 ) : null}
               </div>
             ))}
             {details && !details.events.length ? (
-              <p className="px-3 py-4 text-[10px] text-slate-500">
+              <p className="px-3 py-4 text-[11px] text-slate-500">
                 The next saved change will create the first event.
               </p>
             ) : null}
             {loadingDetails ? (
-              <p className="px-3 py-4 text-[10px] text-slate-500">
+              <p className="px-3 py-4 text-[11px] text-slate-500">
                 Loading status and evidence history…
               </p>
             ) : null}

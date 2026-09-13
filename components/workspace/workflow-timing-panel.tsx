@@ -182,11 +182,11 @@ export function WorkflowTimingPanel({ canRecord }: { canRecord: boolean }) {
       ) : null}
 
       {canRecord ? (
-        <div className="flex flex-wrap items-end gap-3 border-b border-[#e1e7ea] bg-[#f8fafb] px-5 py-4">
+        <div className="flex flex-wrap items-end gap-3 border-b border-border bg-muted px-5 py-4">
           <div>
             <label
               htmlFor="timing-scenario"
-              className="mb-1.5 block text-[11px] font-medium text-[#294454]"
+              className="mb-1.5 block text-[11px] font-medium text-foreground"
             >
               Scenario
             </label>
@@ -196,7 +196,7 @@ export function WorkflowTimingPanel({ canRecord }: { canRecord: boolean }) {
               onChange={(event) =>
                 setScenario(event.target.value as WorkflowTimingScenario)
               }
-              className="h-9 bg-white"
+              className="h-9 bg-card"
             >
               {WORKFLOW_TIMING_SCENARIOS.map((value) => (
                 <option key={value} value={value}>
@@ -208,7 +208,7 @@ export function WorkflowTimingPanel({ canRecord }: { canRecord: boolean }) {
           <div>
             <label
               htmlFor="timing-mode"
-              className="mb-1.5 block text-[11px] font-medium text-[#294454]"
+              className="mb-1.5 block text-[11px] font-medium text-foreground"
             >
               Mode
             </label>
@@ -218,7 +218,7 @@ export function WorkflowTimingPanel({ canRecord }: { canRecord: boolean }) {
               onChange={(event) =>
                 setMode(event.target.value as WorkflowTimingMode)
               }
-              className="h-9 bg-white"
+              className="h-9 bg-card"
             >
               <option value="manual">Manual baseline</option>
               <option value="assisted">AI assisted</option>
@@ -227,7 +227,7 @@ export function WorkflowTimingPanel({ canRecord }: { canRecord: boolean }) {
           <div className="min-w-[200px] flex-1">
             <label
               htmlFor="timing-note"
-              className="mb-1.5 block text-[11px] font-medium text-[#294454]"
+              className="mb-1.5 block text-[11px] font-medium text-foreground"
             >
               Run note (optional)
             </label>
@@ -237,7 +237,7 @@ export function WorkflowTimingPanel({ canRecord }: { canRecord: boolean }) {
               maxLength={300}
               placeholder="e.g. reset-to-reset, demo PDF 01"
               onChange={(event) => setNote(event.target.value)}
-              className="h-9 bg-white"
+              className="h-9 bg-card"
             />
           </div>
           <div className="flex items-center gap-3">
@@ -272,7 +272,7 @@ export function WorkflowTimingPanel({ canRecord }: { canRecord: boolean }) {
           </div>
         </div>
       ) : (
-        <p className="border-b border-[#e1e7ea] bg-[#f8fafb] px-5 py-3 text-xs text-slate-600">
+        <p className="border-b border-border bg-muted px-5 py-3 text-xs text-slate-600">
           Recording a timed run requires the AI governance permission. The saved
           evidence below is readable by every role.
         </p>
@@ -281,7 +281,7 @@ export function WorkflowTimingPanel({ canRecord }: { canRecord: boolean }) {
       <div className="overflow-x-auto">
         <Table className="min-w-[760px]">
           <TableHeader>
-            <TableRow className="bg-[#f7f9fa]">
+            <TableRow className="bg-muted">
               <TableHead className="px-5">Scenario</TableHead>
               <TableHead>Manual median</TableHead>
               <TableHead>Assisted median</TableHead>
@@ -292,18 +292,18 @@ export function WorkflowTimingPanel({ canRecord }: { canRecord: boolean }) {
           <TableBody>
             {comparisons.map((comparison) => (
               <TableRow key={comparison.scenario}>
-                <TableCell className="px-5 text-xs font-medium text-[#203845]">
+                <TableCell className="px-5 text-xs font-medium text-foreground">
                   {comparison.label}
                 </TableCell>
                 <TableCell className="text-xs tabular-nums text-slate-700">
                   {formatDuration(comparison.manualMedianMs)}
-                  <span className="ml-1 text-[10px] text-slate-500">
+                  <span className="ml-1 text-[11px] text-slate-500">
                     n={comparison.manualRuns}
                   </span>
                 </TableCell>
                 <TableCell className="text-xs tabular-nums text-slate-700">
                   {formatDuration(comparison.assistedMedianMs)}
-                  <span className="ml-1 text-[10px] text-slate-500">
+                  <span className="ml-1 text-[11px] text-slate-500">
                     n={comparison.assistedRuns}
                   </span>
                 </TableCell>
@@ -319,7 +319,7 @@ export function WorkflowTimingPanel({ canRecord }: { canRecord: boolean }) {
                     </StatusBadge>
                   )}
                 </TableCell>
-                <TableCell className="pr-5 text-[10px] leading-4 text-slate-500">
+                <TableCell className="pr-5 text-[11px] leading-4 text-slate-500">
                   {comparison.evidenceNote}
                 </TableCell>
               </TableRow>
@@ -328,8 +328,8 @@ export function WorkflowTimingPanel({ canRecord }: { canRecord: boolean }) {
         </Table>
       </div>
 
-      <div className="border-t border-[#e1e7ea] bg-[#f8fafb] px-5 py-4">
-        <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#397d96]">
+      <div className="border-t border-border bg-muted px-5 py-4">
+        <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent-foreground">
           <Timer className="size-3.5" />
           Recent runs
         </div>
@@ -341,7 +341,7 @@ export function WorkflowTimingPanel({ canRecord }: { canRecord: boolean }) {
                 className="flex items-center justify-between gap-3 text-[11px] text-slate-600"
               >
                 <span className="truncate">
-                  <span className="font-medium text-[#203845]">
+                  <span className="font-medium text-foreground">
                     {WORKFLOW_TIMING_SCENARIO_LABELS[
                       row.scenario as WorkflowTimingScenario
                     ] ?? row.scenario}

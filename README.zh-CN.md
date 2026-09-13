@@ -491,3 +491,7 @@ npm run deploy
 - [发布证据清单](docs/releases/v1.0-release-evidence.json)：版本、fixture、指标和重置库存
 - [Definition of Done](docs/definition-of-done/README.md)：功能完成门禁规则
 - [Phase Execution Gate](docs/execution-loop/README.md)：标准阶段执行和证据规则
+
+## SEO 与宣传素材
+
+公开产品介绍页为 `/about`。完整 favicon、应用图标、分享图、社交平台海报与可编辑 SVG 源文件位于 `public/brand/` 和 `public/social/`。详见[素材使用说明](docs/marketing/README.md)、[中英文宣传文案](docs/marketing/COPY.md)和[验证记录](docs/marketing/QA.md)。使用 `npm run brand:generate` 重新生成图片；使用 `npm run check:seo -- <预览地址> <正式域名>` 检查实际页面。

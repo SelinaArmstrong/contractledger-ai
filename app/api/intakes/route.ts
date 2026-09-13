@@ -2,39 +2,73 @@ import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 
 import { getWorkspace } from '@/app/api/workspace/route';
+import {
+  buildIntakeWorkflowUpdate,
+  intakeStatuses,
+  intakeWorkflowAuditDetails,
+} from '@/lib/intake-workflow';
 import { isIsoDate } from '@/lib/validation';
 import { withApiRoute } from '@/lib/server/route-handler';
 
-const intakeStatuses = [
-  'draft',
-  'under_review',
-  'waiting_on_business',
-  'waiting_on_legal',
-  'revision_requested',
-  'approved_for_signature',
-  'not_awarded',
-  'executed',
-] as const;
-
 const querySchema = z.object({ id: z.string().min(1).max(200) });
 
-const updateSchema = z.object({
-  id: z.string().min(1).max(200),
-  status: z.enum(intakeStatuses),
-  owner: z.string().trim().min(1).max(160),
+/** Bulk assignment is deliberately bounded so one request stays one D1 batch. */
+const MAX_BULK_INTAKES = 50;
+
+/**
+ * Every workflow field is optional: the queue sends only what the reviewer
+ * touched, and an omitted field is left as it is. Sending an empty object is
+ * rejected rather than treated as a no-op write.
+ */
+const workflowFields = {
+  status: z.enum(intakeStatuses).optional(),
+  owner: z.string().trim().min(1).max(160).optional(),
   targetReviewDate: z
     .string()
-    .refine((value) => !value || isIsoDate(value), 'Use a valid target date.'),
-  internalNotes: z.string().max(5_000),
-  findings: z
-    .array(
-      z.object({
-        id: z.string().min(1).max(200),
-        status: z.enum(['open', 'accepted', 'resolved', 'dismissed']),
-      }),
-    )
-    .max(100),
-});
+    .refine((value) => !value || isIsoDate(value), 'Use a valid target date.')
+    .optional(),
+  internalNotes: z.string().max(5_000).optional(),
+};
+
+const updateSchema = z
+  .object({
+    id: z.string().min(1).max(200),
+    ...workflowFields,
+    findings: z
+      .array(
+        z.object({
+          id: z.string().min(1).max(200),
+          status: z.enum(['open', 'accepted', 'resolved', 'dismissed']),
+        }),
+      )
+      .max(100)
+      .optional(),
+  })
+  .refine(
+    (value) =>
+      value.status !== undefined ||
+      value.owner !== undefined ||
+      value.targetReviewDate !== undefined ||
+      value.internalNotes !== undefined ||
+      value.findings !== undefined,
+    'Send at least one review workflow field to update.',
+  );
+
+const bulkUpdateSchema = z
+  .object({
+    ids: z.array(z.string().min(1).max(200)).min(1).max(MAX_BULK_INTAKES),
+    ...workflowFields,
+  })
+  .refine(
+    (value) =>
+      value.status !== undefined ||
+      value.owner !== undefined ||
+      value.targetReviewDate !== undefined ||
+      value.internalNotes !== undefined,
+    'Send at least one review workflow field to update.',
+  );
+
+const patchSchema = z.union([bulkUpdateSchema, updateSchema]);
 
 async function getIntakeDetails(id: string) {
   const intake = await env.DB.prepare(`SELECT i.*,
@@ -53,7 +87,11 @@ async function getIntakeDetails(id: string) {
       CASE
         WHEN EXISTS (SELECT 1 FROM review_findings f WHERE f.intake_id = i.id AND f.status = 'open' AND f.severity = 'high') THEN 'high'
         WHEN EXISTS (SELECT 1 FROM review_findings f WHERE f.intake_id = i.id AND f.status = 'open' AND f.severity = 'medium') THEN 'medium'
-        ELSE 'low'
+        -- Only a completed playbook review earns 'low'. Without one the risk is
+        -- unknown, not cleared, so the column stays NULL.
+        WHEN EXISTS (SELECT 1 FROM ai_analysis_runs r WHERE r.intake_id = i.id)
+          OR EXISTS (SELECT 1 FROM review_findings f WHERE f.intake_id = i.id) THEN 'low'
+        ELSE NULL
       END AS risk_level
     FROM contract_intakes i WHERE i.id = ? LIMIT 1`)
     .bind(id)
@@ -182,6 +220,25 @@ export const GET = withApiRoute(
   },
 );
 
+/**
+ * Intakes that still have an open mandatory approval, so they cannot move to
+ * `approved_for_signature`. Checked for the whole batch before anything is
+ * written, so a bulk request either applies to every row or to none.
+ */
+async function blockedByApproval(ids: string[]) {
+  const placeholders = ids.map(() => '?').join(', ');
+  const blocked = await env.DB.prepare(`SELECT i.id, i.intake_number,
+      COUNT(*) AS open_count
+    FROM contract_intakes i
+    JOIN approval_requests ar ON ar.intake_id = i.id
+    JOIN approval_rules r ON r.id = ar.rule_id
+    WHERE i.id IN (${placeholders}) AND r.mandatory = 1 AND ar.status != 'approved'
+    GROUP BY i.id`)
+    .bind(...ids)
+    .all<{ id: string; intake_number: string; open_count: number }>();
+  return blocked.results;
+}
+
 export const PATCH = withApiRoute(
   {
     permission: 'edit_verified_fields',
@@ -190,85 +247,97 @@ export const PATCH = withApiRoute(
     fallbackError: 'Unable to update the review workflow.',
   },
   async ({ request, actor }) => {
-    const input = updateSchema.parse(await request.json());
-    const existing = await env.DB.prepare(`SELECT id, approval_status
-      FROM contract_intakes WHERE id = ? LIMIT 1`)
-      .bind(input.id)
-      .first<{ id: string; approval_status: string }>();
-    if (!existing)
+    const input = patchSchema.parse(await request.json());
+    const ids = 'ids' in input ? [...new Set(input.ids)] : [input.id];
+    const findings = 'ids' in input ? [] : (input.findings ?? []);
+    const fields = {
+      status: input.status,
+      owner: input.owner,
+      targetReviewDate: input.targetReviewDate,
+      internalNotes: input.internalNotes,
+    };
+
+    const placeholders = ids.map(() => '?').join(', ');
+    const existing =
+      await env.DB.prepare(`SELECT id, intake_number, approval_status
+      FROM contract_intakes WHERE id IN (${placeholders})`)
+        .bind(...ids)
+        .all<{ id: string; intake_number: string; approval_status: string }>();
+    if (existing.results.length !== ids.length)
       return Response.json(
-        { error: 'Review intake not found.' },
+        {
+          error:
+            ids.length === 1
+              ? 'Review intake not found.'
+              : `${ids.length - existing.results.length} of the selected reviews no longer exist. Refresh the queue and try again.`,
+        },
         { status: 404 },
       );
 
-    const blockingApproval = await env.DB.prepare(`SELECT COUNT(*) AS count
-      FROM approval_requests ar
-      JOIN approval_rules r ON r.id = ar.rule_id
-      WHERE ar.intake_id = ? AND r.mandatory = 1
-        AND ar.status != 'approved'`)
-      .bind(input.id)
-      .first<{ count: number }>();
-    if (
-      input.status === 'approved_for_signature' &&
-      Number(blockingApproval?.count ?? 0) > 0
-    ) {
-      return Response.json(
-        {
-          error: `${blockingApproval?.count ?? 0} mandatory approval${Number(blockingApproval?.count ?? 0) === 1 ? '' : 's'} must be completed before this intake can be approved for signature.`,
-        },
-        { status: 400 },
-      );
+    if (fields.status === 'approved_for_signature') {
+      const blocked = await blockedByApproval(ids);
+      if (blocked.length) {
+        const total = blocked.reduce(
+          (sum, row) => sum + Number(row.open_count ?? 0),
+          0,
+        );
+        return Response.json(
+          {
+            error:
+              ids.length === 1
+                ? `${total} mandatory approval${total === 1 ? '' : 's'} must be completed before this intake can be approved for signature.`
+                : `${blocked.length} of the selected reviews still have mandatory approvals open (${blocked
+                    .map((row) => row.intake_number)
+                    .join(', ')}). Nothing was changed.`,
+          },
+          { status: 400 },
+        );
+      }
     }
-    const reviewStatus = [
-      'approved_for_signature',
-      'not_awarded',
-      'executed',
-    ].includes(input.status)
-      ? 'complete'
-      : input.status === 'draft'
-        ? 'pending'
-        : 'in_progress';
+
     const now = new Date().toISOString();
+    const update = buildIntakeWorkflowUpdate(fields, now);
+    const auditDetails = intakeWorkflowAuditDetails(fields);
+    const approvalStatusById = new Map(
+      existing.results.map((row) => [row.id, row.approval_status]),
+    );
+
     await env.DB.batch([
-      env.DB.prepare(`UPDATE contract_intakes SET status = ?, review_status = ?,
-          owner = ?, target_review_date = ?, internal_notes = ?,
-          updated_at = ? WHERE id = ?`).bind(
-        input.status,
-        reviewStatus,
-        input.owner,
-        input.targetReviewDate || null,
-        input.internalNotes.trim() || null,
-        now,
-        input.id,
-      ),
-      ...input.findings.map((finding) =>
+      ...(update
+        ? ids.map((id) =>
+            env.DB.prepare(update.sql).bind(...update.bindings, id),
+          )
+        : []),
+      ...findings.map((finding) =>
         env.DB.prepare(`UPDATE review_findings SET status = ?
           WHERE id = ? AND intake_id = ?`).bind(
           finding.status,
           finding.id,
-          input.id,
+          ids[0],
         ),
       ),
-      env.DB.prepare(`INSERT INTO audit_logs
-        (id, entity_type, entity_id, action, actor, details, created_at)
-        VALUES (?, 'contract_intake', ?, 'review_workflow_updated', ?, ?, ?)`).bind(
-        `audit-${crypto.randomUUID()}`,
-        input.id,
-        actor.name,
-        JSON.stringify({
-          status: input.status,
-          owner: input.owner,
-          targetReviewDate: input.targetReviewDate || null,
-          approvalStatus: existing.approval_status,
-          findingStatuses: input.findings,
-        }),
-        now,
+      ...ids.map((id) =>
+        env.DB.prepare(`INSERT INTO audit_logs
+          (id, entity_type, entity_id, action, actor, details, created_at)
+          VALUES (?, 'contract_intake', ?, 'review_workflow_updated', ?, ?, ?)`).bind(
+          `audit-${crypto.randomUUID()}`,
+          id,
+          actor.name,
+          JSON.stringify({
+            ...auditDetails,
+            approvalStatus: approvalStatusById.get(id) ?? null,
+            ...(findings.length ? { findingStatuses: findings } : {}),
+            ...(ids.length > 1 ? { bulkUpdateOf: ids.length } : {}),
+          }),
+          now,
+        ),
       ),
     ]);
     await env.DB.prepare('PRAGMA optimize').run();
     return Response.json({
       saved: true,
-      details: await getIntakeDetails(input.id),
+      updated: ids.length,
+      details: ids.length === 1 ? await getIntakeDetails(ids[0]) : null,
       workspace: await getWorkspace(),
     });
   },

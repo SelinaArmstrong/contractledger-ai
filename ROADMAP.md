@@ -780,3 +780,11 @@ validation report and the exports stay browsable.
   bucket.
 - Any measured cost saving. The ceiling is designed and enforced, not yet
   observed against real traffic.
+
+## SEO and promotional identity
+
+Delivered a public `/about` overview, shared brand mark, favicon and app-icon family, six social-art formats, bilingual campaign copy, canonical metadata, JSON-LD, robots and sitemap routes. Query-driven workspace and sign-in variants are noindex. [Brand-kit documentation](docs/marketing/README.md) and [HTTP/visual QA](docs/marketing/QA.md) record the scope. Deployment, search-console submission and external posting remain release/account actions.
+
+### Workspace visual consistency
+
+Extended the approved promotional identity across all ten operations views, shared components and dialogs. Improved readable navigation, dashboard hierarchy, table density and mobile dialog bounds. [Implementation and limitations](docs/design/WORKSPACE_VISUAL_REFRESH.md).

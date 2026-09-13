@@ -2,6 +2,7 @@
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import {
   Table,
@@ -13,16 +14,21 @@ import {
 } from '@/components/ui/table';
 import type { Workspace } from '@/lib/contract-ledger-types';
 import {
+  intakeFindingSummary,
+  intakeRiskBadge,
+  intakeRiskRank,
+  matchesIntakeRiskFilter,
+} from '@/lib/intake-risk';
+import {
   AlertTriangle,
   Check,
   FileSearch,
   RotateCcw,
   Search,
   ShieldCheck,
-  Upload,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import type { ElementType } from 'react';
+import type { ElementType, ReactNode } from 'react';
 import {
   alertTiming,
   moneyFromCents,
@@ -38,8 +44,13 @@ import {
   StatusBadge,
 } from '@/components/workspace/primitives';
 import {
+  IntakeBulkActionBar,
+  IntakeRowActions,
+} from '@/components/workspace/intake-workflow-editor';
+import {
   FilterSelect,
   FloatingTableScrollbar,
+  TablePagination,
   useFloatingTableScrollbar,
 } from '@/components/workspace/table';
 
@@ -59,7 +70,7 @@ const riskOptions = [
   { value: 'high', label: 'High risk' },
   { value: 'medium', label: 'Medium risk' },
   { value: 'low', label: 'Low risk' },
-  { value: 'unassessed', label: 'Not yet assessed' },
+  { value: 'unassessed', label: 'Not assessed (no review run)' },
 ];
 
 const contractTypeOptions = [
@@ -123,6 +134,18 @@ function contractTypeGroup(value: unknown) {
   return 'other';
 }
 
+/**
+ * `required_approval` arrives as the matching rule names joined with '; '.
+ * Rendering it as one string forces a 130-character unbreakable cell, so the
+ * queue lists each gate on its own line instead.
+ */
+function approvalGates(value: unknown) {
+  return valueText(value)
+    .split(';')
+    .map((gate) => gate.trim())
+    .filter(Boolean);
+}
+
 function daysUntil(value: unknown) {
   if (!value) return null;
   const date = new Date(valueText(value));
@@ -135,12 +158,18 @@ function daysUntil(value: unknown) {
 
 export function NewContractReviewView({
   workspace,
-  onOpen,
+  intakePanel,
+  canEditWorkflow,
   onSelectIntake,
+  onUpdated,
 }: {
   workspace: Workspace | null;
-  onOpen: () => void;
+  /** Inline upload → extraction → verification workspace, above the queue. */
+  intakePanel: ReactNode;
+  /** Row and bulk editors are hidden without `edit_verified_fields`. */
+  canEditWorkflow: boolean;
   onSelectIntake: (id: string) => void;
+  onUpdated: (workspace: Workspace) => void;
 }) {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -150,29 +179,34 @@ export function NewContractReviewView({
   const [approvalFilter, setApprovalFilter] = useState('all');
   const [targetDateFilter, setTargetDateFilter] = useState('all');
   const [sortBy, setSortBy] = useState('urgent');
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(20);
   const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const reviewTableScroll = useFloatingTableScrollbar();
   const intakes = (workspace?.intakes ?? []).filter(
     (item) => item.status !== 'executed',
   );
-  const ownerOptions = useMemo(
-    () => [
-      { value: 'unassigned', label: 'Unassigned' },
-      ...Array.from(
+  const ownerNames = useMemo(
+    () =>
+      Array.from(
         new Set(
           intakes
             .map((item) => String(item.owner ?? '').trim())
             .filter(Boolean),
         ),
-      )
-        .sort((a, b) => a.localeCompare(b))
-        .map((owner) => ({ value: owner, label: owner })),
-    ],
+      ).sort((a, b) => a.localeCompare(b)),
     [intakes],
   );
+  const ownerOptions = useMemo(
+    () => [
+      { value: 'unassigned', label: 'Unassigned' },
+      ...ownerNames.map((owner) => ({ value: owner, label: owner })),
+    ],
+    [ownerNames],
+  );
   const visibleIntakes = useMemo(() => {
-    const riskRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
     const statusRank: Record<string, number> = {
       revision_requested: 0,
       waiting_on_legal: 1,
@@ -208,17 +242,7 @@ export function NewContractReviewView({
           item.status !== statusFilter
         )
           return false;
-        if (
-          riskFilter === 'elevated' &&
-          !['high', 'medium'].includes(String(item.risk_level))
-        )
-          return false;
-        if (riskFilter === 'unassessed' && item.risk_level) return false;
-        if (
-          !['all', 'elevated', 'unassessed'].includes(riskFilter) &&
-          item.risk_level !== riskFilter
-        )
-          return false;
+        if (!matchesIntakeRiskFilter(item.risk_level, riskFilter)) return false;
         if (
           typeFilter !== 'all' &&
           contractTypeGroup(item.contract_type) !== typeFilter
@@ -278,8 +302,7 @@ export function NewContractReviewView({
         const dueB = daysUntil(b.target_review_date) ?? Number.MAX_SAFE_INTEGER;
         if (dueA !== dueB) return dueA - dueB;
         const riskDifference =
-          (riskRank[String(a.risk_level)] ?? 3) -
-          (riskRank[String(b.risk_level)] ?? 3);
+          intakeRiskRank(a.risk_level) - intakeRiskRank(b.risk_level);
         if (riskDifference) return riskDifference;
         return (
           (statusRank[String(a.status)] ?? 7) -
@@ -310,8 +333,33 @@ export function NewContractReviewView({
   const safePage = Math.min(page, pageCount);
   const pageStart = (safePage - 1) * pageSize;
   const pageIntakes = visibleIntakes.slice(pageStart, pageStart + pageSize);
+  // A row hidden by a filter must never be caught by a bulk write, so the
+  // selection is always narrowed to what is on screen before it is acted on.
+  const selectedVisibleIds = visibleIntakes
+    .map((item) => String(item.id))
+    .filter((id) => selectedIds.has(id));
+  const pageIds = pageIntakes.map((item) => String(item.id));
+  const selectedOnPage = pageIds.filter((id) => selectedIds.has(id)).length;
+  const toggleSelection = (id: string, selected: boolean) =>
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (selected) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  const togglePageSelection = (selected: boolean) =>
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      for (const id of pageIds) {
+        if (selected) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  const clearSelection = () => setSelectedIds(new Set());
 
   const clearFilters = () => {
+    clearSelection();
     setQuery('');
     setStatusFilter('all');
     setRiskFilter('all');
@@ -372,12 +420,6 @@ export function NewContractReviewView({
         eyebrow="Pre-execution workspace"
         title="New contract review"
         description="Drafts are reviewed against a fictional company playbook. Proposed values and dates remain separate from the official contract register."
-        action={
-          <Button onClick={onOpen} className="bg-[#1d718f] hover:bg-[#185f78]">
-            <Upload />
-            Upload draft
-          </Button>
-        }
       />
       <section className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {reviewMetrics.map((metric) => {
@@ -385,7 +427,7 @@ export function NewContractReviewView({
           return (
             <article
               key={metric.label}
-              className="rounded-xl border border-[#dce3e8] bg-white p-4 shadow-[0_1px_2px_rgb(15_23_42/3%)]"
+              className="rounded-xl border border-border bg-card p-4 shadow-[0_1px_2px_rgb(15_23_42/3%)]"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -400,7 +442,7 @@ export function NewContractReviewView({
                   <MetricIcon className="size-4" />
                 </span>
               </div>
-              <p className="mt-2 text-[10px] text-slate-500">{metric.note}</p>
+              <p className="mt-2 text-[11px] text-slate-500">{metric.note}</p>
             </article>
           );
         })}
@@ -415,12 +457,13 @@ export function NewContractReviewView({
           enters the official Contract Register.
         </AlertDescription>
       </Alert>
+      {intakePanel}
       <Panel className="overflow-hidden">
         <PanelHeader
           title="Contract review work queue"
           description={`${visibleIntakes.length} of ${intakes.length} pre-execution review${intakes.length === 1 ? '' : 's'} shown`}
         />
-        <div className="border-b border-[#e3e9ed] bg-[#f8fafb] p-4">
+        <div className="border-b border-border bg-muted p-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
             <label
               htmlFor="contract-review-search"
@@ -437,7 +480,7 @@ export function NewContractReviewView({
                     setPage(1);
                   }}
                   placeholder="Intake, contract, supplier…"
-                  className="bg-white pl-9"
+                  className="bg-card pl-9"
                 />
               </div>
             </label>
@@ -512,8 +555,8 @@ export function NewContractReviewView({
               includeAll={false}
             />
           </div>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#e3e9ed] pt-3">
-            <p className="text-[10px] text-slate-500">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+            <p className="text-[11px] text-slate-500">
               Showing {visibleIntakes.length.toLocaleString()} matching review
               {visibleIntakes.length === 1 ? '' : 's'}
               {activeFilterCount
@@ -532,6 +575,14 @@ export function NewContractReviewView({
             </Button>
           </div>
         </div>
+        {canEditWorkflow && selectedVisibleIds.length ? (
+          <IntakeBulkActionBar
+            selectedIds={selectedVisibleIds}
+            ownerOptions={ownerNames}
+            onUpdated={onUpdated}
+            onClearSelection={clearSelection}
+          />
+        ) : null}
         {visibleIntakes.length ? (
           <div>
             <Table
@@ -540,16 +591,38 @@ export function NewContractReviewView({
               onContainerScroll={reviewTableScroll.syncTableToFloating}
             >
               <TableHeader>
-                <TableRow className="bg-[#f7f9fa]">
+                <TableRow className="bg-muted">
+                  {canEditWorkflow ? (
+                    <TableHead className="w-10 px-4">
+                      <Checkbox
+                        aria-label="Select every review on this page"
+                        checked={
+                          pageIds.length > 0 &&
+                          selectedOnPage === pageIds.length
+                        }
+                        indeterminate={
+                          selectedOnPage > 0 && selectedOnPage < pageIds.length
+                        }
+                        onCheckedChange={(checked) =>
+                          togglePageSelection(checked === true)
+                        }
+                      />
+                    </TableHead>
+                  ) : null}
                   <TableHead className="w-14 px-4 text-center">No.</TableHead>
                   <TableHead>Review intake</TableHead>
                   <TableHead>Supplier impact</TableHead>
                   <TableHead>Contract type</TableHead>
                   <TableHead>Proposed value</TableHead>
                   <TableHead>Risk / findings</TableHead>
-                  <TableHead>Approval gate</TableHead>
+                  <TableHead className="min-w-60">Approval gate</TableHead>
                   <TableHead>Owner / target</TableHead>
                   <TableHead>Status / received</TableHead>
+                  {canEditWorkflow ? (
+                    <TableHead className="w-16 px-4 text-center">
+                      Actions
+                    </TableHead>
+                  ) : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -557,6 +630,17 @@ export function NewContractReviewView({
                   const timing = alertTiming(item.target_review_date);
                   return (
                     <TableRow key={String(item.id)}>
+                      {canEditWorkflow ? (
+                        <TableCell className="px-4">
+                          <Checkbox
+                            aria-label={`Select ${valueText(item.title)}`}
+                            checked={selectedIds.has(String(item.id))}
+                            onCheckedChange={(checked) =>
+                              toggleSelection(String(item.id), checked === true)
+                            }
+                          />
+                        </TableCell>
+                      ) : null}
                       <TableCell className="px-4 text-center text-xs font-medium text-slate-500">
                         {pageStart + index + 1}
                       </TableCell>
@@ -566,10 +650,10 @@ export function NewContractReviewView({
                           onClick={() => onSelectIntake(String(item.id))}
                           className="text-left"
                         >
-                          <span className="font-medium text-[#1d718f] hover:underline">
+                          <span className="font-medium text-accent-foreground hover:underline">
                             {valueText(item.title)}
                           </span>
-                          <span className="mt-1 block text-[10px] text-slate-500">
+                          <span className="mt-1 block text-[11px] text-slate-500">
                             {valueText(item.intake_number)} · Open review
                             workspace
                           </span>
@@ -585,7 +669,7 @@ export function NewContractReviewView({
                           >
                             {titleCase(item.supplier_status)} supplier
                           </StatusBadge>
-                          <span className="text-[10px] text-slate-500">
+                          <span className="text-[11px] text-slate-500">
                             W-9 {titleCase(item.w9_status)} · Insurance{' '}
                             {titleCase(item.insurance_status)}
                           </span>
@@ -599,25 +683,26 @@ export function NewContractReviewView({
                       </TableCell>
                       <TableCell>
                         <StatusBadge
-                          tone={
-                            item.risk_level === 'high'
-                              ? 'rose'
-                              : item.risk_level === 'medium'
-                                ? 'amber'
-                                : 'green'
-                          }
+                          tone={intakeRiskBadge(item.risk_level).tone}
                         >
-                          {titleCase(item.risk_level)} risk
+                          {intakeRiskBadge(item.risk_level).label}
                         </StatusBadge>
-                        <div className="mt-1 text-[10px] text-slate-500">
-                          {valueText(item.finding_count)} open finding(s)
+                        <div className="mt-1 text-[11px] text-slate-500">
+                          {intakeFindingSummary(
+                            item.risk_level,
+                            item.finding_count,
+                          )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-xs">
-                        <div className="font-medium">
-                          {valueText(item.required_approval)}
-                        </div>
-                        <div className="mt-1 text-[10px] text-slate-500">
+                      <TableCell className="max-w-72 whitespace-normal text-xs">
+                        <ul className="space-y-0.5 font-medium">
+                          {approvalGates(item.required_approval).map((gate) => (
+                            <li key={gate} className="leading-4">
+                              {gate}
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="mt-1 text-[11px] text-slate-500">
                           {titleCase(item.approval_status)}
                         </div>
                       </TableCell>
@@ -626,7 +711,7 @@ export function NewContractReviewView({
                           {valueText(item.owner)}
                         </div>
                         <div
-                          className={`mt-1 text-[10px] ${timing?.tone === 'rose' ? 'text-rose-600' : 'text-slate-500'}`}
+                          className={`mt-1 text-[11px] ${timing?.tone === 'rose' ? 'text-rose-600' : 'text-slate-500'}`}
                         >
                           Target {valueText(item.target_review_date)}
                           {timing ? ` · ${timing.label}` : ''}
@@ -636,70 +721,48 @@ export function NewContractReviewView({
                         <StatusBadge tone={toneForStatus(item.status)}>
                           {titleCase(item.status)}
                         </StatusBadge>
-                        <div className="mt-1 text-[10px] text-slate-500">
+                        <div className="mt-1 text-[11px] text-slate-500">
                           Received {valueText(item.received_at)}
                         </div>
                       </TableCell>
+                      {canEditWorkflow ? (
+                        <TableCell className="px-4 text-center">
+                          <IntakeRowActions
+                            intakeId={String(item.id)}
+                            intakeLabel={`${valueText(item.intake_number)} · ${valueText(item.title)}`}
+                            owner={String(item.owner ?? '')}
+                            targetReviewDate={String(
+                              item.target_review_date ?? '',
+                            )}
+                            status={String(item.status ?? '')}
+                            ownerOptions={ownerNames}
+                            onUpdated={onUpdated}
+                          />
+                        </TableCell>
+                      ) : null}
                     </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
+            <TablePagination
+              label="Contract review queue pagination"
+              page={safePage}
+              pageSize={pageSize}
+              total={visibleIntakes.length}
+              onPageChange={setPage}
+              onPageSizeChange={(nextPageSize) => {
+                setPageSize(nextPageSize);
+                setPage(1);
+              }}
+              floating={reviewTableScroll.floating}
+            />
             <FloatingTableScrollbar
               label="Contract review queue horizontal scrollbar"
               floating={reviewTableScroll.floating}
               floatingScrollerRef={reviewTableScroll.floatingScrollerRef}
               onScroll={reviewTableScroll.syncFloatingToTable}
             />
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e3e9ed] bg-[#f8fafb] px-4 py-3 text-[11px] text-slate-500">
-              <div className="flex items-center gap-2">
-                <span>Rows per page</span>
-                <select
-                  value={pageSize}
-                  onChange={(event) => {
-                    setPageSize(Number(event.target.value));
-                    setPage(1);
-                  }}
-                  aria-label="Rows per page"
-                  className="h-8 rounded-md border border-input bg-white px-2 text-xs text-slate-700"
-                >
-                  {[25, 50, 100].map((size) => (
-                    <option key={size} value={size}>
-                      {size}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <span>
-                {pageStart + 1}–
-                {Math.min(pageStart + pageSize, visibleIntakes.length)} of{' '}
-                {visibleIntakes.length.toLocaleString()}
-              </span>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={safePage === 1}
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  className="h-8"
-                >
-                  Previous
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={safePage === pageCount}
-                  onClick={() =>
-                    setPage((current) => Math.min(pageCount, current + 1))
-                  }
-                  className="h-8"
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
           </div>
         ) : (
           <EmptyState

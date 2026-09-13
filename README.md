@@ -451,3 +451,9 @@ Built by **Selina Armstrong** as a portfolio project for contract administration
 - Live demo: [contractledger.selinaq.com](https://contractledger.selinaq.com/)
 
 If you are evaluating this for a role, the [interview one-pager](docs/INTERVIEW_ONE_PAGER.md) is the fastest read, and the [resume evidence ledger](RESUME_EVIDENCE.md) states exactly which claims the project can and cannot support.
+
+## SEO and promotional assets
+
+The public product overview lives at `/about`. A coordinated favicon family, Open Graph/Twitter previews, editable SVG masters and social exports are included in `public/brand/` and `public/social/`. See [the brand kit](docs/marketing/README.md) for assets and regeneration, [bilingual promotional copy](docs/marketing/COPY.md) for ready-to-use posts, and [QA evidence](docs/marketing/QA.md) for verification. Run `npm run brand:generate` to reproduce the graphics and `npm run check:seo -- <preview-origin> <public-origin>` to validate a running site.
+
+The operations workspace now shares the public page’s navy, warm-paper and mint identity. See the [workspace visual-refresh notes](docs/design/WORKSPACE_VISUAL_REFRESH.md) for scope and browser validation.

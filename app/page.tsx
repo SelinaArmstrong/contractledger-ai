@@ -1,3 +1,5 @@
+import { pageMetadata, websiteStructuredData } from '@/lib/seo';
+import { StructuredData } from '@/components/structured-data';
 import { cookies, headers } from 'next/headers';
 
 import { ContractLedgerApp } from '@/components/contract-ledger-app';
@@ -18,6 +20,21 @@ import { permissionsForRole, type WorkspaceRole } from '@/lib/workspace-roles';
 import { GUEST_NOTICE_DISMISSED_COOKIE } from '@/lib/ui-preferences';
 
 export const dynamic = 'force-dynamic';
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  // Crawlers can read noindex on these URLs; do not block them in robots.txt.
+  const index = !(
+    'login' in params ||
+    'auth_error' in params ||
+    'view' in params
+  );
+  return pageMetadata({ index });
+}
 
 type CurrentUser = {
   displayName: string;
@@ -111,24 +128,27 @@ export default async function Home({
   const cookieStore = await cookies();
 
   return (
-    <ContractLedgerApp
-      currentUser={{
-        displayName: user.displayName,
-        email: user.email,
-        local: user.local,
-        demo: user.demo,
-        guest: user.guest,
-        role: user.role,
-        permissions: user.permissions,
-      }}
-      signInPath={user.guest && signInEnabled ? '/?login=1' : null}
-      signOutPath={user.local || user.guest ? null : '/api/auth/logout'}
-      showGuestNoticeInitially={
-        cookieStore.get(GUEST_NOTICE_DISMISSED_COOKIE)?.value !== '1'
-      }
-      initialView={viewForSlug(
-        Array.isArray(params.view) ? params.view[0] : params.view,
-      )}
-    />
+    <>
+      <StructuredData data={websiteStructuredData()} />
+      <ContractLedgerApp
+        currentUser={{
+          displayName: user.displayName,
+          email: user.email,
+          local: user.local,
+          demo: user.demo,
+          guest: user.guest,
+          role: user.role,
+          permissions: user.permissions,
+        }}
+        signInPath={user.guest && signInEnabled ? '/?login=1' : null}
+        signOutPath={user.local || user.guest ? null : '/api/auth/logout'}
+        showGuestNoticeInitially={
+          cookieStore.get(GUEST_NOTICE_DISMISSED_COOKIE)?.value !== '1'
+        }
+        initialView={viewForSlug(
+          Array.isArray(params.view) ? params.view[0] : params.view,
+        )}
+      />
+    </>
   );
 }

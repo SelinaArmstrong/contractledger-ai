@@ -1,0 +1,194 @@
+{
+  "schemaVersion": "dod-2026.1",
+  "featureId": "seo-brand-kit",
+  "title": "Public product overview, SEO and promotional identity",
+  "owner": "ContractLedger AI maintainers",
+  "userStory": "As a portfolio reviewer, I can discover, understand and share ContractLedger AI with accurate previews and a public product overview.",
+  "updatedAt": "2026-09-12",
+  "status": "complete",
+  "criteria": [
+    {
+      "id": "user-story",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/marketing/BRIEF.md"
+        }
+      ]
+    },
+    {
+      "id": "happy-and-failure-paths",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "test",
+          "ref": "scripts/check-seo.mjs"
+        },
+        {
+          "kind": "documentation",
+          "ref": "docs/marketing/QA.md"
+        }
+      ]
+    },
+    {
+      "id": "interaction-states",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "app/about/page.module.css"
+        },
+        {
+          "kind": "documentation",
+          "ref": "docs/marketing/QA.md"
+        }
+      ]
+    },
+    {
+      "id": "server-validation",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "lib/seo.ts"
+        },
+        {
+          "kind": "test",
+          "ref": "scripts/check-seo.mjs"
+        }
+      ]
+    },
+    {
+      "id": "transactional-writes",
+      "status": "not_applicable",
+      "rationale": "The SEO and brand kit introduces no contract mutations, database migrations, document storage operations or new business-model consumers."
+    },
+    {
+      "id": "auditability",
+      "status": "not_applicable",
+      "rationale": "The SEO and brand kit introduces no contract mutations, database migrations, document storage operations or new business-model consumers."
+    },
+    {
+      "id": "migration-strategy",
+      "status": "not_applicable",
+      "rationale": "The SEO and brand kit introduces no contract mutations, database migrations, document storage operations or new business-model consumers."
+    },
+    {
+      "id": "r2-consistency",
+      "status": "not_applicable",
+      "rationale": "The SEO and brand kit introduces no contract mutations, database migrations, document storage operations or new business-model consumers."
+    },
+    {
+      "id": "unit-tests",
+      "status": "not_applicable",
+      "rationale": "The change adds presentation and metadata; rendered HTTP integration assertions in scripts/check-seo.mjs are the proportional regression check, and all existing unit tests passed."
+    },
+    {
+      "id": "api-tests",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "test",
+          "ref": "scripts/check-seo.mjs"
+        }
+      ]
+    },
+    {
+      "id": "fictional-fixture",
+      "status": "not_applicable",
+      "rationale": "The SEO and brand kit introduces no contract mutations, database migrations, document storage operations or new business-model consumers."
+    },
+    {
+      "id": "data-model-consumers",
+      "status": "not_applicable",
+      "rationale": "The SEO and brand kit introduces no contract mutations, database migrations, document storage operations or new business-model consumers."
+    },
+    {
+      "id": "accessibility",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "app/about/page.tsx"
+        },
+        {
+          "kind": "documentation",
+          "ref": "docs/marketing/QA.md"
+        }
+      ]
+    },
+    {
+      "id": "quality-gate",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "command",
+          "ref": "npm test"
+        },
+        {
+          "kind": "command",
+          "ref": "npm run lint"
+        },
+        {
+          "kind": "command",
+          "ref": "npx tsc --noEmit"
+        },
+        {
+          "kind": "command",
+          "ref": "npm run build"
+        },
+        {
+          "kind": "command",
+          "ref": "npm run check:seo"
+        }
+      ]
+    },
+    {
+      "id": "documentation",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "README.md"
+        },
+        {
+          "kind": "documentation",
+          "ref": "DEMO_RUNBOOK.md"
+        },
+        {
+          "kind": "documentation",
+          "ref": "ROADMAP.md"
+        },
+        {
+          "kind": "documentation",
+          "ref": "docs/marketing/QA.md#limitations-and-release-follow-up"
+        },
+        {
+          "kind": "documentation",
+          "ref": "PORTFOLIO_CASE_STUDY.md"
+        },
+        {
+          "kind": "documentation",
+          "ref": "docs/marketing/README.md"
+        }
+      ]
+    },
+    {
+      "id": "metric",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/marketing/QA.md"
+        }
+      ]
+    }
+  ],
+  "metric": {
+    "name": "Reviewable social artwork output",
+    "value": "6 social designs with SVG masters and PNG exports; no ranking or conversion claim",
+    "sampleSize": 6,
+    "source": "docs/marketing/QA.md"
+  }
+}

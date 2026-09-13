@@ -29,6 +29,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AmendmentDialog } from '@/components/dialogs/amendment-dialog';
 import {
   amendmentExtractionFields,
+  dialogSurfaceClass,
   extractionFields,
 } from '@/components/workspace/constants';
 import type { ExtractionFieldKey } from '@/components/workspace/constants';
@@ -207,7 +208,7 @@ export function RecordDetailDialog({
         open
         aria-modal="true"
         aria-labelledby="detail-dialog-title"
-        className="relative m-0 max-h-[94vh] w-full max-w-[1280px] overflow-y-auto rounded-xl bg-white p-0 text-sm shadow-2xl ring-1 ring-slate-900/10"
+        className={`${dialogSurfaceClass} overflow-y-auto`}
       >
         <button
           type="button"
@@ -220,9 +221,9 @@ export function RecordDetailDialog({
         <div
           data-dialog-drag-handle
           title="Drag to move dialog"
-          className="cursor-move touch-none select-none border-b border-[#e1e7ea] px-6 py-5"
+          className="cursor-move touch-none select-none border-b border-border px-6 py-5"
         >
-          <div className="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
+          <div className="mb-1 flex items-center gap-2 pr-8 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent-foreground">
             {selection.type === 'contract' ? (
               <FileCheck2 className="size-3.5" />
             ) : (
@@ -236,7 +237,7 @@ export function RecordDetailDialog({
             <div>
               <h2
                 id="detail-dialog-title"
-                className="text-xl font-semibold text-[#183040]"
+                className="text-xl font-semibold text-foreground"
               >
                 {title}
               </h2>
@@ -260,7 +261,7 @@ export function RecordDetailDialog({
                 <Button
                   type="button"
                   onClick={() => setAmendmentOpen(true)}
-                  className="bg-[#1d718f] hover:bg-[#185f78]"
+                  className="bg-primary hover:bg-primary/90"
                 >
                   <Plus /> Add amendment
                 </Button>
@@ -304,14 +305,14 @@ export function RecordDetailDialog({
           {aiReviews.length ? <AIReviewTrail items={aiReviews} /> : null}
           <section>
             {detailsLoading ? (
-              <div className="flex min-h-[360px] items-center justify-center rounded-xl border border-[#d7e1e6] bg-[#f8fafb] text-xs text-slate-500">
+              <div className="flex min-h-[360px] items-center justify-center rounded-xl border border-border bg-muted text-xs text-slate-500">
                 <LoaderCircle className="mr-2 size-4 animate-spin" />
                 Loading source files and AI review history…
               </div>
             ) : documents.length && selectedDocument ? (
-              <div className="grid overflow-hidden rounded-xl border border-[#d7e1e6] bg-[#f6f8f9] lg:grid-cols-[250px_minmax(0,1fr)]">
-                <aside className="border-b border-[#d7e1e6] bg-white p-3 lg:border-b-0 lg:border-r">
-                  <p className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+              <div className="grid overflow-hidden rounded-xl border border-border bg-muted lg:grid-cols-[250px_minmax(0,1fr)]">
+                <aside className="border-b border-border bg-card p-3 lg:border-b-0 lg:border-r">
+                  <p className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
                     Available files
                   </p>
                   <div className="space-y-1">
@@ -323,30 +324,30 @@ export function RecordDetailDialog({
                           key={String(item.id)}
                           type="button"
                           onClick={() => setSelectedDocumentId(String(item.id))}
-                          className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-2.5 text-left ${active ? 'bg-[#e7f3f7] text-[#174f68]' : 'text-slate-600 hover:bg-slate-50'}`}
+                          className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-2.5 text-left ${active ? 'bg-accent text-accent-foreground' : 'text-slate-600 hover:bg-slate-50'}`}
                         >
                           <FileText className="mt-0.5 size-4 shrink-0" />
                           <span className="min-w-0">
                             <span className="block truncate text-xs font-medium">
                               {valueText(item.file_name)}
                             </span>
-                            <span className="mt-0.5 block text-[10px] opacity-70">
+                            <span className="mt-0.5 block text-[11px] opacity-70">
                               {titleCase(item.file_type)} ·{' '}
                               {valueText(item.review_status)}
                             </span>
                             {item.issuer || item.document_number ? (
-                              <span className="mt-0.5 block truncate text-[10px] opacity-70">
+                              <span className="mt-0.5 block truncate text-[11px] opacity-70">
                                 {valueText(item.issuer)} ·{' '}
                                 {valueText(item.document_number)}
                               </span>
                             ) : null}
                             {item.expiration_date ? (
-                              <span className="mt-0.5 block text-[10px] opacity-70">
+                              <span className="mt-0.5 block text-[11px] opacity-70">
                                 Expires {valueText(item.expiration_date)}
                               </span>
                             ) : null}
                             {item.coverage_summary ? (
-                              <span className="mt-0.5 block line-clamp-2 text-[10px] opacity-70">
+                              <span className="mt-0.5 block line-clamp-2 text-[11px] opacity-70">
                                 {valueText(item.coverage_summary)}
                               </span>
                             ) : null}
@@ -356,17 +357,17 @@ export function RecordDetailDialog({
                     })}
                   </div>
                 </aside>
-                <div className="min-w-0 bg-[#eef2f4]">
-                  <div className="flex items-center justify-between gap-3 border-b border-[#d7e1e6] bg-white px-4 py-3">
+                <div className="min-w-0 bg-muted">
+                  <div className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3">
                     <div className="min-w-0">
-                      <p className="truncate text-xs font-medium text-[#203845]">
+                      <p className="truncate text-xs font-medium text-foreground">
                         {valueText(selectedDocument.file_name)}
                       </p>
-                      <p className="mt-0.5 text-[10px] text-slate-500">
+                      <p className="mt-0.5 text-[11px] text-slate-500">
                         Original file content ·{' '}
                         {titleCase(selectedDocument.mime_type)}
                       </p>
-                      <p className="mt-0.5 text-[10px] text-slate-500">
+                      <p className="mt-0.5 text-[11px] text-slate-500">
                         {titleCase(selectedDocument.file_type)} · Review{' '}
                         {titleCase(selectedDocument.review_status)} · Issuer{' '}
                         {valueText(selectedDocument.issuer)} · Document no.{' '}
@@ -380,7 +381,7 @@ export function RecordDetailDialog({
                       href={`/api/document?id=${encodeURIComponent(String(selectedDocument.id))}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[#d4dfe4] bg-white px-3 py-1.5 text-[11px] font-medium text-[#27657c]"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-accent-foreground"
                     >
                       <ExternalLink className="size-3.5" />
                       Open separately
@@ -389,16 +390,16 @@ export function RecordDetailDialog({
                   <iframe
                     title={valueText(selectedDocument.file_name)}
                     src={`/api/document?id=${encodeURIComponent(String(selectedDocument.id))}`}
-                    className="h-[62vh] min-h-[520px] w-full bg-white"
+                    className="h-[62vh] min-h-[520px] w-full bg-card"
                   />
                 </div>
               </div>
             ) : (
-              <div className="flex min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed border-[#cbd7dd] bg-[#f8fafb] px-6 text-center">
-                <span className="flex size-12 items-center justify-center rounded-full bg-[#e8f2f5] text-[#347d96]">
+              <div className="flex min-h-[360px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted px-6 text-center">
+                <span className="flex size-12 items-center justify-center rounded-full bg-accent text-accent-foreground">
                   <FileText className="size-6" />
                 </span>
-                <h3 className="mt-4 text-sm font-semibold text-[#203845]">
+                <h3 className="mt-4 text-sm font-semibold text-foreground">
                   {selection.type === 'contract'
                     ? 'No executed source document linked'
                     : 'No supplier qualification file linked'}
@@ -445,16 +446,16 @@ export function SupplierRiskProfilePanel({
   profile: NonNullable<Workspace['supplierRiskProfiles']>[string];
 }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-[#cbdcdf] bg-white">
-      <div className="flex flex-col justify-between gap-3 border-b border-[#e1e7ea] bg-[#f7fafb] px-5 py-4 sm:flex-row sm:items-start">
+    <section className="overflow-hidden rounded-xl border border-[#cbdcdf] bg-card">
+      <div className="flex flex-col justify-between gap-3 border-b border-border bg-muted px-5 py-4 sm:flex-row sm:items-start">
         <div>
           <div className="flex items-center gap-2">
-            <ShieldCheck className="size-4 text-[#287d9b]" />
-            <h3 className="text-sm font-semibold text-[#203845]">
+            <ShieldCheck className="size-4 text-accent-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">
               Explainable supplier risk profile
             </h3>
           </div>
-          <p className="mt-1 text-[10px] text-slate-500">
+          <p className="mt-1 text-[11px] text-slate-500">
             Deterministic {profile.version} rules as of {profile.asOfDate}; no
             model-generated score.
           </p>
@@ -480,10 +481,10 @@ export function SupplierRiskProfilePanel({
           {profile.factors.map((factor) => (
             <article
               key={factor.key}
-              className="rounded-lg border border-[#dce3e8] p-3"
+              className="rounded-lg border border-border p-3"
             >
               <div className="flex items-start justify-between gap-2">
-                <p className="text-[11px] font-semibold text-[#294354]">
+                <p className="text-[11px] font-semibold text-foreground">
                   {factor.label}
                 </p>
                 <StatusBadge
@@ -500,10 +501,10 @@ export function SupplierRiskProfilePanel({
                   +{factor.points}
                 </StatusBadge>
               </div>
-              <p className="mt-2 text-[10px] leading-4 text-slate-600">
+              <p className="mt-2 text-[11px] leading-4 text-slate-600">
                 {factor.explanation}
               </p>
-              <p className="mt-2 border-t border-[#edf1f3] pt-2 text-[9px] leading-4 text-slate-500">
+              <p className="mt-2 border-t border-border pt-2 text-[11px] leading-4 text-slate-500">
                 Evidence: {factor.evidence}
               </p>
             </article>
@@ -522,16 +523,16 @@ export function ExecutedApprovalHistory({
   history: RecordDetails['approvalHistory'];
 }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-[#cbdcdf] bg-white">
-      <div className="flex items-start justify-between gap-3 border-b border-[#e1e7ea] bg-[#f7fafb] px-5 py-4">
+    <section className="overflow-hidden rounded-xl border border-[#cbdcdf] bg-card">
+      <div className="flex items-start justify-between gap-3 border-b border-border bg-muted px-5 py-4">
         <div>
           <div className="flex items-center gap-2">
-            <ShieldCheck className="size-4 text-[#287d9b]" />
-            <h3 className="text-sm font-semibold text-[#203845]">
+            <ShieldCheck className="size-4 text-accent-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">
               Pre-execution approval history
             </h3>
           </div>
-          <p className="mt-1 text-[10px] text-slate-500">
+          <p className="mt-1 text-[11px] text-slate-500">
             Approval evidence remains attached after the agreement enters the
             official register.
           </p>
@@ -546,14 +547,14 @@ export function ExecutedApprovalHistory({
           return (
             <article
               key={String(request.request_id)}
-              className="rounded-lg border border-[#dce3e8] p-3"
+              className="rounded-lg border border-border p-3"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-semibold text-[#294354]">
+                  <p className="text-[11px] font-semibold text-foreground">
                     {valueText(request.rule_name)}
                   </p>
-                  <p className="mt-1 text-[9px] text-slate-500">
+                  <p className="mt-1 text-[11px] text-slate-500">
                     Rule {valueText(request.rule_key)} v
                     {valueText(request.rule_version)} ·{' '}
                     {valueText(request.owner_role)}
@@ -563,11 +564,11 @@ export function ExecutedApprovalHistory({
                   {titleCase(request.request_status)}
                 </StatusBadge>
               </div>
-              <p className="mt-2 text-[10px] leading-4 text-slate-600">
+              <p className="mt-2 text-[11px] leading-4 text-slate-600">
                 {valueText(request.reason)}
               </p>
               {latestDecision ? (
-                <p className="mt-2 border-t border-[#edf1f3] pt-2 text-[9px] text-slate-500">
+                <p className="mt-2 border-t border-border pt-2 text-[11px] text-slate-500">
                   Latest: {titleCase(latestDecision.action)} by{' '}
                   {valueText(latestDecision.actor)} (
                   {valueText(latestDecision.actor_role)}) ·{' '}
@@ -602,11 +603,11 @@ export function ContractVersionPanel({
     (item) => item.action === 'amendment_applied',
   );
   return (
-    <section className="overflow-hidden rounded-xl border border-[#bdd7e0] bg-[#f7fbfc]">
+    <section className="overflow-hidden rounded-xl border border-border bg-muted">
       <div className="flex flex-col justify-between gap-3 border-b border-[#d6e4e9] px-5 py-4 sm:flex-row sm:items-center">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <FileSpreadsheet className="size-4 text-[#287d9b]" />
+            <FileSpreadsheet className="size-4 text-accent-foreground" />
             <h3>Contract version lifecycle</h3>
             <StatusBadge tone="blue">
               Version {valueText(contract.current_version ?? 1)}
@@ -621,40 +622,42 @@ export function ContractVersionPanel({
           type="button"
           size="sm"
           onClick={onAddAmendment}
-          className="bg-[#1d718f] hover:bg-[#185f78]"
+          className="bg-primary hover:bg-primary/90"
         >
           <Plus /> Add amendment
         </Button>
       </div>
-      <div className="grid gap-3 border-b border-[#dbe6ea] bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 border-b border-[#dbe6ea] bg-card p-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           ['Original value', moneyFromCents(contract.original_value_cents)],
           ['Amendment value', moneyFromCents(contract.amendment_value_cents)],
           ['Current value', moneyFromCents(contract.current_value_cents)],
           ['Current expiration', usDateText(contract.expiration_date)],
         ].map(([label, value]) => (
-          <div key={label} className="rounded-lg bg-[#f4f8f9] px-3 py-3">
-            <p className="text-[10px] text-slate-500">{label}</p>
-            <p className="mt-1 text-sm font-semibold text-[#203845]">{value}</p>
+          <div key={label} className="rounded-lg bg-muted px-3 py-3">
+            <p className="text-[11px] text-slate-500">{label}</p>
+            <p className="mt-1 text-sm font-semibold text-foreground">
+              {value}
+            </p>
           </div>
         ))}
       </div>
       <div className="p-4">
         <div className="relative space-y-3 before:absolute before:bottom-5 before:left-[17px] before:top-5 before:w-px before:bg-[#c8dce3]">
-          <div className="relative flex gap-3 rounded-lg border border-[#dce5e9] bg-white p-3">
-            <span className="z-10 flex size-9 shrink-0 items-center justify-center rounded-full bg-[#dceff5] text-[10px] font-semibold text-[#1d718f]">
+          <div className="relative flex gap-3 rounded-lg border border-border bg-card p-3">
+            <span className="z-10 flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-foreground">
               V1
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs font-semibold text-[#203845]">
+                <p className="text-xs font-semibold text-foreground">
                   Original executed agreement
                 </p>
                 <StatusBadge tone={ordered.length ? 'slate' : 'green'}>
                   {ordered.length ? 'Superseded terms' : 'Current terms'}
                 </StatusBadge>
               </div>
-              <p className="mt-1 text-[10px] text-slate-500">
+              <p className="mt-1 text-[11px] text-slate-500">
                 Effective {usDateText(contract.effective_date)} · Original value{' '}
                 {moneyFromCents(contract.original_value_cents)}
               </p>
@@ -663,19 +666,19 @@ export function ContractVersionPanel({
           {ordered.map((item) => (
             <div
               key={String(item.id)}
-              className="relative flex gap-3 rounded-lg border border-[#dce5e9] bg-white p-3"
+              className="relative flex gap-3 rounded-lg border border-border bg-card p-3"
             >
-              <span className="z-10 flex size-9 shrink-0 items-center justify-center rounded-full bg-[#dceff5] text-[10px] font-semibold text-[#1d718f]">
+              <span className="z-10 flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-foreground">
                 V{valueText(item.version_number)}
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="text-xs font-semibold text-[#203845]">
+                    <p className="text-xs font-semibold text-foreground">
                       {valueText(item.amendment_number)} ·{' '}
                       {titleCase(item.amendment_type)}
                     </p>
-                    <p className="mt-1 text-[10px] text-slate-500">
+                    <p className="mt-1 text-[11px] text-slate-500">
                       Signed {usDateText(item.signed_date)} · Applied by{' '}
                       {valueText(item.created_by)}
                     </p>
@@ -686,30 +689,30 @@ export function ContractVersionPanel({
                     {titleCase(item.version_status)}
                   </StatusBadge>
                 </div>
-                <div className="mt-3 grid gap-2 text-[10px] sm:grid-cols-3">
-                  <div className="rounded-md bg-[#f4f8f9] px-2.5 py-2">
+                <div className="mt-3 grid gap-2 text-[11px] sm:grid-cols-3">
+                  <div className="rounded-md bg-muted px-2.5 py-2">
                     <span className="text-slate-500">Value</span>
-                    <span className="ml-2 font-semibold text-[#294454]">
+                    <span className="ml-2 font-semibold text-foreground">
                       {moneyFromCents(item.previous_value_cents)} →{' '}
                       {moneyFromCents(item.resulting_value_cents)}
                     </span>
                   </div>
-                  <div className="rounded-md bg-[#f4f8f9] px-2.5 py-2">
+                  <div className="rounded-md bg-muted px-2.5 py-2">
                     <span className="text-slate-500">Expiration</span>
-                    <span className="ml-2 font-semibold text-[#294454]">
+                    <span className="ml-2 font-semibold text-foreground">
                       {usDateText(item.previous_expiration_date)} →{' '}
                       {usDateText(item.new_expiration_date)}
                     </span>
                   </div>
-                  <div className="rounded-md bg-[#f4f8f9] px-2.5 py-2">
+                  <div className="rounded-md bg-muted px-2.5 py-2">
                     <span className="text-slate-500">Net change</span>
-                    <span className="ml-2 font-semibold text-[#294454]">
+                    <span className="ml-2 font-semibold text-foreground">
                       {moneyFromCents(item.value_change_cents)}
                     </span>
                   </div>
                 </div>
                 {item.scope_summary ? (
-                  <p className="mt-2 text-[10px] leading-4 text-slate-500">
+                  <p className="mt-2 text-[11px] leading-4 text-slate-500">
                     {valueText(item.scope_summary)}
                   </p>
                 ) : null}
@@ -718,7 +721,7 @@ export function ContractVersionPanel({
           ))}
         </div>
         {!loading && !ordered.length ? (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-[#bdd4dc] bg-white px-4 py-3">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-[#bdd4dc] bg-card px-4 py-3">
             <p className="text-[11px] text-slate-500">
               No amendment has been recorded for this contract.
             </p>
@@ -728,7 +731,7 @@ export function ContractVersionPanel({
           </div>
         ) : null}
         {amendmentAudits.length ? (
-          <p className="mt-3 text-[10px] text-slate-500">
+          <p className="mt-3 text-[11px] text-slate-500">
             {amendmentAudits.length} amendment audit event
             {amendmentAudits.length === 1 ? '' : 's'} retained.
           </p>
@@ -791,12 +794,12 @@ export function AIReviewRunTrail({
   });
 
   return (
-    <section className="overflow-hidden rounded-xl border border-[#bdd7e0] bg-[#f7fbfc]">
+    <section className="overflow-hidden rounded-xl border border-border bg-muted">
       <div className="flex flex-col justify-between gap-3 border-b border-[#d6e4e9] px-5 py-4 sm:flex-row sm:items-center">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <Sparkles className="size-4 text-[#287d9b]" />
-            <h3 className="text-sm font-semibold text-[#1b3442]">
+            <Sparkles className="size-4 text-accent-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">
               {run.stage === 'supplier_document'
                 ? 'AI supplier-document audit trail'
                 : run.stage === 'amendment'
@@ -820,7 +823,7 @@ export function AIReviewRunTrail({
       <div className="overflow-x-auto">
         <Table className="min-w-[900px]">
           <TableHeader>
-            <TableRow className="bg-white">
+            <TableRow className="bg-card">
               <TableHead className="px-5">Field</TableHead>
               <TableHead>AI original</TableHead>
               <TableHead>Verified value</TableHead>
@@ -832,14 +835,14 @@ export function AIReviewRunTrail({
           <TableBody>
             {orderedItems.map((item) => (
               <TableRow key={String(item.id)}>
-                <TableCell className="px-5 text-xs font-medium text-[#294454]">
+                <TableCell className="px-5 text-xs font-medium text-foreground">
                   {labelByField[String(item.field_name)] ??
                     titleCase(item.field_name)}
                 </TableCell>
                 <TableCell className="max-w-[190px] text-xs text-slate-500">
                   {storedReviewValue(item.original_value_json)}
                 </TableCell>
-                <TableCell className="max-w-[190px] text-xs font-medium text-[#203845]">
+                <TableCell className="max-w-[190px] text-xs font-medium text-foreground">
                   {storedReviewValue(item.verified_value_json)}
                 </TableCell>
                 <TableCell>
@@ -854,7 +857,7 @@ export function AIReviewRunTrail({
                 <TableCell className="text-xs">
                   {Math.round(Number(item.confidence ?? 0) * 100)}%
                 </TableCell>
-                <TableCell className="max-w-[280px] pr-5 text-[10px] leading-4 text-slate-500">
+                <TableCell className="max-w-[280px] pr-5 text-[11px] leading-4 text-slate-500">
                   {item.source_page ? `Page ${item.source_page}` : 'No page'}
                   {item.source_quote ? ` · “${item.source_quote}”` : ''}
                   {item.override_reason

@@ -23,6 +23,26 @@ export type ManagementAttentionItem = {
   valueCents: number | null;
 };
 
+/**
+ * Attention issues that describe a record contradicting itself or missing data
+ * it is required to carry. They are separated from the time-based operational
+ * items — expiring documents, due or overdue obligations — because those are
+ * owned by Obligations & Evidence, while these are register data quality.
+ */
+export const DATA_QUALITY_ISSUES: ReadonlySet<string> = new Set([
+  'Expired date conflicts with active status',
+  'Expiration date not recorded',
+  'Renewal notice deadline not recorded',
+  'Contract value reconciliation exception',
+  'Amendment value without a recorded amendment',
+  'Contract metadata requires verification',
+  'Supplier contact information is incomplete',
+]);
+
+export function isDataQualityIssue(issue: string) {
+  return DATA_QUALITY_ISSUES.has(issue);
+}
+
 export type ManagementChart = {
   key: string;
   title: string;
@@ -286,6 +306,28 @@ function buildContractReport(input: BuildReportInput): ManagementReport {
         reason:
           'Current value does not equal original value plus recorded amendments.',
         priority: 'medium',
+        dueDate: null,
+        valueCents,
+      });
+    }
+
+    // The arithmetic above still balances when the amendment total has no
+    // amendment behind it, so the register would show money moving with no
+    // signed instrument to trace it to.
+    const amendmentValueCents = numberValue(contract.amendment_value_cents);
+    if (
+      amendmentValueCents !== 0 &&
+      numberValue(contract.amendment_count) === 0
+    ) {
+      attention.push({
+        id: `unsupported-amendment:${contractId}`,
+        entityId: contractId,
+        entityType: 'contract',
+        reference,
+        label,
+        issue: 'Amendment value without a recorded amendment',
+        reason: `The contract carries a ${amendmentValueCents > 0 ? 'positive' : 'negative'} amendment total but no amendment record supports it.`,
+        priority: 'high',
         dueDate: null,
         valueCents,
       });

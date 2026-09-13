@@ -16,6 +16,7 @@ import {
   calculateObligationMetrics,
   type ObligationMetricRecord,
 } from '@/lib/obligation-workflow';
+import { playbookRule, resolvePlaybookKey } from '@/lib/contract-playbook';
 import { calculateSupplierRiskProfile } from '@/lib/supplier-risk';
 import { isIsoDate, storedDocumentMimeTypeSchema } from '@/lib/validation';
 import { withApiRoute } from '@/lib/server/route-handler';
@@ -41,6 +42,7 @@ const reviewFieldNames = [
   'noticeDays',
   'governingLaw',
   'paymentTerms',
+  'liabilityCap',
 ] as const;
 
 const saveSchema = z.object({
@@ -64,9 +66,11 @@ const saveSchema = z.object({
     noticeDays: fieldSchema,
     governingLaw: fieldSchema,
     paymentTerms: fieldSchema,
+    liabilityCap: fieldSchema,
     findings: z.array(
       z.object({
-        rule: z.string().min(1).max(200),
+        ruleKey: z.string().max(80).optional(),
+        rule: z.string().min(1).max(400),
         observed: z.string().max(2_000),
         standard: z.string().max(2_000),
         suggestedRevision: z.string().min(1).max(4_000),
@@ -276,6 +280,7 @@ export async function getWorkspace() {
     approvalMetricRow,
     approvalQueueRows,
     integrationMetricRow,
+    approvalRuleRows,
   ] = await Promise.all([
     db
       .prepare(`SELECT
@@ -355,7 +360,11 @@ export async function getWorkspace() {
       CASE
         WHEN EXISTS (SELECT 1 FROM review_findings f WHERE f.intake_id = i.id AND f.status = 'open' AND f.severity = 'high') THEN 'high'
         WHEN EXISTS (SELECT 1 FROM review_findings f WHERE f.intake_id = i.id AND f.status = 'open' AND f.severity = 'medium') THEN 'medium'
-        ELSE 'low'
+        -- Only a completed playbook review earns 'low'. Without one the risk is
+        -- unknown, not cleared, so the column stays NULL.
+        WHEN EXISTS (SELECT 1 FROM ai_analysis_runs r WHERE r.intake_id = i.id)
+          OR EXISTS (SELECT 1 FROM review_findings f WHERE f.intake_id = i.id) THEN 'low'
+        ELSE NULL
       END AS risk_level,
       (SELECT COUNT(*) FROM approval_requests arq
         JOIN approval_rules arr ON arr.id = arq.rule_id
@@ -569,6 +578,13 @@ export async function getWorkspace() {
         MAX(occurred_at) AS last_event_at
         FROM integration_outbox`)
       .first(),
+    // Read-only: the rules reference page renders the definitions the engine
+    // actually evaluates, rather than a hand-maintained copy of them.
+    db
+      .prepare(`SELECT id, rule_key, version, name, description, trigger_type,
+        trigger_config_json, owner_role, due_days, mandatory, active
+        FROM approval_rules WHERE active = 1 ORDER BY rule_key, version`)
+      .all(),
   ]);
 
   const asOfDate = new Date().toISOString().slice(0, 10);
@@ -634,6 +650,7 @@ export async function getWorkspace() {
     aiCorrectionByField: aiCorrectionRows.results,
     approvalMetrics: approvalMetricRow,
     approvalQueue: approvalQueueRows.results,
+    approvalRules: approvalRuleRows.results,
     integrationMetrics: integrationMetricRow,
   };
 }
@@ -756,17 +773,28 @@ export const POST = withApiRoute(
         risk_tier: string | null;
         insurance_status: string | null;
       }>();
-    const findingRecords = input.analysis.findings.map((finding) => ({
-      ...finding,
-      id: `finding-${crypto.randomUUID()}`,
-      field: finding.rule.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-    }));
+    // A resolved playbook key is what lets an approval request point back at
+    // the finding that caused it, and it makes the stored standard the
+    // company's own wording rather than the model's paraphrase. Anything the
+    // model could not place keeps its previous slug-and-echo behaviour.
+    const findingRecords = input.analysis.findings.map((finding) => {
+      const rule = playbookRule(resolvePlaybookKey(finding.ruleKey));
+      return {
+        ...finding,
+        id: `finding-${crypto.randomUUID()}`,
+        field:
+          rule?.key ?? finding.rule.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+        rule: rule?.title ?? finding.rule,
+        standard: rule?.standard ?? finding.standard,
+      };
+    });
     const approvalContext: ApprovalContext = {
       proposedValueCents: valueCents,
       governingLaw: stringValue(input.analysis.governingLaw) || null,
       renewalType: stringValue(input.analysis.renewalType) || null,
       insuranceStatus: supplierRecord?.insurance_status ?? 'missing',
       supplierRiskTier: supplierRecord?.risk_tier ?? null,
+      liabilityCap: stringValue(input.analysis.liabilityCap) || null,
       findings: findingRecords.map((finding) => ({
         id: finding.id,
         field: finding.field,

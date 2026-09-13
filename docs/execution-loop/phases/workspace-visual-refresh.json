@@ -1,0 +1,131 @@
+{
+  "schemaVersion": "phase-execution-2026.1",
+  "phaseId": "workspace-visual-refresh",
+  "title": "Apply the approved brand identity across the operations workspace",
+  "owner": "ContractLedger AI maintainers",
+  "updatedAt": "2026-09-12",
+  "status": "complete",
+  "userStory": "As a contract operations user, I can scan records and navigate workflows through a consistent, readable interface.",
+  "businessRules": [
+    "Presentation changes preserve status meanings, values, permissions and event handlers."
+  ],
+  "nonGoals": [
+    "No business logic, data changes, model calls or deployment."
+  ],
+  "acceptanceCriteria": [
+    "See docs/design/WORKSPACE_VISUAL_REFRESH.md for visual and interaction acceptance."
+  ],
+  "startGate": {
+    "previousPhase": {
+      "phaseId": "seo-brand-kit",
+      "status": "complete",
+      "evidence": "docs/execution-loop/phases/seo-brand-kit.json"
+    },
+    "unresolvedDataIntegrityDefects": [],
+    "unresolvedAuditTrailDefects": []
+  },
+  "steps": [
+    {
+      "id": "define",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/design/WORKSPACE_VISUAL_REFRESH.md"
+        }
+      ]
+    },
+    {
+      "id": "fixture-first",
+      "status": "not_applicable",
+      "rationale": "This visual phase changes shared presentation and responsive layout only; it introduces no data fixtures, persisted models, business rules or API operations."
+    },
+    {
+      "id": "model",
+      "status": "not_applicable",
+      "rationale": "This visual phase changes shared presentation and responsive layout only; it introduces no data fixtures, persisted models, business rules or API operations."
+    },
+    {
+      "id": "business-logic",
+      "status": "not_applicable",
+      "rationale": "This visual phase changes shared presentation and responsive layout only; it introduces no data fixtures, persisted models, business rules or API operations."
+    },
+    {
+      "id": "api",
+      "status": "not_applicable",
+      "rationale": "This visual phase changes shared presentation and responsive layout only; it introduces no data fixtures, persisted models, business rules or API operations."
+    },
+    {
+      "id": "interface",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/design/WORKSPACE_VISUAL_REFRESH.md"
+        },
+        {
+          "kind": "file",
+          "ref": "app/globals.css"
+        },
+        {
+          "kind": "file",
+          "ref": "components/workspace/primitives.tsx"
+        }
+      ]
+    },
+    {
+      "id": "test",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/design/WORKSPACE_VISUAL_REFRESH.md"
+        },
+        {
+          "kind": "command",
+          "ref": "npm test"
+        },
+        {
+          "kind": "command",
+          "ref": "npm run build"
+        }
+      ]
+    },
+    {
+      "id": "measure",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/design/WORKSPACE_VISUAL_REFRESH.md"
+        }
+      ]
+    },
+    {
+      "id": "demonstrate",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/design/WORKSPACE_VISUAL_REFRESH.md"
+        }
+      ]
+    },
+    {
+      "id": "document",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/design/WORKSPACE_VISUAL_REFRESH.md"
+        }
+      ]
+    }
+  ],
+  "metric": {
+    "name": "Workspace views checked for navigation and mobile page width",
+    "value": "10 existing views at a 320 px viewport; no page-level width expansion",
+    "sampleSize": 10,
+    "source": "docs/design/WORKSPACE_VISUAL_REFRESH.md"
+  }
+}

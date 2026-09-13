@@ -185,14 +185,15 @@ export function SupplierRegisterView({
         description="Supplier records originate from uploaded supplier files or executed contracts. A supplier does not need an active contract to remain in this lifecycle master."
         action={
           <div className="flex flex-wrap gap-2">
-            <Button onClick={onAdd} className="bg-[#1d718f] hover:bg-[#185f78]">
+            <Button onClick={onAdd} className="bg-primary hover:bg-primary/90">
               <Plus />
               Create supplier from files
             </Button>
             <Button
+              variant="outline"
               onClick={onExport}
               disabled={exporting || !allSuppliers.length}
-              className="bg-[#1d718f] hover:bg-[#185f78]"
+              className="bg-card"
             >
               {exporting ? (
                 <LoaderCircle className="animate-spin" />
@@ -205,7 +206,7 @@ export function SupplierRegisterView({
               variant="outline"
               onClick={() => setInsightsOpen(true)}
               disabled={!visibleSuppliers.length}
-              className="border-[#9bc6d5] bg-[#edf8fb] text-[#1d657f] hover:bg-[#e1f2f7]"
+              className="border-input bg-accent text-accent-foreground hover:bg-accent"
             >
               <Sparkles />
               AI management insights
@@ -229,7 +230,7 @@ export function SupplierRegisterView({
             </div>
           }
         />
-        <div className="border-b border-[#e3e9ed] bg-[#f8fafb] p-4">
+        <div className="border-b border-border bg-muted p-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             <FilterSelect
               label="Relationship stage"
@@ -305,14 +306,14 @@ export function SupplierRegisterView({
                 type="button"
                 variant="outline"
                 onClick={clearFilters}
-                className="h-9 w-full bg-white"
+                className="h-9 w-full bg-card"
               >
                 <RotateCcw />
                 Clear filters
               </Button>
             </div>
           </div>
-          <p className="mt-3 text-[10px] text-slate-500">
+          <p className="mt-3 text-[11px] text-slate-500">
             Filters can be combined with keyword search. “Expiring 90 days” uses
             the earliest dated supplier or insurance record on each supplier.
             Dates are displayed in U.S. English format (MM/DD/YYYY).
@@ -325,7 +326,7 @@ export function SupplierRegisterView({
             onContainerScroll={supplierTableScroll.syncTableToFloating}
           >
             <TableHeader>
-              <TableRow className="bg-[#f7f9fa]">
+              <TableRow className="bg-muted">
                 <TableHead className="w-14 px-4 text-center">No.</TableHead>
                 <TableHead>Supplier</TableHead>
                 <TableHead>Vendor number</TableHead>
@@ -356,7 +357,7 @@ export function SupplierRegisterView({
                       onClick={() => onSelect(String(item.id))}
                       className="text-left"
                     >
-                      <span className="font-medium text-[#1d718f] hover:underline">
+                      <span className="font-medium text-accent-foreground hover:underline">
                         {valueText(item.legal_name)}
                       </span>
                       <span className="mt-1 block text-[11px] text-slate-500">
@@ -388,7 +389,7 @@ export function SupplierRegisterView({
                         {titleCase(item.qualification_status)}
                       </StatusBadge>
                     </div>
-                    <div className="mt-1 text-[10px] text-slate-500">
+                    <div className="mt-1 text-[11px] text-slate-500">
                       Review date {usDateText(item.qualification_review_date)}
                     </div>
                   </TableCell>
@@ -397,7 +398,7 @@ export function SupplierRegisterView({
                     {item.address_line2 ? (
                       <div>{valueText(item.address_line2)}</div>
                     ) : null}
-                    <div className="mt-1 text-[10px] text-slate-500">
+                    <div className="mt-1 text-[11px] text-slate-500">
                       {valueText(item.city)}, {valueText(item.state)}{' '}
                       {valueText(item.postal_code)} · {valueText(item.country)}
                     </div>
@@ -408,7 +409,7 @@ export function SupplierRegisterView({
                         {titleCase(item.status)}
                       </StatusBadge>
                     </div>
-                    <div className="mt-1 text-[10px] font-medium text-slate-500">
+                    <div className="mt-1 text-[11px] font-medium text-slate-500">
                       {titleCase(item.relationship_stage)} relationship
                     </div>
                   </TableCell>
@@ -416,7 +417,7 @@ export function SupplierRegisterView({
                     <div className="font-medium">
                       {valueText(item.primary_contact)}
                     </div>
-                    <div className="mt-1 text-[10px] text-slate-500">
+                    <div className="mt-1 text-[11px] text-slate-500">
                       {valueText(item.email)} · {valueText(item.phone)}
                     </div>
                     {item.website ? (
@@ -424,7 +425,7 @@ export function SupplierRegisterView({
                         href={String(item.website)}
                         target="_blank"
                         rel="noreferrer"
-                        className="mt-1 block text-[10px] text-[#287693] hover:underline"
+                        className="mt-1 block text-[11px] text-accent-foreground hover:underline"
                       >
                         Website
                       </a>
@@ -438,7 +439,7 @@ export function SupplierRegisterView({
                           ? item.linked_intakes.split('||').map((intake) => (
                               <div
                                 key={intake}
-                                className="rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-800"
+                                className="rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800"
                               >
                                 Intake · {intake}
                               </div>
@@ -450,7 +451,7 @@ export function SupplierRegisterView({
                               .map((contract) => (
                                 <div
                                   key={contract}
-                                  className="rounded bg-slate-50 px-2 py-1 text-[10px] text-slate-600"
+                                  className="rounded bg-slate-50 px-2 py-1 text-[11px] text-slate-600"
                                 >
                                   Contract · {contract}
                                 </div>
@@ -462,7 +463,7 @@ export function SupplierRegisterView({
                         Onboarding only · no contract activity yet
                       </span>
                     )}
-                    <div className="mt-1 text-[10px] text-slate-500">
+                    <div className="mt-1 text-[11px] text-slate-500">
                       {valueText(item.active_contract_count)} active
                     </div>
                   </TableCell>
@@ -486,12 +487,12 @@ export function SupplierRegisterView({
                     <div className="font-medium">
                       {valueText(item.qualification_document_count)} files
                     </div>
-                    <div className="mt-1 text-[10px] text-slate-500">
+                    <div className="mt-1 text-[11px] text-slate-500">
                       Next expiry {usDateText(item.next_compliance_expiration)}
                     </div>
                     {Number(item.expired_qualification_document_count ?? 0) >
                     0 ? (
-                      <div className="mt-1 text-[10px] font-medium text-rose-600">
+                      <div className="mt-1 text-[11px] font-medium text-rose-600">
                         {valueText(item.expired_qualification_document_count)}{' '}
                         expired
                       </div>
@@ -515,7 +516,7 @@ export function SupplierRegisterView({
             </TableBody>
           </Table>
           {truncation.truncated ? (
-            <p className="border-t border-[#e1e7ea] px-5 py-3 text-xs text-amber-700">
+            <p className="border-t border-border px-5 py-3 text-xs text-amber-700">
               {truncation.message}
             </p>
           ) : null}

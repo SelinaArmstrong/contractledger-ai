@@ -23,20 +23,31 @@ import {
   PageHeading,
   StatusBadge,
 } from '@/components/workspace/primitives';
+import {
+  FloatingTableScrollbar,
+  TablePagination,
+  useFloatingTableScrollbar,
+} from '@/components/workspace/table';
 
 export function ApprovalQueueView({
   workspace,
   onUpdated,
   onOpenIntake,
+  onOpenRule,
 }: {
   workspace: Workspace | null;
   onUpdated: (workspace: Workspace) => void;
   onOpenIntake: (id: string) => void;
+  /** Opens the read-only rules reference at the control that fired. */
+  onOpenRule: (ruleKey: string) => void;
 }) {
   const [statusFilter, setStatusFilter] = useState('open');
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(
     null,
   );
+  const [pageSize, setPageSize] = useState(20);
+  const [page, setPage] = useState(1);
+  const queueTableScroll = useFloatingTableScrollbar();
   const filtered = (workspace?.approvalQueue ?? []).filter((item) =>
     statusFilter === 'all'
       ? true
@@ -47,6 +58,10 @@ export function ApprovalQueueView({
         : item.request_status === statusFilter,
   );
   const metrics = workspace?.approvalMetrics;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const pageStart = (safePage - 1) * pageSize;
+  const pageItems = filtered.slice(pageStart, pageStart + pageSize);
 
   return (
     <>
@@ -55,12 +70,15 @@ export function ApprovalQueueView({
         title="Approvals & Exceptions"
         description="Route deterministic policy triggers to accountable reviewers, preserve every decision, and prevent execution while mandatory controls remain incomplete."
         action={
-          <label className="text-[10px] font-medium text-slate-500">
+          <label className="text-[11px] font-medium text-slate-500">
             Status
             <select
               value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="ml-2 h-9 rounded-md border border-input bg-white px-3 text-xs text-slate-700"
+              onChange={(event) => {
+                setStatusFilter(event.target.value);
+                setPage(1);
+              }}
+              className="ml-2 h-9 rounded-md border border-input bg-card px-3 text-xs text-slate-700"
             >
               <option value="open">Open decisions</option>
               <option value="all">All decisions</option>
@@ -93,26 +111,26 @@ export function ApprovalQueueView({
         ].map(([label, value, note]) => (
           <article
             key={String(label)}
-            className="rounded-xl border border-[#dce3e8] bg-white p-4 shadow-sm"
+            className="rounded-xl border border-border bg-card p-4 shadow-sm"
           >
-            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
               {label}
             </p>
-            <p className="mt-2 text-2xl font-semibold tracking-tight text-[#183040]">
+            <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
               {value}
             </p>
-            <p className="mt-1 text-[9px] text-slate-500">{note}</p>
+            <p className="mt-1 text-[11px] text-slate-500">{note}</p>
           </article>
         ))}
       </div>
 
-      <section className="overflow-hidden rounded-xl border border-[#dce3e8] bg-white shadow-sm">
-        <div className="flex items-center justify-between gap-3 border-b border-[#e2e8eb] px-5 py-4">
+      <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
           <div>
-            <h2 className="text-sm font-semibold text-[#203845]">
+            <h2 className="text-sm font-semibold text-foreground">
               Approval aging queue
             </h2>
-            <p className="mt-1 text-[10px] text-slate-500">
+            <p className="mt-1 text-[11px] text-slate-500">
               Owner, source, rule version, age, and deadline travel with every
               decision.
             </p>
@@ -120,11 +138,16 @@ export function ApprovalQueueView({
           <Badge variant="outline">{filtered.length} shown</Badge>
         </div>
         {filtered.length ? (
-          <div className="overflow-x-auto">
-            <Table>
+          <div>
+            <Table
+              className="min-w-[1180px]"
+              containerRef={queueTableScroll.tableScrollerRef}
+              onContainerScroll={queueTableScroll.syncTableToFloating}
+            >
               <TableHeader>
                 <TableRow>
-                  <TableHead className="pl-5">Control / reason</TableHead>
+                  <TableHead className="w-14 pl-5 text-center">No.</TableHead>
+                  <TableHead>Control / reason</TableHead>
                   <TableHead>Intake</TableHead>
                   <TableHead>Decision owner</TableHead>
                   <TableHead>Status</TableHead>
@@ -133,16 +156,19 @@ export function ApprovalQueueView({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((item) => (
+                {pageItems.map((item, index) => (
                   <TableRow key={item.step_id} className="align-top">
-                    <TableCell className="max-w-[360px] pl-5">
-                      <p className="text-xs font-semibold text-[#1d718f]">
+                    <TableCell className="pl-5 text-center text-xs font-medium text-slate-500">
+                      {pageStart + index + 1}
+                    </TableCell>
+                    <TableCell className="max-w-[360px]">
+                      <p className="text-xs font-semibold text-accent-foreground">
                         {item.rule_name}
                       </p>
-                      <p className="mt-1 line-clamp-2 text-[10px] leading-4 text-slate-500">
+                      <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-slate-500">
                         {item.reason}
                       </p>
-                      <p className="mt-1 text-[9px] text-slate-400">
+                      <p className="mt-1 text-[11px] text-slate-400">
                         {item.rule_key} · v{item.rule_version}
                       </p>
                     </TableCell>
@@ -150,7 +176,7 @@ export function ApprovalQueueView({
                       <p className="text-[11px] font-medium text-slate-700">
                         {item.intake_number}
                       </p>
-                      <p className="mt-1 max-w-52 truncate text-[9px] text-slate-500">
+                      <p className="mt-1 max-w-52 truncate text-[11px] text-slate-500">
                         {item.intake_title}
                       </p>
                     </TableCell>
@@ -158,7 +184,7 @@ export function ApprovalQueueView({
                       <p className="text-[11px] font-medium text-slate-700">
                         {item.owner_role}
                       </p>
-                      <p className="mt-1 text-[9px] text-slate-500">
+                      <p className="mt-1 text-[11px] text-slate-500">
                         {item.assigned_reviewer || 'Unassigned'}
                       </p>
                     </TableCell>
@@ -167,7 +193,7 @@ export function ApprovalQueueView({
                         {titleCase(item.request_status)}
                       </StatusBadge>
                       {item.escalation_level ? (
-                        <p className="mt-1 text-[9px] text-amber-700">
+                        <p className="mt-1 text-[11px] text-amber-700">
                           Escalation level {item.escalation_level}
                         </p>
                       ) : null}
@@ -178,16 +204,16 @@ export function ApprovalQueueView({
                       >
                         {item.age_days} day{item.age_days === 1 ? '' : 's'} open
                       </p>
-                      <p className="mt-1 text-[9px] text-slate-500">
+                      <p className="mt-1 text-[11px] text-slate-500">
                         Due {usDateText(item.due_at)}
                       </p>
                     </TableCell>
                     <TableCell className="pr-5 text-right">
-                      <p className="max-w-52 truncate text-[10px] text-slate-600">
+                      <p className="max-w-52 truncate text-[11px] text-slate-600">
                         {item.source_file_name || 'Verified register data'}
                       </p>
                       {item.source_page ? (
-                        <p className="mt-1 text-[9px] text-slate-400">
+                        <p className="mt-1 text-[11px] text-slate-400">
                           Page {item.source_page}
                         </p>
                       ) : null}
@@ -196,7 +222,7 @@ export function ApprovalQueueView({
                         variant="outline"
                         size="sm"
                         onClick={() => setSelectedRequestId(item.request_id)}
-                        className="mt-2 h-7 px-2 text-[9px]"
+                        className="mt-2 h-7 px-2 text-[11px]"
                       >
                         Review decision
                       </Button>
@@ -205,6 +231,24 @@ export function ApprovalQueueView({
                 ))}
               </TableBody>
             </Table>
+            <TablePagination
+              label="Approval queue pagination"
+              page={safePage}
+              pageSize={pageSize}
+              total={filtered.length}
+              onPageChange={setPage}
+              onPageSizeChange={(nextPageSize) => {
+                setPageSize(nextPageSize);
+                setPage(1);
+              }}
+              floating={queueTableScroll.floating}
+            />
+            <FloatingTableScrollbar
+              label="Approval queue horizontal scrollbar"
+              floating={queueTableScroll.floating}
+              floatingScrollerRef={queueTableScroll.floatingScrollerRef}
+              onScroll={queueTableScroll.syncFloatingToTable}
+            />
           </div>
         ) : (
           <EmptyState
@@ -222,6 +266,10 @@ export function ApprovalQueueView({
           onOpenIntake={(id) => {
             setSelectedRequestId(null);
             onOpenIntake(id);
+          }}
+          onOpenRule={(ruleKey) => {
+            setSelectedRequestId(null);
+            onOpenRule(ruleKey);
           }}
         />
       ) : null}

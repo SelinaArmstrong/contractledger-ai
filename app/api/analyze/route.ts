@@ -9,12 +9,13 @@ import {
 } from '@/lib/document-quality';
 import { enforceRateLimit } from '@/lib/server/request-security';
 import { withApiRoute } from '@/lib/server/route-handler';
+import { playbookPromptSection } from '@/lib/contract-playbook';
 import { reserveAIBudget } from '@/lib/server/ai-budget';
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_PAGES = 40;
 const MAX_TEXT_CHARS = 80_000;
-export const CONTRACT_PROMPT_VERSION = 'us-contract-playbook-2026.1';
+export const CONTRACT_PROMPT_VERSION = 'us-contract-playbook-2026.2';
 
 const extractedFieldSchema = z.object({
   value: z.union([z.string(), z.number(), z.null()]),
@@ -35,8 +36,11 @@ const analysisSchema = z.object({
   noticeDays: extractedFieldSchema,
   governingLaw: extractedFieldSchema,
   paymentTerms: extractedFieldSchema,
+  liabilityCap: extractedFieldSchema,
   findings: z.array(
     z.object({
+      /** Stable playbook key, or 'other' when nothing in the playbook fits. */
+      ruleKey: z.string().max(80).optional(),
       rule: z.string(),
       observed: z.string(),
       standard: z.string(),
@@ -128,28 +132,18 @@ WORKFLOW STAGE
 ${stageInstruction}
 
 FICTIONAL DEMO COMPANY PLAYBOOK
-- Preferred payment terms: Net 30.
-- Preferred governing law: California.
-- Automatic renewal requires human review.
-- Service contracts require CGL of USD 2M per occurrence, professional liability of USD 2M, cyber liability of USD 1M when company data is accessed, and a current certificate before work begins.
-- Contract values above USD 500,000 require CFO approval.
-- Supplier liability should be capped at total fees, with carveouts for confidentiality, data security, indemnification, infringement, fraud, gross negligence, and willful misconduct.
-- Project-specific deliverables should be owned by Northstar, with a sufficient license to embedded supplier materials.
-- Subcontractors accessing a site, system, or company information require prior written consent.
-- Confirmed security incidents must be reported within 72 hours.
-- Northstar should have a 30-day termination-for-convenience right without an early termination fee.
-- Changes affecting scope, fees, or schedule require a signed change order; project-manager email alone is insufficient.
-- Invoice and compliance records should be retained for four years after final payment.
+Each line is "rule_key: company standard".
+${playbookPromptSection()}
 
 OUTPUT
 Return exactly one JSON object with these keys:
-documentTitle, supplierLegalName, contractType, contractNumber, contractValue, effectiveDate, expirationDate, renewalType, noticeDays, governingLaw, paymentTerms, findings, keyDates, warnings.
+documentTitle, supplierLegalName, contractType, contractNumber, contractValue, effectiveDate, expirationDate, renewalType, noticeDays, governingLaw, paymentTerms, liabilityCap, findings, keyDates, warnings.
 
-Every field from documentTitle through paymentTerms must be an object:
+Every field from documentTitle through liabilityCap must be an object:
 {"value": string|number|null, "confidence": number from 0 to 1, "sourcePage": number|null, "sourceQuote": string|null}
 
-contractValue must be a numeric USD amount without commas or symbols when determinable. Dates should use YYYY-MM-DD when determinable. renewalType should be automatic, optional, none, or null. findings must contain only playbook differences or operational exceptions supported by the document. keyDates must contain only material renewal, notice, insurance, deliverable, or closeout dates. Never invent missing information; use null and add a warning.
-Each finding must include rule, observed, standard, suggestedRevision, severity, and sourcePage. suggestedRevision must be concise contract language proposed only as a negotiation aid to align the observed term with the fictional playbook. It is not legal advice and must not introduce facts absent from the playbook.
+contractValue must be a numeric USD amount without commas or symbols when determinable. Dates should use YYYY-MM-DD when determinable. renewalType should be automatic, optional, none, or null. liabilityCap must be "capped" when the agreement states any monetary or formula limit on supplier liability, "uncapped" only when the agreement expressly states liability is unlimited or excludes a limitation, and null when the agreement is silent. Never infer "uncapped" from the absence of a limitation clause. findings must contain only playbook differences or operational exceptions supported by the document. keyDates must contain only material renewal, notice, insurance, deliverable, or closeout dates. Never invent missing information; use null and add a warning.
+Each finding must include ruleKey, rule, observed, standard, suggestedRevision, severity, and sourcePage. ruleKey must be exactly one of the rule_key values listed in the playbook above, or "other" when the deviation matches no playbook line. Report at most one finding per ruleKey. rule must be a short label of at most 120 characters, not a copy of the company standard. suggestedRevision must be concise contract language proposed only as a negotiation aid to align the observed term with the fictional playbook. It is not legal advice and must not introduce facts absent from the playbook.
 Use the formal agreement heading for documentTitle, not the project name or subtitle. Do not put compliant terms or confirmation-only observations in findings, even with info severity. If renewalType is automatic, include the required human renewal review as a finding.
 
 DOCUMENT

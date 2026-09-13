@@ -81,7 +81,7 @@ export function PortfolioCaseStudyView({
       <Panel className="mb-5 overflow-hidden border-[#bfd4dd]">
         <div className="grid gap-0 xl:grid-cols-[1.15fr_0.85fr]">
           <div className="bg-[#0f3044] px-6 py-7 text-white md:px-8 md:py-9">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#79c6dd]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#79c6dd]">
               Portfolio thesis
             </p>
             <h2 className="mt-3 max-w-3xl text-2xl font-semibold tracking-[-0.025em] md:text-3xl">
@@ -102,12 +102,14 @@ export function PortfolioCaseStudyView({
               ['7 / 13', 'Roles / permissions', 'Server enforced'],
               ['101', 'Passing tests', '2026-09-02 v1.0 baseline'],
             ].map(([value, label, note]) => (
-              <div key={label} className="bg-[#f8fbfc] p-5 md:p-6">
-                <p className="text-2xl font-semibold text-[#14384d]">{value}</p>
+              <div key={label} className="bg-muted p-5 md:p-6">
+                <p className="text-2xl font-semibold text-foreground">
+                  {value}
+                </p>
                 <p className="mt-2 text-[11px] font-semibold text-slate-700">
                   {label}
                 </p>
-                <p className="mt-1 text-[9px] text-slate-500">{note}</p>
+                <p className="mt-1 text-[11px] text-slate-500">{note}</p>
               </div>
             ))}
           </div>
@@ -118,23 +120,23 @@ export function PortfolioCaseStudyView({
         {liveEvidence.map((item) => (
           <article
             key={item.label}
-            className="rounded-xl border border-[#dce3e8] bg-white p-4 shadow-sm"
+            className="rounded-xl border border-border bg-card p-4 shadow-sm"
           >
-            <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
               Current demo state
             </p>
             <div className="mt-2 flex items-end justify-between gap-3">
               <div>
-                <p className="text-xl font-semibold text-[#183040]">
+                <p className="text-xl font-semibold text-foreground">
                   {item.value}
                 </p>
-                <p className="mt-1 text-[10px] font-medium text-slate-700">
+                <p className="mt-1 text-[11px] font-medium text-slate-700">
                   {item.label}
                 </p>
               </div>
               <CircleCheck className="mb-1 size-4 text-[#2d8a72]" />
             </div>
-            <p className="mt-2 text-[9px] text-slate-500">{item.note}</p>
+            <p className="mt-2 text-[11px] text-slate-500">{item.note}</p>
           </article>
         ))}
       </div>
@@ -167,17 +169,17 @@ export function PortfolioCaseStudyView({
               ].map(([title, description], index) => (
                 <article
                   key={title}
-                  className="rounded-xl border border-[#dce3e8] bg-[#f8fafb] p-4"
+                  className="rounded-xl border border-border bg-muted p-4"
                 >
                   <div className="flex items-start gap-3">
-                    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-[#dff0f5] text-[10px] font-semibold text-[#1d718f]">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-[#dff0f5] text-[11px] font-semibold text-accent-foreground">
                       {index + 1}
                     </span>
                     <div>
-                      <h3 className="text-xs font-semibold text-[#203845]">
+                      <h3 className="text-xs font-semibold text-foreground">
                         {title}
                       </h3>
-                      <p className="mt-1 text-[10px] leading-5 text-slate-600">
+                      <p className="mt-1 text-[11px] leading-5 text-slate-600">
                         {description}
                       </p>
                     </div>
@@ -208,13 +210,13 @@ export function PortfolioCaseStudyView({
                       <TableCell className="pl-5">
                         <StatusBadge tone="green">{item.release}</StatusBadge>
                       </TableCell>
-                      <TableCell className="text-[10px] font-semibold text-[#203845]">
+                      <TableCell className="text-[11px] font-semibold text-foreground">
                         {item.capability}
                       </TableCell>
-                      <TableCell className="min-w-72 text-[10px] leading-5 text-slate-600">
+                      <TableCell className="min-w-72 text-[11px] leading-5 text-slate-600">
                         {item.evidence}
                       </TableCell>
-                      <TableCell className="min-w-56 pr-5 text-[9px] leading-4 text-slate-500">
+                      <TableCell className="min-w-56 pr-5 text-[11px] leading-4 text-slate-500">
                         {item.boundary}
                       </TableCell>
                     </TableRow>
@@ -239,17 +241,17 @@ export function PortfolioCaseStudyView({
                     onClick={() => onNavigate(chapter.view)}
                     className="group flex w-full items-start gap-3 text-left"
                   >
-                    <span className="flex h-7 min-w-12 items-center justify-center rounded-lg bg-[#edf5f7] px-2 text-[9px] font-semibold text-[#276e87]">
+                    <span className="flex h-7 min-w-12 items-center justify-center rounded-lg bg-[#edf5f7] px-2 text-[11px] font-semibold text-[#276e87]">
                       {chapter.time}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[11px] font-semibold text-[#203845]">
+                      <span className="block text-[11px] font-semibold text-foreground">
                         {index + 1}. {chapter.title}
                       </span>
-                      <span className="mt-1 block text-[9px] leading-4 text-slate-500">
+                      <span className="mt-1 block text-[11px] leading-4 text-slate-500">
                         {chapter.proof}
                       </span>
-                      <span className="mt-2 inline-flex items-center gap-1 text-[9px] font-medium text-[#1d718f]">
+                      <span className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-accent-foreground">
                         {chapter.view}
                         <ArrowRight className="size-3 transition group-hover:translate-x-0.5" />
                       </span>
@@ -275,7 +277,7 @@ export function PortfolioCaseStudyView({
               ].map((boundary) => (
                 <li
                   key={boundary}
-                  className="flex items-start gap-2 text-[10px] leading-5 text-slate-600"
+                  className="flex items-start gap-2 text-[11px] leading-5 text-slate-600"
                 >
                   <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-[#2d8a72]" />
                   {boundary}

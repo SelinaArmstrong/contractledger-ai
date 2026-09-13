@@ -165,10 +165,10 @@ export function SupplierDocumentUpload({
   };
 
   return (
-    <section className="rounded-xl border border-[#bcd8e2] bg-[#f0f8fa] p-4">
+    <section className="rounded-xl border border-[#bcd8e2] bg-accent p-4">
       <div className="flex items-center gap-2">
-        <Upload className="size-4 text-[#287693]" />
-        <h3 className="text-sm font-semibold text-[#203845]">
+        <Upload className="size-4 text-accent-foreground" />
+        <h3 className="text-sm font-semibold text-foreground">
           Add supplier documentation
         </h3>
       </div>
@@ -183,7 +183,7 @@ export function SupplierDocumentUpload({
         <select
           value={documentType}
           onChange={(event) => setDocumentType(event.target.value)}
-          className="h-9 rounded-md border border-input bg-white px-3 text-xs"
+          className="h-9 rounded-md border border-input bg-card px-3 text-xs"
         >
           {SUPPLIER_DOCUMENT_TYPES.map((type) => (
             <option key={type} value={type}>
@@ -195,33 +195,33 @@ export function SupplierDocumentUpload({
           value={issuer}
           onChange={(event) => setIssuer(event.target.value)}
           placeholder="Issuer or verification source"
-          className="h-9 bg-white text-xs"
+          className="h-9 bg-card text-xs"
         />
         <Input
           value={documentNumber}
           onChange={(event) => setDocumentNumber(event.target.value)}
           placeholder="License / document number"
-          className="h-9 bg-white text-xs"
+          className="h-9 bg-card text-xs"
         />
         <Input
           type="date"
           value={effectiveDate}
           onChange={(event) => setEffectiveDate(event.target.value)}
           aria-label="Qualification document effective date"
-          className="h-9 bg-white text-xs"
+          className="h-9 bg-card text-xs"
         />
         <Input
           type="date"
           value={expirationDate}
           onChange={(event) => setExpirationDate(event.target.value)}
           aria-label="Qualification document expiration date"
-          className="h-9 bg-white text-xs"
+          className="h-9 bg-card text-xs"
         />
         <Input
           value={coverageSummary}
           onChange={(event) => setCoverageSummary(event.target.value)}
           placeholder="Coverage / qualification summary"
-          className="h-9 bg-white text-xs md:col-span-2"
+          className="h-9 bg-card text-xs md:col-span-2"
         />
         <Input
           type="file"
@@ -232,7 +232,7 @@ export function SupplierDocumentUpload({
             setSourceOverrideReason('');
             setMessage('');
           }}
-          className="h-9 bg-white text-xs file:mr-3 file:border-0 file:bg-transparent"
+          className="h-9 bg-card text-xs file:mr-3 file:border-0 file:bg-transparent"
         />
         <div className="flex gap-2 xl:col-start-4 xl:justify-end">
           <Button
@@ -240,7 +240,7 @@ export function SupplierDocumentUpload({
             variant="outline"
             onClick={analyze}
             disabled={!file || analyzing || saving}
-            className="bg-white"
+            className="bg-card"
           >
             {analyzing ? (
               <LoaderCircle className="animate-spin" />
@@ -269,11 +269,11 @@ export function SupplierDocumentUpload({
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
           <label
             htmlFor="supplier-document-source-override"
-            className="text-[10px] font-semibold text-amber-900"
+            className="text-[11px] font-semibold text-amber-900"
           >
             Required source override reason
           </label>
-          <p className="mt-1 text-[9px] text-amber-700">
+          <p className="mt-1 text-[11px] text-amber-700">
             Critical fields without page-and-quote support:{' '}
             {supplierCriticalFields
               .map(([fieldName]) => titleCase(String(fieldName)))
@@ -284,7 +284,7 @@ export function SupplierDocumentUpload({
             value={sourceOverrideReason}
             onChange={(event) => setSourceOverrideReason(event.target.value)}
             placeholder="Explain how the values were independently verified"
-            className="mt-2 h-8 bg-white text-[10px]"
+            className="mt-2 h-8 bg-card text-[11px]"
           />
         </div>
       ) : null}
@@ -337,19 +337,19 @@ export function SupplierDocumentAIReview({
   ).filter(([, field]) => field.value !== null && field.value !== '');
 
   return (
-    <div className="mt-4 rounded-xl border border-[#bdd7e0] bg-white p-4">
+    <div className="mt-4 rounded-xl border border-border bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <Sparkles className="size-4 text-[#287d9b]" />
-            <h4 className="text-xs font-semibold text-[#203845]">
+            <Sparkles className="size-4 text-accent-foreground" />
+            <h4 className="text-xs font-semibold text-foreground">
               AI qualification-document extraction
             </h4>
             <StatusBadge tone={supplierMatch ? 'green' : 'rose'}>
               {supplierMatch ? 'Supplier name matched' : 'Name needs review'}
             </StatusBadge>
           </div>
-          <p className="mt-1 text-[10px] text-slate-500">
+          <p className="mt-1 text-[11px] text-slate-500">
             File identifies {extractedName}; current record is {supplierName}.
           </p>
         </div>
@@ -367,18 +367,18 @@ export function SupplierDocumentAIReview({
         {fields.map(([label, field]) => (
           <div
             key={label}
-            className="rounded-lg border border-[#e0e7ea] bg-[#f8fafb] p-3"
+            className="rounded-lg border border-[#e0e7ea] bg-muted p-3"
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
                 {label}
               </span>
               <FieldConfidence field={field} />
             </div>
-            <p className="mt-1.5 text-[11px] font-medium text-[#294354]">
+            <p className="mt-1.5 text-[11px] font-medium text-foreground">
               {valueText(field.value)}
             </p>
-            <p className="mt-1 line-clamp-2 text-[9px] leading-4 text-slate-500">
+            <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-slate-500">
               {field.sourcePage ? `Page ${field.sourcePage}` : 'No page'}
               {field.sourceQuote ? ` · “${field.sourceQuote}”` : ''}
             </p>
@@ -390,7 +390,7 @@ export function SupplierDocumentAIReview({
           {result.analysis.findings.map((finding, index) => (
             <div
               key={`${finding.title}-${index}`}
-              className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-[10px] text-amber-900"
+              className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-900"
             >
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
               <span>
@@ -401,7 +401,7 @@ export function SupplierDocumentAIReview({
           {result.analysis.warnings.map((warning) => (
             <div
               key={warning}
-              className="flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-[10px] text-rose-800"
+              className="flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-[11px] text-rose-800"
             >
               <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
               {warning}
@@ -409,7 +409,7 @@ export function SupplierDocumentAIReview({
           ))}
         </div>
       ) : null}
-      <p className="mt-3 text-[10px] text-slate-500">
+      <p className="mt-3 text-[11px] text-slate-500">
         These source-backed values feed the proposed supplier master and
         document metadata. Review or correct them before creating the database
         record.

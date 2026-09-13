@@ -1,0 +1,141 @@
+{
+  "schemaVersion": "phase-execution-2026.1",
+  "phaseId": "seo-brand-kit",
+  "title": "Public product overview, SEO and promotional identity",
+  "owner": "ContractLedger AI maintainers",
+  "updatedAt": "2026-09-12",
+  "status": "complete",
+  "userStory": "As a portfolio reviewer, I can discover, understand and share ContractLedger AI with accurate previews and a public product overview.",
+  "businessRules": [
+    "Promotional copy must describe implemented capabilities and identify fictional demonstration data."
+  ],
+  "nonGoals": [
+    "No deployment, external publishing or changes to contract decisions."
+  ],
+  "acceptanceCriteria": [
+    "See docs/marketing/BRIEF.md for observable SEO and visual acceptance criteria."
+  ],
+  "startGate": {
+    "previousPhase": null,
+    "unresolvedDataIntegrityDefects": [],
+    "unresolvedAuditTrailDefects": []
+  },
+  "steps": [
+    {
+      "id": "define",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/marketing/BRIEF.md"
+        }
+      ]
+    },
+    {
+      "id": "fixture-first",
+      "status": "not_applicable",
+      "rationale": "This public marketing and metadata phase introduces no contract-data fixtures, persisted data model or business-state changes."
+    },
+    {
+      "id": "model",
+      "status": "not_applicable",
+      "rationale": "This public marketing and metadata phase introduces no contract-data fixtures, persisted data model or business-state changes."
+    },
+    {
+      "id": "business-logic",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "lib/seo.ts"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "app/robots.ts"
+        },
+        {
+          "kind": "file",
+          "ref": "app/sitemap.ts"
+        },
+        {
+          "kind": "file",
+          "ref": "app/manifest.ts"
+        }
+      ]
+    },
+    {
+      "id": "interface",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "file",
+          "ref": "app/about/page.tsx"
+        },
+        {
+          "kind": "file",
+          "ref": "scripts/generate-brand-assets.mjs"
+        }
+      ]
+    },
+    {
+      "id": "test",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "test",
+          "ref": "scripts/check-seo.mjs"
+        },
+        {
+          "kind": "documentation",
+          "ref": "docs/marketing/QA.md"
+        }
+      ]
+    },
+    {
+      "id": "measure",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/marketing/QA.md"
+        }
+      ]
+    },
+    {
+      "id": "demonstrate",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "DEMO_RUNBOOK.md"
+        }
+      ]
+    },
+    {
+      "id": "document",
+      "status": "complete",
+      "evidence": [
+        {
+          "kind": "documentation",
+          "ref": "docs/marketing/README.md"
+        },
+        {
+          "kind": "documentation",
+          "ref": "docs/marketing/COPY.md"
+        }
+      ]
+    }
+  ],
+  "metric": {
+    "name": "Reviewable social artwork output",
+    "value": "6 social designs with SVG masters and PNG exports; no ranking or conversion claim",
+    "sampleSize": 6,
+    "source": "docs/marketing/QA.md"
+  }
+}

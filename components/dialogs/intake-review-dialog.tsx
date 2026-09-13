@@ -19,7 +19,12 @@ import {
   LoaderCircle,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { extractionFields } from '@/components/workspace/constants';
+import { playbookRule } from '@/lib/contract-playbook';
+import { intakeRiskBadge } from '@/lib/intake-risk';
+import {
+  dialogSurfaceClass,
+  extractionFields,
+} from '@/components/workspace/constants';
 import {
   moneyFromCents,
   titleCase,
@@ -37,11 +42,14 @@ export function IntakeReviewDialog({
   onClose,
   onUpdated,
   onOpenSupplier,
+  onOpenRule,
 }: {
   intakeId: string;
   onClose: () => void;
   onUpdated: (workspace: Workspace) => void;
   onOpenSupplier: (supplierId: string) => void;
+  /** Opens the read-only rules reference at the standard behind a finding. */
+  onOpenRule: (ruleKey: string) => void;
 }) {
   const [details, setDetails] = useState<IntakeDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -185,12 +193,12 @@ export function IntakeReviewDialog({
         open
         aria-modal="true"
         aria-labelledby="intake-review-dialog-title"
-        className="m-0 grid h-[88vh] min-h-[660px] w-[96vw] max-w-[1440px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl bg-white p-0 text-sm shadow-2xl ring-1 ring-slate-900/10"
+        className={`${dialogSurfaceClass} grid grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden`}
       >
         <header
           data-dialog-drag-handle
           title="Drag to move dialog"
-          className="relative cursor-move touch-none select-none border-b border-[#e1e7ea] px-6 py-4"
+          className="relative cursor-move touch-none select-none border-b border-border px-6 py-4"
         >
           <button
             type="button"
@@ -201,7 +209,7 @@ export function IntakeReviewDialog({
           >
             ×
           </button>
-          <div className="flex flex-wrap items-center gap-2 pr-10 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
+          <div className="flex flex-wrap items-center gap-2 pr-10 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent-foreground">
             <FileSearch className="size-3.5" /> AI contract review workspace
             {details ? (
               <StatusBadge tone={toneForStatus(details.intake.status)}>
@@ -211,7 +219,7 @@ export function IntakeReviewDialog({
           </div>
           <h2
             id="intake-review-dialog-title"
-            className="mt-1 pr-10 text-xl font-semibold text-[#183040]"
+            className="mt-1 pr-10 text-xl font-semibold text-foreground"
           >
             {details ? valueText(details.intake.title) : 'Loading review…'}
           </h2>
@@ -226,20 +234,20 @@ export function IntakeReviewDialog({
 
         {loading ? (
           <div className="flex min-h-0 items-center justify-center">
-            <LoaderCircle className="mr-2 size-5 animate-spin text-[#287d9b]" />
+            <LoaderCircle className="mr-2 size-5 animate-spin text-accent-foreground" />
             <span className="text-xs text-slate-500">
               Loading source document and review history…
             </span>
           </div>
         ) : details ? (
           <div className="grid min-h-0 overflow-hidden xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
-            <section className="min-h-0 border-b border-[#dce3e8] bg-[#eef2f4] xl:border-b-0 xl:border-r">
-              <div className="flex items-center justify-between gap-3 border-b border-[#d7e1e6] bg-white px-4 py-3">
+            <section className="min-h-0 border-b border-border bg-muted xl:border-b-0 xl:border-r">
+              <div className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3">
                 <div>
-                  <h3 className="text-xs font-semibold text-[#203845]">
+                  <h3 className="text-xs font-semibold text-foreground">
                     Draft source document
                   </h3>
-                  <p className="mt-0.5 text-[10px] text-slate-500">
+                  <p className="mt-0.5 text-[11px] text-slate-500">
                     Read the original language beside the AI findings.
                   </p>
                 </div>
@@ -248,20 +256,20 @@ export function IntakeReviewDialog({
                     href={`/api/document?id=${encodeURIComponent(String(selectedDocument.id))}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d4dfe4] bg-white px-3 text-[10px] font-medium text-[#27657c]"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-[11px] font-medium text-accent-foreground"
                   >
                     <ExternalLink className="size-3.5" /> Open separately
                   </a>
                 ) : null}
               </div>
               {details.documents.length > 1 ? (
-                <div className="flex gap-2 overflow-x-auto border-b border-[#d7e1e6] bg-white px-4 py-2">
+                <div className="flex gap-2 overflow-x-auto border-b border-border bg-card px-4 py-2">
                   {details.documents.map((document) => (
                     <button
                       key={String(document.id)}
                       type="button"
                       onClick={() => setSelectedDocumentId(String(document.id))}
-                      className={`shrink-0 rounded-md px-3 py-1.5 text-[10px] ${String(document.id) === String(selectedDocument?.id) ? 'bg-[#dff0f5] font-semibold text-[#1d647d]' : 'bg-slate-50 text-slate-500'}`}
+                      className={`shrink-0 rounded-md px-3 py-1.5 text-[11px] ${String(document.id) === String(selectedDocument?.id) ? 'bg-[#dff0f5] font-semibold text-[#1d647d]' : 'bg-slate-50 text-slate-500'}`}
                     >
                       {valueText(document.file_name)}
                     </button>
@@ -272,7 +280,7 @@ export function IntakeReviewDialog({
                 <iframe
                   title={valueText(selectedDocument.file_name)}
                   src={`/api/document?id=${encodeURIComponent(String(selectedDocument.id))}`}
-                  className="h-[calc(88vh-164px)] min-h-[520px] w-full bg-white"
+                  className="h-[calc(88vh-164px)] min-h-[520px] w-full bg-card"
                 />
               ) : (
                 <div className="flex h-full min-h-[420px] flex-col items-center justify-center px-6 text-center text-xs text-slate-500">
@@ -284,13 +292,13 @@ export function IntakeReviewDialog({
 
             <section className="min-h-0 overflow-y-auto px-5 py-4">
               <div className="space-y-4">
-                <article className="rounded-xl border border-[#c9dbe2] bg-[#f6fbfc] p-4">
+                <article className="rounded-xl border border-border bg-[#f6fbfc] p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-semibold text-[#203845]">
+                      <h3 className="text-sm font-semibold text-foreground">
                         AI review summary
                       </h3>
-                      <p className="mt-1 text-[10px] text-slate-500">
+                      <p className="mt-1 text-[11px] text-slate-500">
                         {valueText(details.analysisMeta?.model)} · reviewed by{' '}
                         {valueText(details.analysisMeta?.reviewed_by)} ·{' '}
                         {valueText(details.analysisMeta?.correction_count)}{' '}
@@ -298,15 +306,9 @@ export function IntakeReviewDialog({
                       </p>
                     </div>
                     <StatusBadge
-                      tone={
-                        details.intake.risk_level === 'high'
-                          ? 'rose'
-                          : details.intake.risk_level === 'medium'
-                            ? 'amber'
-                            : 'green'
-                      }
+                      tone={intakeRiskBadge(details.intake.risk_level).tone}
                     >
-                      {titleCase(details.intake.risk_level)} risk
+                      {intakeRiskBadge(details.intake.risk_level).label}
                     </StatusBadge>
                   </div>
                   {analysisSummary.length ? (
@@ -314,15 +316,15 @@ export function IntakeReviewDialog({
                       {analysisSummary.map(({ fieldName, label, field }) => (
                         <div
                           key={fieldName}
-                          className="rounded-lg border border-[#dce7eb] bg-white px-3 py-2"
+                          className="rounded-lg border border-[#dce7eb] bg-card px-3 py-2"
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-[9px] font-semibold uppercase tracking-[0.06em] text-slate-500">
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">
                               {label}
                             </span>
                             <FieldConfidence field={field} />
                           </div>
-                          <p className="mt-1 truncate text-[11px] font-medium text-[#294354]">
+                          <p className="mt-1 truncate text-[11px] font-medium text-foreground">
                             {fieldName === 'contractValue'
                               ? moneyFromCents(Number(field.value ?? 0) * 100)
                               : valueText(field.value)}
@@ -331,19 +333,19 @@ export function IntakeReviewDialog({
                       ))}
                     </div>
                   ) : (
-                    <p className="mt-3 text-[10px] text-slate-500">
+                    <p className="mt-3 text-[11px] text-slate-500">
                       This seeded intake predates the stored AI summary.
                     </p>
                   )}
                 </article>
 
-                <article className="rounded-xl border border-[#dce3e8] bg-white p-4">
+                <article className="rounded-xl border border-border bg-card p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-semibold text-[#203845]">
+                      <h3 className="text-sm font-semibold text-foreground">
                         Supplier handling
                       </h3>
-                      <p className="mt-1 text-[10px] text-slate-500">
+                      <p className="mt-1 text-[11px] text-slate-500">
                         Draft review records the proposed supplier name only. It
                         does not create or update the Supplier Register.
                       </p>
@@ -380,10 +382,10 @@ export function IntakeReviewDialog({
                         key={String(label)}
                         className="rounded-lg bg-slate-50 px-3 py-2"
                       >
-                        <div className="text-[9px] font-semibold uppercase tracking-[0.06em] text-slate-500">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">
                           {label}
                         </div>
-                        <div className="mt-1 text-[11px] font-medium text-[#294354]">
+                        <div className="mt-1 text-[11px] font-medium text-foreground">
                           {label === 'Proposed supplier' ||
                           label === 'Supplier register link' ||
                           label === 'Link timing'
@@ -398,10 +400,10 @@ export function IntakeReviewDialog({
                 <article>
                   <div className="flex items-end justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-semibold text-[#203845]">
+                      <h3 className="text-sm font-semibold text-foreground">
                         Playbook differences and negotiation support
                       </h3>
-                      <p className="mt-1 text-[10px] text-slate-500">
+                      <p className="mt-1 text-[11px] text-slate-500">
                         Suggested language is an AI drafting aid—not legal
                         advice or an automatic redline.
                       </p>
@@ -419,15 +421,29 @@ export function IntakeReviewDialog({
                         return (
                           <div
                             key={String(finding.id)}
-                            className="rounded-xl border border-[#dce3e8] bg-white p-4"
+                            className="rounded-xl border border-border bg-card p-4"
                           >
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
-                                <h4 className="text-xs font-semibold text-[#203845]">
+                                <h4 className="text-xs font-semibold text-foreground">
                                   {valueText(finding.rule_name)}
                                 </h4>
-                                <p className="mt-1 text-[10px] text-slate-500">
+                                <p className="mt-1 text-[11px] text-slate-500">
                                   Page {valueText(finding.source_page)}
+                                  {playbookRule(finding.field) ? (
+                                    <>
+                                      {' · '}
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          onOpenRule(String(finding.field))
+                                        }
+                                        className="font-medium text-accent-foreground hover:underline"
+                                      >
+                                        View playbook rule
+                                      </button>
+                                    </>
+                                  ) : null}
                                 </p>
                               </div>
                               <div className="flex items-center gap-2">
@@ -452,7 +468,7 @@ export function IntakeReviewDialog({
                                       [String(finding.id)]: event.target.value,
                                     }))
                                   }
-                                  className="h-8 rounded-md border border-input bg-white px-2 text-[10px]"
+                                  className="h-8 rounded-md border border-input bg-card px-2 text-[11px]"
                                 >
                                   <option value="open">Open</option>
                                   <option value="accepted">
@@ -465,24 +481,24 @@ export function IntakeReviewDialog({
                             </div>
                             <div className="mt-3 grid gap-2">
                               <div className="rounded-lg bg-rose-50 px-3 py-2">
-                                <span className="text-[9px] font-semibold uppercase text-rose-700">
+                                <span className="text-[11px] font-semibold uppercase text-rose-700">
                                   Contract language
                                 </span>
-                                <p className="mt-1 text-[10px] leading-4 text-rose-900">
+                                <p className="mt-1 text-[11px] leading-4 text-rose-900">
                                   {valueText(finding.observed_text)}
                                 </p>
                               </div>
                               <div className="rounded-lg bg-slate-50 px-3 py-2">
-                                <span className="text-[9px] font-semibold uppercase text-slate-600">
+                                <span className="text-[11px] font-semibold uppercase text-slate-600">
                                   Playbook position
                                 </span>
-                                <p className="mt-1 text-[10px] leading-4 text-slate-700">
+                                <p className="mt-1 text-[11px] leading-4 text-slate-700">
                                   {valueText(finding.standard_text)}
                                 </p>
                               </div>
                               <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[9px] font-semibold uppercase text-sky-700">
+                                  <span className="text-[11px] font-semibold uppercase text-sky-700">
                                     Suggested revision
                                   </span>
                                   <Button
@@ -494,12 +510,12 @@ export function IntakeReviewDialog({
                                         suggested,
                                       )
                                     }
-                                    className="h-6 px-2 text-[9px] text-sky-700"
+                                    className="h-6 px-2 text-[11px] text-sky-700"
                                   >
                                     Copy language
                                   </Button>
                                 </div>
-                                <p className="mt-1 text-[10px] leading-4 text-sky-900">
+                                <p className="mt-1 text-[11px] leading-4 text-sky-900">
                                   {suggested}
                                 </p>
                               </div>
@@ -515,26 +531,26 @@ export function IntakeReviewDialog({
                   </div>
                 </article>
 
-                <article className="rounded-xl border border-[#cbd9df] bg-[#f8fafb] p-4">
-                  <h3 className="text-sm font-semibold text-[#203845]">
+                <article className="rounded-xl border border-[#cbd9df] bg-muted p-4">
+                  <h3 className="text-sm font-semibold text-foreground">
                     Review workflow
                   </h3>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <label
                       htmlFor="review-workflow-owner"
-                      className="text-[10px] font-medium text-slate-600"
+                      className="text-[11px] font-medium text-slate-600"
                     >
                       Review owner
                       <Input
                         id="review-workflow-owner"
                         value={owner}
                         onChange={(event) => setOwner(event.target.value)}
-                        className="mt-1 bg-white text-xs"
+                        className="mt-1 bg-card text-xs"
                       />
                     </label>
                     <label
                       htmlFor="review-workflow-target-date"
-                      className="text-[10px] font-medium text-slate-600"
+                      className="text-[11px] font-medium text-slate-600"
                     >
                       Target review date
                       <Input
@@ -544,15 +560,15 @@ export function IntakeReviewDialog({
                         onChange={(event) =>
                           setTargetReviewDate(event.target.value)
                         }
-                        className="mt-1 bg-white text-xs"
+                        className="mt-1 bg-card text-xs"
                       />
                     </label>
-                    <label className="text-[10px] font-medium text-slate-600">
+                    <label className="text-[11px] font-medium text-slate-600">
                       Workflow status
                       <select
                         value={status}
                         onChange={(event) => setStatus(event.target.value)}
-                        className="mt-1 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
+                        className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-xs"
                       >
                         <option value="draft">New</option>
                         <option value="under_review">Under review</option>
@@ -573,8 +589,8 @@ export function IntakeReviewDialog({
                         </option>
                       </select>
                     </label>
-                    <div className="rounded-lg border border-[#dce3e8] bg-white px-3 py-2">
-                      <p className="text-[9px] font-semibold uppercase text-slate-500">
+                    <div className="rounded-lg border border-border bg-card px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase text-slate-500">
                         Mandatory approval gate
                       </p>
                       <div className="mt-1 flex items-center justify-between gap-2">
@@ -583,24 +599,24 @@ export function IntakeReviewDialog({
                         >
                           {titleCase(details.intake.approval_status)}
                         </StatusBadge>
-                        <span className="text-[10px] text-slate-500">
+                        <span className="text-[11px] text-slate-500">
                           {openApprovalCount} open
                         </span>
                       </div>
                     </div>
                   </div>
-                  <label className="mt-3 block text-[10px] font-medium text-slate-600">
+                  <label className="mt-3 block text-[11px] font-medium text-slate-600">
                     Internal review notes
                     <textarea
                       value={internalNotes}
                       onChange={(event) => setInternalNotes(event.target.value)}
                       rows={3}
-                      className="mt-1 w-full rounded-md border border-input bg-white px-3 py-2 text-xs"
+                      className="mt-1 w-full rounded-md border border-input bg-card px-3 py-2 text-xs"
                       placeholder="Record negotiation position, business input, approval rationale, or next step…"
                     />
                   </label>
                   {details.approvalRequests.length ? (
-                    <p className="mt-2 text-[10px] text-amber-700">
+                    <p className="mt-2 text-[11px] text-amber-700">
                       Versioned approval requests are controlled in Approvals &
                       Exceptions. This intake cannot advance to Approved for
                       signature while {openApprovalCount} mandatory request
@@ -621,8 +637,8 @@ export function IntakeReviewDialog({
           </div>
         )}
 
-        <footer className="flex items-center justify-between gap-3 border-t border-[#e1e7ea] bg-white px-6 py-4">
-          <span className="text-[10px] text-rose-600">
+        <footer className="flex items-center justify-between gap-3 border-t border-border bg-card px-6 py-4">
+          <span className="text-[11px] text-rose-600">
             {details ? error : ''}
           </span>
           <div className="flex gap-2">
@@ -632,7 +648,7 @@ export function IntakeReviewDialog({
             <Button
               onClick={() => void saveWorkflow()}
               disabled={!details || saving || !owner.trim()}
-              className="bg-[#1d718f] hover:bg-[#185f78]"
+              className="bg-primary hover:bg-primary/90"
             >
               {saving ? <LoaderCircle className="animate-spin" /> : <Check />}
               Save review workflow

@@ -19,7 +19,8 @@
 | 0:00–0:45  | Portfolio Case Study       | State the operating problem and product boundary.                                     | This is an operational review aid using fictional data, not autonomous legal advice or a full CLM.                                                |
 | 0:45–1:35  | Bulk Import & Data Quality | Open the seeded dry run and inspect mapped and normalized rows.                       | Preview is isolated; exact duplicates cannot be accepted; possible matches require a decision; correction output is formula-safe.                 |
 | 1:35–2:40  | New Contract Review        | Open the demo draft analysis and inspect one material field and one playbook finding. | Model value and verified value remain separate; page, quote, confidence, reviewer, and override reason are retained.                              |
-| 2:40–3:30  | Approvals & Exceptions     | Open a financial or governing-law approval.                                           | The rule version, accountable owner, deadline, source, reason, and immutable decision history survive execution.                                  |
+| 2:40–3:10  | Approvals & Exceptions     | Open a financial or governing-law approval, then follow **View triggering rule**.     | The rule version, accountable owner, deadline, source finding, reason, and immutable decision history survive execution.                          |
+| 3:10–3:30  | Playbook & Approval Rules  | Show the two rule sets and which standards escalate.                                  | Fifteen review standards; three escalate to a versioned control. Rules are read-only in the workspace and snapshotted onto each request.          |
 | 3:30–4:20  | Contract Register          | Open the executed agreement and compare it with the draft.                            | Draft value never counted as official; mandatory approvals gate executed registration; negotiated changes are calculated from saved analyses.     |
 | 4:20–5:10  | Contract detail            | Review the original agreement and amendment lifecycle.                                | USD 475,000 + USD 75,000 = USD 550,000 current value; the original and version history remain unchanged and visible.                              |
 | 5:10–6:05  | Supplier Register          | Open a supplier risk profile.                                                         | The score is deterministic and decomposes into eight visible factors with rules, points, explanations, and saved evidence.                        |
@@ -83,3 +84,9 @@ If asked how phase scope is controlled, show `docs/execution-loop/phases/roadmap
 - **Someone has left the workspace messy:** the demo account cannot reset it by
   design. Sign in with the maintainer account, or run the demo locally where
   loopback grants administrator.
+
+## Public introduction and sharing
+
+Start at `/about` for the public product narrative, feature overview and scope FAQ, then use its demo and case-study links to enter the existing workbench. The overview is available without workspace authentication. [Promotional copy and image guidance](docs/marketing/README.md) provides a consistent explanation for portfolio sharing. Public posts identify the fictional demonstration data.
+
+The refreshed workbench uses a mint selected-navigation state, navy primary actions and a consistent warm-paper surface. Contract tables keep horizontal scrolling; inspect the [visual-refresh notes](docs/design/WORKSPACE_VISUAL_REFRESH.md) for the responsive review scope.

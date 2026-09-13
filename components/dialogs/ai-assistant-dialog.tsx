@@ -17,7 +17,10 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { assistantExamples } from '@/components/workspace/constants';
+import {
+  assistantExamples,
+  dialogSurfaceClass,
+} from '@/components/workspace/constants';
 import {
   moneyFromCents,
   titleCase,
@@ -148,7 +151,7 @@ export function AIAssistantDialog({
         open
         aria-modal="true"
         aria-labelledby="ai-assistant-dialog-title"
-        className="relative m-0 grid h-[84vh] min-h-[620px] w-[96vw] max-w-[1440px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl bg-white p-0 text-sm shadow-2xl ring-1 ring-slate-900/10"
+        className={`${dialogSurfaceClass} workspace-assistant-dialog grid grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden`}
       >
         <button
           type="button"
@@ -161,41 +164,38 @@ export function AIAssistantDialog({
         <div
           data-dialog-drag-handle
           title="Drag to move dialog"
-          className="cursor-move touch-none select-none border-b border-[#dce3e8] bg-[#f8fbfc] px-6 py-4 pr-14"
+          className="cursor-move touch-none select-none border-b border-border bg-muted px-6 py-4 pr-14"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <span className="flex size-9 items-center justify-center rounded-lg bg-[#dceff5] text-[#1d718f]">
+            <span className="hidden size-9 items-center justify-center rounded-lg bg-accent text-accent-foreground sm:flex">
               <Bot className="size-[18px]" />
             </span>
             <div>
               <h2
                 id="ai-assistant-dialog-title"
-                className="text-base font-semibold text-[#183040]"
+                className="text-base font-semibold text-foreground"
               >
                 AI Contract Operations Assistant
               </h2>
               <p className="mt-0.5 text-[11px] text-slate-500">
-                Natural-language questions · verified database results
+                Read-only answers from saved records
               </p>
             </div>
             <Badge
               variant="outline"
-              className="ml-auto border-emerald-200 bg-emerald-50 text-emerald-800"
+              className="ml-auto hidden border-emerald-200 bg-emerald-50 text-emerald-800 sm:inline-flex"
             >
               Read-only
             </Badge>
           </div>
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-[#d8e5e9] bg-white px-3 py-2 text-[10px] text-slate-500">
-            <span>
-              AI interprets your request; approved program rules query SQLite
-              and calculate totals.
-            </span>
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 text-[11px] text-slate-500">
+            <span>Explore your contracts and suppliers.</span>
             <Button
               type="button"
               variant="ghost"
               size="sm"
               onClick={resetConversation}
-              className="h-7 shrink-0 px-2 text-[10px]"
+              className="h-7 shrink-0 px-2 text-[11px]"
             >
               <RotateCcw /> New chat
             </Button>
@@ -204,7 +204,7 @@ export function AIAssistantDialog({
 
         <div
           ref={conversationRef}
-          className="min-h-0 flex-1 overflow-y-auto bg-[#f4f7f8] px-4 py-5 sm:px-6"
+          className="min-h-0 flex-1 overflow-y-auto bg-background px-4 py-5 sm:px-6"
         >
           <div className="mx-auto max-w-[1260px] space-y-5">
             {messages.map((message) => (
@@ -215,17 +215,17 @@ export function AIAssistantDialog({
                 <div
                   className={
                     message.role === 'user'
-                      ? 'max-w-[84%] rounded-2xl rounded-br-md bg-[#1c6f8c] px-4 py-3 text-xs leading-5 text-white shadow-sm'
+                      ? 'max-w-[84%] rounded-2xl rounded-br-md bg-primary px-4 py-3 text-xs leading-5 text-white shadow-sm'
                       : 'w-full max-w-[96%]'
                   }
                 >
                   {message.role === 'assistant' ? (
                     <div className="flex items-start gap-3">
-                      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-white text-[#247590] shadow-sm ring-1 ring-[#dce5e8]">
+                      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-card text-accent-foreground shadow-sm ring-1 ring-border">
                         <Sparkles className="size-3.5" />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <div className="max-w-[980px] whitespace-pre-line rounded-2xl rounded-tl-md border border-[#dce3e8] bg-white px-4 py-3 text-xs leading-5 text-[#2a414f] shadow-sm">
+                        <div className="max-w-[980px] whitespace-pre-line rounded-2xl rounded-tl-md border border-border bg-card px-4 py-3 text-xs leading-5 text-foreground shadow-sm">
                           {message.content}
                         </div>
                         {message.response ? (
@@ -247,7 +247,7 @@ export function AIAssistantDialog({
 
             {messages.length === 1 ? (
               <div className="ml-10">
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
                   Try asking
                 </p>
                 <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -256,7 +256,7 @@ export function AIAssistantDialog({
                       key={example}
                       type="button"
                       onClick={() => void submitQuestion(example)}
-                      className="rounded-xl border border-[#d9e3e7] bg-white px-3 py-3 text-left text-[10px] leading-4 text-[#345160] shadow-sm transition hover:border-[#9fc5d2] hover:bg-[#f8fcfd]"
+                      className="rounded-xl border border-[#d9e3e7] bg-card px-3 py-3 text-left text-[11px] leading-4 text-[#345160] shadow-sm transition hover:border-[#9fc5d2] hover:bg-[#f8fcfd]"
                     >
                       {example}
                     </button>
@@ -267,8 +267,8 @@ export function AIAssistantDialog({
 
             {loading ? (
               <div className="flex items-center gap-3 pl-10 text-xs text-slate-500">
-                <span className="flex size-8 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-[#dce5e8]">
-                  <LoaderCircle className="size-4 animate-spin text-[#287d9b]" />
+                <span className="flex size-8 items-center justify-center rounded-lg bg-card shadow-sm ring-1 ring-border">
+                  <LoaderCircle className="size-4 animate-spin text-accent-foreground" />
                 </span>
                 Understanding the question and querying verified records…
               </div>
@@ -288,9 +288,9 @@ export function AIAssistantDialog({
             event.preventDefault();
             void submitQuestion();
           }}
-          className="border-t border-[#dce3e8] bg-white px-4 py-4 sm:px-6"
+          className="border-t border-border bg-card px-4 py-4 sm:px-6"
         >
-          <div className="mx-auto max-w-[1260px] rounded-xl border border-[#c9d9df] bg-white p-2 shadow-sm focus-within:border-[#7fb1c2] focus-within:ring-2 focus-within:ring-[#dceff5]">
+          <div className="mx-auto max-w-[1260px] rounded-xl border border-input bg-card p-2 shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20">
             <textarea
               ref={questionInputRef}
               value={question}
@@ -304,26 +304,25 @@ export function AIAssistantDialog({
               aria-label="Ask the AI Contract Operations Assistant"
               placeholder="Ask about contracts, suppliers, qualifications, renewals, or review status…"
               rows={2}
-              className="w-full resize-none border-0 bg-transparent px-2 py-1.5 text-xs leading-5 text-[#203845] outline-none placeholder:text-slate-400"
+              className="w-full resize-none border-0 bg-transparent px-2 py-1.5 text-xs leading-5 text-foreground outline-none placeholder:text-slate-400"
             />
-            <div className="flex items-center justify-between gap-3 px-1">
-              <span className="text-[9px] text-slate-400">
+            <div className="flex items-center justify-end gap-3 px-1 sm:justify-between">
+              <span className="hidden text-[11px] text-slate-400 sm:block">
                 Enter to send · Shift + Enter for a new line
               </span>
               <Button
                 type="submit"
                 size="sm"
                 disabled={!question.trim() || loading}
-                className="h-8 bg-[#1d718f] px-3 hover:bg-[#185f78]"
+                className="h-8 bg-primary px-3 hover:bg-primary/90"
               >
                 {loading ? <LoaderCircle className="animate-spin" /> : <Send />}
                 Ask AI
               </Button>
             </div>
           </div>
-          <p className="mx-auto mt-2 max-w-[1260px] text-center text-[9px] leading-4 text-slate-400">
-            Decision support only. The assistant cannot edit registers, approve
-            suppliers, or make legal determinations.
+          <p className="mx-auto mt-2 max-w-[1260px] text-center text-[11px] leading-4 text-slate-400">
+            Read-only decision support. Not legal advice.
           </p>
         </form>
       </dialog>
@@ -355,19 +354,19 @@ export function AssistantStructuredResult({
       : null;
   return (
     <div className="mt-3 space-y-3">
-      <div className="rounded-xl border border-[#c9dbe2] bg-[#eef8fb] p-3">
+      <div className="rounded-xl border border-border bg-[#eef8fb] p-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[#397d96]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-accent-foreground">
               Interpreted query
             </p>
-            <p className="mt-1 text-[10px] leading-4 text-[#345160]">
+            <p className="mt-1 text-[11px] leading-4 text-[#345160]">
               {response.plan.interpretation}
             </p>
           </div>
           <Badge
             variant="outline"
-            className="border-[#bdd8e2] bg-white text-[#2c7088]"
+            className="border-[#bdd8e2] bg-card text-[#2c7088]"
           >
             {entityLabels[response.execution.entity]}
           </Badge>
@@ -376,13 +375,13 @@ export function AssistantStructuredResult({
           {response.plan.filters.map((filter, index) => (
             <span
               key={`${filter.field}-${index}`}
-              className="rounded-md border border-[#c9dbe2] bg-white px-2 py-1 text-[9px] text-[#3a6374]"
+              className="rounded-md border border-border bg-card px-2 py-1 text-[11px] text-[#3a6374]"
             >
               {filter.label}
             </span>
           ))}
           {!response.plan.filters.length ? (
-            <span className="rounded-md border border-[#c9dbe2] bg-white px-2 py-1 text-[9px] text-[#3a6374]">
+            <span className="rounded-md border border-border bg-card px-2 py-1 text-[11px] text-[#3a6374]">
               Entire current register
             </span>
           ) : null}
@@ -390,22 +389,22 @@ export function AssistantStructuredResult({
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <div className="rounded-lg border border-[#dce3e8] bg-white px-3 py-2">
-          <p className="text-[9px] text-slate-500">Matching records</p>
-          <p className="mt-0.5 text-lg font-semibold text-[#1b3442]">
+        <div className="rounded-lg border border-border bg-card px-3 py-2">
+          <p className="text-[11px] text-slate-500">Matching records</p>
+          <p className="mt-0.5 text-lg font-semibold text-foreground">
             {response.execution.matchedCount}
           </p>
         </div>
-        <div className="rounded-lg border border-[#dce3e8] bg-white px-3 py-2">
-          <p className="text-[9px] text-slate-500">Results displayed</p>
-          <p className="mt-0.5 text-lg font-semibold text-[#1b3442]">
+        <div className="rounded-lg border border-border bg-card px-3 py-2">
+          <p className="text-[11px] text-slate-500">Results displayed</p>
+          <p className="mt-0.5 text-lg font-semibold text-foreground">
             {response.execution.returnedCount}
           </p>
         </div>
         {response.execution.totalValueCents !== null ? (
-          <div className="col-span-2 rounded-lg border border-[#dce3e8] bg-white px-3 py-2 sm:col-span-1">
-            <p className="text-[9px] text-slate-500">Matched value</p>
-            <p className="mt-0.5 text-lg font-semibold text-[#1b3442]">
+          <div className="col-span-2 rounded-lg border border-border bg-card px-3 py-2 sm:col-span-1">
+            <p className="text-[11px] text-slate-500">Matched value</p>
+            <p className="mt-0.5 text-lg font-semibold text-foreground">
               {moneyFromCents(response.execution.totalValueCents, true)}
             </p>
           </div>
@@ -413,11 +412,11 @@ export function AssistantStructuredResult({
       </div>
 
       {response.resultContext.length ? (
-        <div className="rounded-xl border border-[#dce3e8] bg-white px-4 py-3">
-          <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+        <div className="rounded-xl border border-border bg-card px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
             Result context
           </p>
-          <ul className="mt-2 space-y-1.5 text-[10px] leading-4 text-slate-600">
+          <ul className="mt-2 space-y-1.5 text-[11px] leading-4 text-slate-600">
             {response.resultContext.map((context) => (
               <li key={context} className="flex items-start gap-2">
                 <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-[#4f9bb4]" />
@@ -434,7 +433,7 @@ export function AssistantStructuredResult({
             <p className="text-[11px] font-semibold text-[#1e5367]">
               Continue in the dedicated portfolio analysis workspace
             </p>
-            <p className="mt-1 text-[9px] leading-4 text-[#52727f]">
+            <p className="mt-1 text-[11px] leading-4 text-[#52727f]">
               Management Insights provides charts, concentration analysis,
               portfolio risks, and recommended actions for this register.
             </p>
@@ -443,7 +442,7 @@ export function AssistantStructuredResult({
             type="button"
             size="sm"
             onClick={() => onOpenManagementInsights(managementScope)}
-            className="shrink-0 bg-[#1d718f] hover:bg-[#185f78]"
+            className="shrink-0 bg-primary hover:bg-primary/90"
           >
             <Sparkles />
             Open {managementScope === 'contracts'
@@ -455,33 +454,33 @@ export function AssistantStructuredResult({
       ) : null}
 
       {response.execution.records.length ? (
-        <div className="overflow-hidden rounded-xl border border-[#dce3e8] bg-white">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           <div className="flex items-center justify-between border-b border-[#e4e9ec] px-4 py-3">
             <div>
-              <p className="text-[11px] font-semibold text-[#203845]">
+              <p className="text-[11px] font-semibold text-foreground">
                 Verified database results
               </p>
-              <p className="mt-0.5 text-[9px] text-slate-500">
+              <p className="mt-0.5 text-[11px] text-slate-500">
                 Select a record to open its full details and source files.
               </p>
             </div>
             <Database className="size-4 text-[#4b8da4]" />
           </div>
-          <div className="max-h-[360px] divide-y divide-[#edf1f3] overflow-y-auto">
+          <div className="max-h-[360px] divide-y divide-border overflow-y-auto">
             {response.execution.records.map((record) => (
               <button
                 key={`${record.entityType}-${record.id}`}
                 type="button"
                 onClick={() => onOpenRecord(record)}
                 disabled={!record.openTarget}
-                className="block w-full px-4 py-3 text-left transition hover:bg-[#f7fafb] disabled:cursor-default"
+                className="block w-full px-4 py-3 text-left transition hover:bg-muted disabled:cursor-default"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate text-[11px] font-semibold text-[#1d718f]">
+                    <p className="truncate text-[11px] font-semibold text-accent-foreground">
                       {record.title}
                     </p>
-                    <p className="mt-0.5 truncate text-[9px] text-slate-500">
+                    <p className="mt-0.5 truncate text-[11px] text-slate-500">
                       {record.subtitle || titleCase(record.entityType)}
                     </p>
                   </div>
@@ -489,7 +488,7 @@ export function AssistantStructuredResult({
                     {titleCase(record.status)}
                   </StatusBadge>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[9px] text-slate-500">
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
                   {record.amountCents !== null ? (
                     <span className="font-medium text-slate-700">
                       {moneyFromCents(record.amountCents)}
@@ -513,7 +512,7 @@ export function AssistantStructuredResult({
 
       {response.suggestedFollowUps.length ? (
         <div>
-          <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
             Continue the conversation
           </p>
           <div className="flex flex-wrap gap-2">
@@ -522,7 +521,7 @@ export function AssistantStructuredResult({
                 key={followUp}
                 type="button"
                 onClick={() => onFollowUp(followUp)}
-                className="rounded-full border border-[#cbdde4] bg-white px-3 py-1.5 text-[9px] text-[#2b6c83] hover:bg-[#f0f8fa]"
+                className="rounded-full border border-border bg-card px-3 py-1.5 text-[11px] text-[#2b6c83] hover:bg-accent"
               >
                 {followUp}
               </button>

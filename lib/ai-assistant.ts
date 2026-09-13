@@ -389,7 +389,10 @@ function resultRecord(
       date: stringValue(record.target_review_date) || null,
       openTarget: { type: 'intake', id: String(record.id) },
       details: [
-        { label: 'Risk', value: stringValue(record.risk_level) },
+        {
+          label: 'Risk',
+          value: stringValue(record.risk_level) || 'Not assessed',
+        },
         { label: 'Approval', value: stringValue(record.approval_status) },
         {
           label: 'Required gate',

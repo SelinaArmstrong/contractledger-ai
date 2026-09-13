@@ -176,7 +176,7 @@ export function AIEvaluationView({
             <Button
               onClick={runEvaluation}
               disabled={running}
-              className="bg-[#1d718f] hover:bg-[#185f78]"
+              className="bg-primary hover:bg-primary/90"
             >
               {running ? (
                 <LoaderCircle className="animate-spin" />
@@ -298,7 +298,7 @@ export function AIEvaluationView({
             ].map(([label, metric, note]) => (
               <article
                 key={label}
-                className="rounded-xl border border-[#dce3e8] bg-white p-5"
+                className="rounded-xl border border-border bg-card p-5"
               >
                 <p className="text-[11px] font-medium text-slate-500">
                   {label}
@@ -306,7 +306,7 @@ export function AIEvaluationView({
                 <p className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[#173246]">
                   {metric}
                 </p>
-                <p className="mt-2 text-[10px] leading-4 text-slate-500">
+                <p className="mt-2 text-[11px] leading-4 text-slate-500">
                   {note}
                 </p>
               </article>
@@ -343,15 +343,15 @@ export function AIEvaluationView({
                 </div>
               }
             />
-            <div className="divide-y divide-[#e3e9ed]">
+            <div className="divide-y divide-border">
               {details.map((detail) => (
                 <details key={detail.caseId} className="group">
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4">
                     <div>
-                      <p className="text-xs font-semibold text-[#203845]">
+                      <p className="text-xs font-semibold text-foreground">
                         {detail.title}
                       </p>
-                      <p className="mt-1 text-[10px] text-slate-500">
+                      <p className="mt-1 text-[11px] text-slate-500">
                         {detail.documentType} · {detail.difficulty} ·{' '}
                         {detail.correctFields} of {detail.totalFields} fields
                         matched · {(detail.durationMs / 1000).toFixed(1)}s
@@ -374,7 +374,7 @@ export function AIEvaluationView({
                       <ChevronDown className="size-4 text-slate-400 transition-transform group-open:rotate-180" />
                     </div>
                   </summary>
-                  <div className="overflow-x-auto border-t border-[#e3e9ed] bg-[#f8fafb]">
+                  <div className="overflow-x-auto border-t border-border bg-muted">
                     {detail.failureReason ? (
                       <p className="border-b border-rose-200 bg-rose-50 px-5 py-3 text-[11px] text-rose-800">
                         {detail.failureReason}
@@ -399,7 +399,7 @@ export function AIEvaluationView({
                             <TableCell className="px-5 text-xs font-medium">
                               {field.label}
                               {field.critical ? (
-                                <span className="ml-1 text-[9px] text-rose-600">
+                                <span className="ml-1 text-[11px] text-rose-600">
                                   Critical
                                 </span>
                               ) : null}
@@ -510,7 +510,7 @@ export function AIEvaluationView({
                         <TableCell className="text-xs">
                           {titleCase(valueText(item.stage))}
                         </TableCell>
-                        <TableCell className="max-w-[260px] text-[10px] text-slate-500">
+                        <TableCell className="max-w-[260px] text-[11px] text-slate-500">
                           {valueText(item.model)} ·{' '}
                           {valueText(item.prompt_version)}
                         </TableCell>
@@ -576,15 +576,15 @@ export function AIEvaluationView({
               ].map(([label, target, achieved]) => (
                 <article
                   key={label}
-                  className="rounded-xl border border-[#dce3e8] bg-[#f8fafb] p-4"
+                  className="rounded-xl border border-border bg-muted p-4"
                 >
-                  <p className="text-[10px] font-semibold text-[#203845]">
+                  <p className="text-[11px] font-semibold text-foreground">
                     {label}
                   </p>
-                  <p className="mt-2 text-[10px] text-slate-500">
+                  <p className="mt-2 text-[11px] text-slate-500">
                     Target · {target}
                   </p>
-                  <p className="mt-1 text-xs font-medium text-[#287693]">
+                  <p className="mt-1 text-xs font-medium text-accent-foreground">
                     Achieved · {achieved}
                   </p>
                 </article>
@@ -602,15 +602,15 @@ export function AIEvaluationView({
             {AI_EVALUATION_CASES.map((evaluationCase, index) => (
               <article
                 key={evaluationCase.id}
-                className="rounded-xl border border-[#dce3e8] bg-[#f8fafb] p-4"
+                className="rounded-xl border border-border bg-muted p-4"
               >
-                <span className="flex size-8 items-center justify-center rounded-lg bg-[#e4f2f6] text-xs font-semibold text-[#287693]">
+                <span className="flex size-8 items-center justify-center rounded-lg bg-accent text-xs font-semibold text-accent-foreground">
                   {index + 1}
                 </span>
-                <p className="mt-3 text-xs font-semibold text-[#203845]">
+                <p className="mt-3 text-xs font-semibold text-foreground">
                   {evaluationCase.title}
                 </p>
-                <p className="mt-1 text-[10px] text-slate-500">
+                <p className="mt-1 text-[11px] text-slate-500">
                   {evaluationCase.fileName}
                 </p>
               </article>
@@ -635,7 +635,7 @@ export function AIEvaluationView({
         <div className="overflow-x-auto">
           <Table className="min-w-[850px]">
             <TableHeader>
-              <TableRow className="bg-[#f7f9fa]">
+              <TableRow className="bg-muted">
                 <TableHead className="px-5">Rule ID</TableHead>
                 <TableHead>Control</TableHead>
                 <TableHead>Demo standard</TableHead>
@@ -646,10 +646,10 @@ export function AIEvaluationView({
             <TableBody>
               {demoPlaybookRules.map((rule) => (
                 <TableRow key={rule.id}>
-                  <TableCell className="px-5 font-mono text-[10px] text-[#287693]">
+                  <TableCell className="px-5 font-mono text-[11px] text-accent-foreground">
                     {rule.id}
                   </TableCell>
-                  <TableCell className="text-xs font-medium text-[#203845]">
+                  <TableCell className="text-xs font-medium text-foreground">
                     {rule.rule}
                   </TableCell>
                   <TableCell className="max-w-[320px] text-xs text-slate-600">

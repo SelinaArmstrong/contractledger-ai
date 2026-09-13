@@ -28,6 +28,8 @@ export function AnalysisReview({
   result,
   originalAnalysis,
   stage,
+  density = 'compact',
+  fieldColumns = 2,
   fieldReviews,
   fieldOverrideReasons,
   onFieldChange,
@@ -38,6 +40,9 @@ export function AnalysisReview({
   result: AnalysisResponse;
   originalAnalysis: ContractAnalysis | null;
   stage: IntakeStage;
+  /** `comfortable` is for the full-width inline workspace; `compact` for dialogs. */
+  density?: 'compact' | 'comfortable';
+  fieldColumns?: 2 | 3;
   fieldReviews: Partial<Record<ExtractionFieldKey, FieldReviewStatus>>;
   fieldOverrideReasons: Partial<Record<ExtractionFieldKey, string>>;
   onFieldChange: (
@@ -59,20 +64,31 @@ export function AnalysisReview({
   const correctedCount = extractionFields.filter(
     ([fieldName]) => fieldReviews[fieldName] === 'corrected',
   ).length;
+  const roomy = density === 'comfortable';
+  const labelText = roomy ? 'text-[11px]' : 'text-[11px]';
+  const noteText = roomy ? 'text-[11px] leading-5' : 'text-[11px] leading-4';
+  const inputText = roomy ? 'text-sm' : 'text-xs';
+  const cardPadding = roomy ? 'p-4' : 'p-3';
+  const fieldGridColumns =
+    fieldColumns === 3
+      ? 'md:grid-cols-2 xl:grid-cols-3'
+      : roomy
+        ? 'lg:grid-cols-2'
+        : 'md:grid-cols-2';
 
   return (
     <div className="space-y-5">
       <DocumentQualitySummary report={result.qualityReport} />
-      <div className="rounded-xl border border-[#bdd7e0] bg-[#f0f8fa] p-4">
+      <div className="rounded-xl border border-border bg-accent p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-sm font-semibold text-[#1b3442]">
+              <h3 className="text-sm font-semibold text-foreground">
                 Human verification required
               </h3>
               <Badge
                 variant="outline"
-                className="border-sky-200 bg-white text-sky-800"
+                className="border-sky-200 bg-card text-sky-800"
               >
                 {result.model}
               </Badge>
@@ -88,12 +104,12 @@ export function AnalysisReview({
             variant="outline"
             onClick={onConfirmAll}
             disabled={confirmedCount === extractionFields.length}
-            className="bg-white"
+            className="bg-card"
           >
             <Check /> Confirm all unchanged
           </Button>
         </div>
-        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white">
+        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-card">
           <div
             className="h-full rounded-full bg-[#287d9b] transition-all"
             style={{
@@ -101,7 +117,7 @@ export function AnalysisReview({
             }}
           />
         </div>
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-600">
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
           <span>
             {confirmedCount} of {extractionFields.length} fields reviewed
           </span>
@@ -112,7 +128,7 @@ export function AnalysisReview({
           </span>
         </div>
       </div>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className={`grid gap-3 ${fieldGridColumns}`}>
         {extractionFields.map(([key, label]) => {
           const field = result.analysis[key] as ExtractedField;
           const originalField = (originalAnalysis?.[key] ??
@@ -134,10 +150,12 @@ export function AnalysisReview({
           return (
             <div
               key={key}
-              className={`rounded-lg border bg-white p-3 ${reviewStatus === 'corrected' ? 'border-amber-300' : reviewStatus === 'accepted' ? 'border-emerald-200' : lowConfidence ? 'border-rose-300' : 'border-[#dce3e8]'}`}
+              className={`rounded-lg border bg-card ${cardPadding} ${reviewStatus === 'corrected' ? 'border-amber-300' : reviewStatus === 'accepted' ? 'border-emerald-200' : lowConfidence ? 'border-rose-300' : 'border-border'}`}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                <span
+                  className={`${labelText} font-semibold uppercase tracking-[0.08em] text-slate-500`}
+                >
                   {label}
                 </span>
                 <div className="flex items-center gap-1.5">
@@ -161,12 +179,23 @@ export function AnalysisReview({
                   </StatusBadge>
                 </div>
               </div>
-              {key === 'renewalType' ? (
+              {key === 'liabilityCap' ? (
                 <select
                   aria-label={label}
                   value={inputValue}
                   onChange={(event) => updateValue(event.target.value)}
-                  className="mt-2 h-9 w-full rounded-md border border-input bg-white px-3 text-xs font-medium text-[#203845]"
+                  className={`mt-2 w-full rounded-md border border-input bg-card px-3 font-medium text-foreground ${roomy ? 'h-10' : 'h-9'} ${inputText}`}
+                >
+                  <option value="">Not stated</option>
+                  <option value="capped">Capped</option>
+                  <option value="uncapped">Expressly uncapped</option>
+                </select>
+              ) : key === 'renewalType' ? (
+                <select
+                  aria-label={label}
+                  value={inputValue}
+                  onChange={(event) => updateValue(event.target.value)}
+                  className={`mt-2 w-full rounded-md border border-input bg-card px-3 font-medium text-foreground ${roomy ? 'h-10' : 'h-9'} ${inputText}`}
                 >
                   <option value="">Not found</option>
                   <option value="automatic">Automatic</option>
@@ -192,15 +221,19 @@ export function AnalysisReview({
                   value={inputValue}
                   onChange={(event) => updateValue(event.target.value)}
                   placeholder="Not found in document"
-                  className="mt-2 h-9 bg-white text-xs font-medium text-[#203845]"
+                  className={`mt-2 bg-card font-medium text-foreground ${roomy ? 'h-10' : 'h-9'} ${inputText}`}
                 />
               )}
               {reviewStatus === 'corrected' ? (
-                <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
+                <p
+                  className={`mt-2 rounded bg-amber-50 px-2 py-1 text-amber-800 ${noteText}`}
+                >
                   AI original: {valueText(originalField.value)}
                 </p>
               ) : null}
-              <div className="mt-2 flex items-start gap-2 text-[10px] leading-4 text-slate-500">
+              <div
+                className={`mt-2 flex items-start gap-2 text-slate-500 ${noteText}`}
+              >
                 <BookOpenCheck className="mt-0.5 size-3 shrink-0" />
                 <span>
                   {originalField.sourcePage
@@ -215,7 +248,7 @@ export function AnalysisReview({
                 <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2">
                   <label
                     htmlFor={`source-override-${key}`}
-                    className="text-[9px] font-semibold uppercase tracking-[0.06em] text-amber-800"
+                    className="text-[11px] font-semibold uppercase tracking-[0.06em] text-amber-800"
                   >
                     Required source override reason
                   </label>
@@ -226,9 +259,9 @@ export function AnalysisReview({
                       onOverrideReasonChange(key, event.target.value)
                     }
                     placeholder="Explain how this value was independently verified"
-                    className="mt-1 h-8 bg-white text-[10px]"
+                    className="mt-1 h-8 bg-card text-[11px]"
                   />
-                  <p className="mt-1 text-[9px] text-amber-700">
+                  <p className="mt-1 text-[11px] text-amber-700">
                     At least 12 characters. This reason is retained in the AI
                     review audit trail.
                   </p>
@@ -240,7 +273,9 @@ export function AnalysisReview({
                   size="sm"
                   variant={reviewStatus === 'pending' ? 'default' : 'outline'}
                   onClick={() => onConfirmField(key)}
-                  className="h-7 px-2.5 text-[10px]"
+                  className={
+                    roomy ? 'h-8 px-3 text-xs' : 'h-7 px-2.5 text-[11px]'
+                  }
                 >
                   <Check />
                   {reviewStatus === 'pending'
@@ -256,7 +291,7 @@ export function AnalysisReview({
       </div>
       {result.analysis.findings.length ? (
         <div>
-          <h3 className="text-sm font-semibold text-[#1b3442]">
+          <h3 className="text-sm font-semibold text-foreground">
             {stage === 'draft'
               ? 'Playbook differences'
               : 'Operational exceptions'}
@@ -265,7 +300,7 @@ export function AnalysisReview({
             {result.analysis.findings.map((finding, index) => (
               <div
                 key={`${finding.rule}-${index}`}
-                className="flex items-start gap-3 rounded-lg border border-[#dce3e8] p-3"
+                className="flex items-start gap-3 rounded-lg border border-border p-3"
               >
                 <AlertTriangle
                   className={`mt-0.5 size-4 shrink-0 ${finding.severity === 'high' ? 'text-rose-600' : 'text-amber-600'}`}
@@ -287,10 +322,10 @@ export function AnalysisReview({
                     {finding.sourcePage ? ` · Page ${finding.sourcePage}` : ''}
                   </p>
                   <div className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
-                    <p className="text-[9px] font-semibold uppercase tracking-[0.06em] text-sky-700">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-sky-700">
                       Suggested revision
                     </p>
-                    <p className="mt-1 text-[10px] leading-4 text-sky-900">
+                    <p className="mt-1 text-[11px] leading-4 text-sky-900">
                       {finding.suggestedRevision}
                     </p>
                   </div>

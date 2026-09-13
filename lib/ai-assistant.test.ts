@@ -133,6 +133,7 @@ const workspace: Workspace = {
     average_turnaround_hours: 0,
     exception_approval_rate: 0,
   },
+  approvalRules: [],
   approvalQueue: [
     {
       request_id: 'approval-1',

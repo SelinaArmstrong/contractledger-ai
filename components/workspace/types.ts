@@ -11,7 +11,8 @@ export type ViewName =
   | 'Supplier Register'
   | 'Obligations & Evidence'
   | 'Portfolio Case Study'
-  | 'AI Accuracy & Validation';
+  | 'AI Accuracy & Validation'
+  | 'Playbook & Approval Rules';
 
 export type IntakeStage = 'draft' | 'executed';
 

@@ -1,3 +1,5 @@
+import { playbookRule } from '@/lib/contract-playbook';
+
 export const approvalRequestStatuses = [
   'pending',
   'in_review',
@@ -25,7 +27,8 @@ export type ApprovalTriggerType =
   | 'governing_law_not_allowed'
   | 'automatic_renewal'
   | 'insurance_status_in'
-  | 'supplier_risk_tier_in';
+  | 'supplier_risk_tier_in'
+  | 'liability_uncapped';
 
 export type ApprovalRuleDefinition = {
   id: string;
@@ -60,6 +63,8 @@ export type ApprovalContext = {
   renewalType: string | null;
   insuranceStatus: string | null;
   supplierRiskTier: string | null;
+  /** 'capped' | 'uncapped' | null. Only an express 'uncapped' gates. */
+  liabilityCap: string | null;
   findings: ApprovalFinding[];
   fieldSources: Partial<
     Record<
@@ -79,16 +84,44 @@ export type ApprovalRequirement = {
 
 export const APPROVAL_RULES_V1: readonly ApprovalRuleDefinition[] = [
   {
-    id: 'approval-rule-financial-v1',
-    ruleKey: 'financial_value_threshold',
+    id: 'approval-rule-financial-director-v1',
+    ruleKey: 'financial_value_director',
     version: 1,
-    name: 'Financial approval above USD 500,000',
+    name: 'Director approval from USD 50,000',
     description:
-      'Proposed or executed value above USD 500,000 requires Finance/CFO approval.',
+      'Proposed or executed value from USD 50,000 up to USD 500,000 requires Procurement Director approval.',
     triggerType: 'value_above',
-    triggerConfig: { thresholdCents: 50_000_000 },
+    triggerConfig: { thresholdCents: 5_000_000, maxCents: 50_000_000 },
+    ownerRole: 'Procurement Director',
+    dueDays: 2,
+    mandatory: true,
+    active: true,
+  },
+  {
+    id: 'approval-rule-financial-v2',
+    ruleKey: 'financial_value_threshold',
+    version: 2,
+    name: 'Finance approval from USD 500,000',
+    description:
+      'Proposed or executed value from USD 500,000 up to USD 2,000,000 requires Finance/CFO approval. Version 2 adds the band ceiling so higher values route to executive approval instead.',
+    triggerType: 'value_above',
+    triggerConfig: { thresholdCents: 50_000_000, maxCents: 200_000_000 },
     ownerRole: 'Finance / CFO',
     dueDays: 3,
+    mandatory: true,
+    active: true,
+  },
+  {
+    id: 'approval-rule-financial-executive-v1',
+    ruleKey: 'financial_value_executive',
+    version: 1,
+    name: 'Executive approval above USD 2,000,000',
+    description:
+      'Proposed or executed value above USD 2,000,000 requires CEO approval.',
+    triggerType: 'value_above',
+    triggerConfig: { thresholdCents: 200_000_000 },
+    ownerRole: 'Chief Executive Officer',
+    dueDays: 5,
     mandatory: true,
     active: true,
   },
@@ -135,6 +168,20 @@ export const APPROVAL_RULES_V1: readonly ApprovalRuleDefinition[] = [
     active: true,
   },
   {
+    id: 'approval-rule-uncapped-liability-v1',
+    ruleKey: 'uncapped_liability',
+    version: 1,
+    name: 'Uncapped supplier liability',
+    description:
+      'An agreement that expressly leaves supplier liability uncapped requires a Legal exception decision.',
+    triggerType: 'liability_uncapped',
+    triggerConfig: {},
+    ownerRole: 'Legal Reviewer',
+    dueDays: 3,
+    mandatory: true,
+    active: true,
+  },
+  {
     id: 'approval-rule-high-risk-supplier-v1',
     ruleKey: 'high_risk_supplier',
     version: 1,
@@ -161,17 +208,20 @@ function stringList(config: Record<string, unknown>, key: string) {
     : [];
 }
 
-function matchingFinding(
+/**
+ * The finding whose playbook rule escalates to this approval rule. Findings are
+ * stored under a stable playbook key, so this is an exact lookup rather than
+ * the substring match on model-generated wording it replaced.
+ */
+function findingForApprovalRule(
   findings: ApprovalFinding[],
-  field: string,
-  ruleTerm: string,
+  approvalRuleKey: string,
 ) {
   return (
-    findings.find((finding) => normalized(finding.field) === field) ??
-    findings.find((finding) =>
-      normalized(finding.ruleName).includes(ruleTerm),
-    ) ??
-    null
+    findings.find(
+      (finding) =>
+        playbookRule(finding.field)?.approvalRuleKey === approvalRuleKey,
+    ) ?? null
   );
 }
 
@@ -190,12 +240,18 @@ function evaluateRule(
     case 'value_above': {
       const threshold = Number(rule.triggerConfig.thresholdCents ?? 0);
       if (context.proposedValueCents <= threshold) return null;
+      // A delegation-of-authority band stops where the next one starts, so a
+      // single value routes to one accountable owner rather than to every
+      // owner whose floor it happens to clear.
+      const ceiling = Number(rule.triggerConfig.maxCents ?? 0);
+      if (ceiling > 0 && context.proposedValueCents > ceiling) return null;
+      const finding = findingForApprovalRule(context.findings, rule.ruleKey);
       const source = context.fieldSources.contractValue;
       return {
         reason: `Verified value ${(context.proposedValueCents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} exceeds the ${(threshold / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} approval threshold.`,
-        ...emptySource,
-        sourcePage: source?.sourcePage ?? null,
-        sourceQuote: source?.sourceQuote ?? null,
+        sourceFindingId: finding?.id ?? null,
+        sourcePage: finding?.sourcePage ?? source?.sourcePage ?? null,
+        sourceQuote: finding?.observedText ?? source?.sourceQuote ?? null,
       };
     }
     case 'governing_law_not_allowed': {
@@ -206,11 +262,7 @@ function evaluateRule(
           : 'california',
       );
       if (!governingLaw || governingLaw.includes(allowedText)) return null;
-      const finding = matchingFinding(
-        context.findings,
-        'governing_law',
-        'governing law',
-      );
+      const finding = findingForApprovalRule(context.findings, rule.ruleKey);
       const source = context.fieldSources.governingLaw;
       return {
         reason: `Verified governing law is ${context.governingLaw}; the playbook position is California.`,
@@ -222,11 +274,7 @@ function evaluateRule(
     }
     case 'automatic_renewal': {
       if (normalized(context.renewalType) !== 'automatic') return null;
-      const finding = matchingFinding(
-        context.findings,
-        'renewal_type',
-        'renew',
-      );
+      const finding = findingForApprovalRule(context.findings, rule.ruleKey);
       const source = context.fieldSources.renewalType;
       return {
         reason:
@@ -243,6 +291,19 @@ function evaluateRule(
       return {
         reason: `Supplier insurance status is ${insuranceStatus}; a risk decision is required before progression.`,
         ...emptySource,
+      };
+    }
+    case 'liability_uncapped': {
+      // Silence in the document is not a waiver of the cap, so only an express
+      // "uncapped" verified value opens this gate.
+      if (normalized(context.liabilityCap) !== 'uncapped') return null;
+      const finding = findingForApprovalRule(context.findings, rule.ruleKey);
+      return {
+        reason:
+          'The verified agreement states supplier liability is not capped; Legal must accept or renegotiate the exposure.',
+        sourceFindingId: finding?.id ?? null,
+        sourcePage: finding?.sourcePage ?? null,
+        sourceQuote: finding?.observedText ?? null,
       };
     }
     case 'supplier_risk_tier_in': {

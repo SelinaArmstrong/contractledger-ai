@@ -42,7 +42,11 @@ export type ContractAnalysis = {
   noticeDays: ExtractedField;
   governingLaw: ExtractedField;
   paymentTerms: ExtractedField;
+  /** 'capped' | 'uncapped' | null — null means the document did not say. */
+  liabilityCap: ExtractedField;
   findings: Array<{
+    /** Stable playbook key when the deviation matched a company standard. */
+    ruleKey?: string;
     rule: string;
     observed: string;
     standard: string;
@@ -313,6 +317,8 @@ export type Workspace = {
     exception_approval_rate: number;
   };
   approvalQueue: ApprovalQueueItem[];
+  /** Active approval rule definitions, for the read-only rules reference. */
+  approvalRules: Array<Record<string, string | number | null>>;
   integrationMetrics?: {
     total_events: number;
     pending_events: number;

@@ -18,7 +18,10 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { approvalActionLabels } from '@/components/workspace/constants';
+import {
+  approvalActionLabels,
+  dialogSurfaceClass,
+} from '@/components/workspace/constants';
 import {
   titleCase,
   toneForStatus,
@@ -32,11 +35,14 @@ export function ApprovalDecisionDialog({
   onClose,
   onUpdated,
   onOpenIntake,
+  onOpenRule,
 }: {
   requestId: string;
   onClose: () => void;
   onUpdated: (workspace: Workspace) => void;
   onOpenIntake: (id: string) => void;
+  /** Opens the read-only rules reference at the control that fired. */
+  onOpenRule: (ruleKey: string) => void;
 }) {
   const [details, setDetails] = useState<ApprovalRequestDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -177,12 +183,12 @@ export function ApprovalDecisionDialog({
         open
         aria-modal="true"
         aria-labelledby="approval-decision-title"
-        className="m-0 grid h-[86vh] min-h-[620px] w-[96vw] max-w-[1120px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-xl bg-white p-0 text-sm shadow-2xl ring-1 ring-slate-900/10"
+        className={`${dialogSurfaceClass} grid grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden`}
       >
         <header
           data-dialog-drag-handle
           title="Drag to move dialog"
-          className="relative cursor-move touch-none select-none border-b border-[#e1e7ea] px-6 py-4 pr-14"
+          className="relative cursor-move touch-none select-none border-b border-border px-6 py-4 pr-14"
         >
           <button
             type="button"
@@ -193,7 +199,7 @@ export function ApprovalDecisionDialog({
           >
             ×
           </button>
-          <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#347d96]">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent-foreground">
             <ShieldCheck className="size-3.5" /> Versioned approval control
             {details ? (
               <StatusBadge tone={toneForStatus(details.request.status)}>
@@ -203,7 +209,7 @@ export function ApprovalDecisionDialog({
           </div>
           <h2
             id="approval-decision-title"
-            className="mt-1 text-xl font-semibold text-[#183040]"
+            className="mt-1 text-xl font-semibold text-foreground"
           >
             {details
               ? valueText(details.request.rule_name)
@@ -214,26 +220,36 @@ export function ApprovalDecisionDialog({
               {valueText(details.request.intake_number)} · Rule{' '}
               {valueText(details.request.rule_key)} v
               {valueText(details.request.rule_version)}
+              {' · '}
+              <button
+                type="button"
+                onClick={() =>
+                  onOpenRule(String(details.request.rule_key ?? ''))
+                }
+                className="font-medium text-accent-foreground hover:underline"
+              >
+                View triggering rule
+              </button>
             </p>
           ) : null}
         </header>
 
-        <div className="min-h-0 overflow-y-auto bg-[#f6f8f9] p-5">
+        <div className="min-h-0 overflow-y-auto bg-muted p-5">
           {loading ? (
             <div className="flex min-h-64 items-center justify-center text-xs text-slate-500">
-              <LoaderCircle className="mr-2 size-5 animate-spin text-[#287d9b]" />
+              <LoaderCircle className="mr-2 size-5 animate-spin text-accent-foreground" />
               Loading source and immutable decision history…
             </div>
           ) : details && step ? (
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
               <div className="space-y-4">
-                <article className="rounded-xl border border-[#dce3e8] bg-white p-4">
+                <article className="rounded-xl border border-border bg-card p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-semibold text-[#203845]">
+                      <h3 className="text-sm font-semibold text-foreground">
                         Trigger and source
                       </h3>
-                      <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                      <p className="mt-1 text-[11px] leading-4 text-slate-500">
                         {valueText(details.request.rule_description)}
                       </p>
                     </div>
@@ -243,7 +259,7 @@ export function ApprovalDecisionDialog({
                         : 'Advisory'}
                     </Badge>
                   </div>
-                  <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[10px] leading-4 text-amber-900">
+                  <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-4 text-amber-900">
                     {valueText(details.request.reason)}
                   </div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -259,17 +275,17 @@ export function ApprovalDecisionDialog({
                         key={String(label)}
                         className="rounded-lg bg-slate-50 px-3 py-2"
                       >
-                        <p className="text-[9px] font-semibold uppercase text-slate-500">
+                        <p className="text-[11px] font-semibold uppercase text-slate-500">
                           {label}
                         </p>
-                        <p className="mt-1 text-[10px] font-medium text-slate-700">
+                        <p className="mt-1 text-[11px] font-medium text-slate-700">
                           {valueText(value)}
                         </p>
                       </div>
                     ))}
                   </div>
                   {step.source_quote ? (
-                    <blockquote className="mt-3 rounded-lg border-l-2 border-[#65a9bf] bg-[#f2f8fa] px-3 py-2 text-[10px] leading-4 text-slate-700">
+                    <blockquote className="mt-3 rounded-lg border-l-2 border-[#65a9bf] bg-[#f2f8fa] px-3 py-2 text-[11px] leading-4 text-slate-700">
                       “{valueText(step.source_quote)}”
                     </blockquote>
                   ) : null}
@@ -278,7 +294,7 @@ export function ApprovalDecisionDialog({
                       href={`/api/document?id=${encodeURIComponent(String(details.request.source_document_id))}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="mt-3 inline-flex items-center gap-1.5 text-[10px] font-medium text-[#1d718f]"
+                      className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-medium text-accent-foreground"
                     >
                       <ExternalLink className="size-3.5" /> Open{' '}
                       {valueText(details.request.source_file_name)}
@@ -286,13 +302,13 @@ export function ApprovalDecisionDialog({
                   ) : null}
                 </article>
 
-                <article className="rounded-xl border border-[#dce3e8] bg-white p-4">
+                <article className="rounded-xl border border-border bg-card p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-semibold text-[#203845]">
+                      <h3 className="text-sm font-semibold text-foreground">
                         Related intake
                       </h3>
-                      <p className="mt-1 text-[10px] text-slate-500">
+                      <p className="mt-1 text-[11px] text-slate-500">
                         {valueText(details.request.intake_title)} ·{' '}
                         {valueText(details.request.proposed_supplier_name)}
                       </p>
@@ -311,12 +327,12 @@ export function ApprovalDecisionDialog({
                 </article>
 
                 {!terminal ? (
-                  <article className="rounded-xl border border-[#bfd6df] bg-white p-4">
-                    <h3 className="text-sm font-semibold text-[#203845]">
+                  <article className="rounded-xl border border-[#bfd6df] bg-card p-4">
+                    <h3 className="text-sm font-semibold text-foreground">
                       Record a controlled action
                     </h3>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <label className="text-[10px] font-medium text-slate-600">
+                      <label className="text-[11px] font-medium text-slate-600">
                         Action
                         <select
                           value={action}
@@ -326,7 +342,7 @@ export function ApprovalDecisionDialog({
                                 .value as keyof typeof approvalActionLabels,
                             )
                           }
-                          className="mt-1 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
+                          className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-xs"
                         >
                           {allowedActions.map((item) => (
                             <option key={item} value={item}>
@@ -337,7 +353,7 @@ export function ApprovalDecisionDialog({
                       </label>
                       <label
                         htmlFor="approval-assigned-reviewer"
-                        className="text-[10px] font-medium text-slate-600"
+                        className="text-[11px] font-medium text-slate-600"
                       >
                         Assigned reviewer
                         <Input
@@ -351,7 +367,7 @@ export function ApprovalDecisionDialog({
                         />
                       </label>
                     </div>
-                    <label className="mt-3 block text-[10px] font-medium text-slate-600">
+                    <label className="mt-3 block text-[11px] font-medium text-slate-600">
                       Decision reason{' '}
                       {reasonRequired ? '(required)' : '(optional)'}
                       <textarea
@@ -359,7 +375,7 @@ export function ApprovalDecisionDialog({
                         onChange={(event) => setReason(event.target.value)}
                         rows={4}
                         maxLength={2000}
-                        className="mt-1 w-full rounded-md border border-input bg-white px-3 py-2 text-xs"
+                        className="mt-1 w-full rounded-md border border-input bg-card px-3 py-2 text-xs"
                         placeholder="Record the evidence, rationale, exception basis, revision needed, or escalation reason…"
                       />
                     </label>
@@ -376,11 +392,11 @@ export function ApprovalDecisionDialog({
                 )}
               </div>
 
-              <article className="rounded-xl border border-[#dce3e8] bg-white p-4">
-                <h3 className="text-sm font-semibold text-[#203845]">
+              <article className="rounded-xl border border-border bg-card p-4">
+                <h3 className="text-sm font-semibold text-foreground">
                   Immutable decision history
                 </h3>
-                <p className="mt-1 text-[10px] text-slate-500">
+                <p className="mt-1 text-[11px] text-slate-500">
                   Actor, role, timestamp, reason, and before/after state are
                   retained for every event.
                 </p>
@@ -388,28 +404,28 @@ export function ApprovalDecisionDialog({
                   {details.history.map((item) => (
                     <div
                       key={String(item.id)}
-                      className="rounded-lg border border-[#e1e7ea] bg-[#fafcfc] p-3"
+                      className="rounded-lg border border-border bg-[#fafcfc] p-3"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-[11px] font-semibold text-[#294354]">
+                          <p className="text-[11px] font-semibold text-foreground">
                             {titleCase(item.action)}
                           </p>
-                          <p className="mt-1 text-[9px] text-slate-500">
+                          <p className="mt-1 text-[11px] text-slate-500">
                             {valueText(item.actor)} ·{' '}
                             {valueText(item.actor_role)}
                           </p>
                         </div>
-                        <span className="text-[9px] text-slate-400">
+                        <span className="text-[11px] text-slate-400">
                           {valueText(item.created_at)}
                         </span>
                       </div>
-                      <p className="mt-2 text-[9px] font-medium text-slate-600">
+                      <p className="mt-2 text-[11px] font-medium text-slate-600">
                         {titleCase(item.from_status)} →{' '}
                         {titleCase(item.to_status)}
                       </p>
                       {item.reason ? (
-                        <p className="mt-2 text-[10px] leading-4 text-slate-600">
+                        <p className="mt-2 text-[11px] leading-4 text-slate-600">
                           {valueText(item.reason)}
                         </p>
                       ) : null}
@@ -427,8 +443,8 @@ export function ApprovalDecisionDialog({
           )}
         </div>
 
-        <footer className="flex items-center justify-between gap-3 border-t border-[#e1e7ea] bg-white px-6 py-4">
-          <span className="text-[10px] text-rose-600">
+        <footer className="flex items-center justify-between gap-3 border-t border-border bg-card px-6 py-4">
+          <span className="text-[11px] text-rose-600">
             {details ? error : ''}
           </span>
           <div className="flex gap-2">
@@ -439,7 +455,7 @@ export function ApprovalDecisionDialog({
               <Button
                 onClick={() => void submitDecision()}
                 disabled={saving || (reasonRequired && !reason.trim())}
-                className="bg-[#1d718f] hover:bg-[#185f78]"
+                className="bg-primary hover:bg-primary/90"
               >
                 {saving ? <LoaderCircle className="animate-spin" /> : <Check />}
                 {approvalActionLabels[action]}

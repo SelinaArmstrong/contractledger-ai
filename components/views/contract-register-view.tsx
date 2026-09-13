@@ -43,6 +43,17 @@ import {
 } from '@/components/workspace/table';
 import type { RegisterTruncation } from '@/lib/workspace-limits';
 
+/**
+ * `current_value_cents` already includes amendments, and the Original value and
+ * Amendment value columns sit far to the right. This note keeps the difference
+ * visible next to the headline number.
+ */
+function amendmentDelta(value: unknown) {
+  const cents = Number(value ?? 0);
+  if (!Number.isFinite(cents) || cents === 0) return '';
+  return `${cents > 0 ? '+' : '\u2212'}${moneyFromCents(Math.abs(cents))} from amendments`;
+}
+
 export function ContractRegisterView({
   contracts,
   allContracts,
@@ -178,15 +189,12 @@ export function ContractRegisterView({
           <div className="flex flex-wrap gap-2">
             <Button
               onClick={onRegister}
-              className="bg-[#1d718f] hover:bg-[#185f78]"
+              className="bg-primary hover:bg-primary/90"
             >
               <Upload />
               Register executed contract
             </Button>
-            <Button
-              onClick={onExport}
-              className="bg-[#1d718f] hover:bg-[#185f78]"
-            >
+            <Button variant="outline" onClick={onExport} className="bg-card">
               {exporting ? (
                 <LoaderCircle className="animate-spin" />
               ) : (
@@ -198,7 +206,7 @@ export function ContractRegisterView({
               variant="outline"
               onClick={() => setInsightsOpen(true)}
               disabled={!visibleContracts.length}
-              className="border-[#9bc6d5] bg-[#edf8fb] text-[#1d657f] hover:bg-[#e1f2f7]"
+              className="border-input bg-accent text-accent-foreground hover:bg-accent"
             >
               <Sparkles />
               AI management insights
@@ -206,7 +214,7 @@ export function ContractRegisterView({
           </div>
         }
       />
-      <div className="mb-5 rounded-xl border border-[#c9dbe2] bg-white px-5 py-4 shadow-[0_1px_2px_rgb(15_23_42/3%)]">
+      <div className="mb-5 rounded-xl border border-border bg-card px-5 py-4 shadow-[0_1px_2px_rgb(15_23_42/3%)]">
         <div className="grid gap-3 md:grid-cols-4">
           {[
             ['01', 'Signed agreement', 'Upload the executed source copy'],
@@ -218,13 +226,13 @@ export function ContractRegisterView({
               key={number}
               className={`relative rounded-lg px-3 py-2 ${index ? 'md:border-l md:border-[#dce4e8] md:pl-5' : ''}`}
             >
-              <div className="text-[9px] font-semibold tracking-[0.14em] text-[#43849a]">
+              <div className="text-[11px] font-semibold tracking-[0.14em] text-accent-foreground">
                 STEP {number}
               </div>
-              <div className="mt-1 text-xs font-semibold text-[#203845]">
+              <div className="mt-1 text-xs font-semibold text-foreground">
                 {title}
               </div>
-              <div className="mt-0.5 text-[10px] leading-4 text-slate-500">
+              <div className="mt-0.5 text-[11px] leading-4 text-slate-500">
                 {description}
               </div>
             </div>
@@ -247,7 +255,7 @@ export function ContractRegisterView({
             </div>
           }
         />
-        <div className="border-b border-[#e3e9ed] bg-[#f8fafb] p-4">
+        <div className="border-b border-border bg-muted p-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
             <FilterSelect
               label="Contract type"
@@ -275,12 +283,12 @@ export function ContractRegisterView({
               titleCaseOptions
             />
             <label className="text-[11px] font-medium text-slate-600">
-              Contract amount
+              Current value
               <div className="mt-1 flex">
                 <select
                   value={amountComparison}
                   onChange={(event) => setAmountComparison(event.target.value)}
-                  className="h-9 rounded-l-md border border-r-0 border-input bg-white px-2 text-xs"
+                  className="h-9 rounded-l-md border border-r-0 border-input bg-card px-2 text-xs"
                 >
                   <option value="all">Any amount</option>
                   <option value="greater">Greater than</option>
@@ -292,8 +300,8 @@ export function ContractRegisterView({
                   step="1000"
                   value={amountValue}
                   onChange={(event) => setAmountValue(event.target.value)}
-                  aria-label="Contract amount in US dollars"
-                  className="h-9 rounded-l-none bg-white text-xs"
+                  aria-label="Current value in US dollars"
+                  className="h-9 rounded-l-none bg-card text-xs"
                 />
               </div>
             </label>
@@ -316,14 +324,14 @@ export function ContractRegisterView({
                 type="button"
                 variant="outline"
                 onClick={clearFilters}
-                className="h-9 w-full bg-white"
+                className="h-9 w-full bg-card"
               >
                 <RotateCcw />
                 Clear filters
               </Button>
             </div>
           </div>
-          <p className="mt-3 text-[10px] text-slate-500">
+          <p className="mt-3 text-[11px] text-slate-500">
             Amounts use current contract value in USD. Date filters are
             inclusive and use U.S. English order; for example, “on or before
             08/30/2026” includes August 30, 2026.
@@ -336,16 +344,16 @@ export function ContractRegisterView({
             onContainerScroll={contractTableScroll.syncTableToFloating}
           >
             <TableHeader>
-              <TableRow className="bg-[#f7f9fa]">
+              <TableRow className="bg-muted">
                 <TableHead className="w-14 px-4 text-center">No.</TableHead>
                 <TableHead>Contract</TableHead>
                 <TableHead>Supplier</TableHead>
-                <TableHead>Contract amount</TableHead>
+                <TableHead>Current value</TableHead>
                 <TableHead>Contract type</TableHead>
                 <TableHead>Department</TableHead>
                 <TableHead>Owner</TableHead>
                 <TableHead>Original value</TableHead>
-                <TableHead>Amendments</TableHead>
+                <TableHead>Amendment value</TableHead>
                 <TableHead>Effective date</TableHead>
                 <TableHead>Expiration date</TableHead>
                 <TableHead>Renewal terms</TableHead>
@@ -369,7 +377,7 @@ export function ContractRegisterView({
                       onClick={() => onSelect(String(item.id))}
                       className="text-left"
                     >
-                      <span className="font-medium text-[#1d718f] hover:underline">
+                      <span className="font-medium text-accent-foreground hover:underline">
                         {valueText(item.title)}
                       </span>
                       <span className="mt-1 block text-[11px] text-slate-500">
@@ -388,6 +396,11 @@ export function ContractRegisterView({
                   </TableCell>
                   <TableCell className="text-xs font-medium">
                     {moneyFromCents(item.current_value_cents)}
+                    {amendmentDelta(item.amendment_value_cents) ? (
+                      <div className="mt-1 font-normal text-[11px] text-slate-500">
+                        {amendmentDelta(item.amendment_value_cents)}
+                      </div>
+                    ) : null}
                   </TableCell>
                   <TableCell className="text-xs">
                     {valueText(item.contract_type)}
@@ -421,7 +434,7 @@ export function ContractRegisterView({
                   </TableCell>
                   <TableCell className="text-xs">
                     <div>{valueText(item.next_obligation_date)}</div>
-                    <div className="mt-1 text-[10px] text-slate-500">
+                    <div className="mt-1 text-[11px] text-slate-500">
                       {valueText(item.open_obligation_count)} open
                     </div>
                   </TableCell>
@@ -454,7 +467,7 @@ export function ContractRegisterView({
             </TableBody>
           </Table>
           {truncation.truncated ? (
-            <p className="border-t border-[#e1e7ea] px-5 py-3 text-xs text-amber-700">
+            <p className="border-t border-border px-5 py-3 text-xs text-amber-700">
               {truncation.message}
             </p>
           ) : null}
@@ -478,10 +491,10 @@ export function ContractRegisterView({
           />
         </div>
       </Panel>
-      <details className="group mt-5 overflow-hidden rounded-xl border border-[#dce3e8] bg-white shadow-[0_1px_2px_rgb(15_23_42/3%)]">
+      <details className="group mt-5 overflow-hidden rounded-xl border border-border bg-card shadow-[0_1px_2px_rgb(15_23_42/3%)]">
         <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4">
           <div>
-            <h2 className="text-[14px] font-semibold text-[#1b2e3a]">
+            <h2 className="text-[14px] font-semibold text-foreground">
               Recent registrations
             </h2>
             <p className="mt-0.5 text-[11px] text-slate-500">
@@ -493,26 +506,26 @@ export function ContractRegisterView({
             <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
           </div>
         </summary>
-        <div className="grid gap-3 border-t border-[#e3e9ed] bg-[#f8fafb] p-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-3 border-t border-border bg-muted p-4 md:grid-cols-2 xl:grid-cols-3">
           {recentContracts.map((item) => (
             <button
               key={String(item.id)}
               type="button"
               onClick={() => onSelect(String(item.id))}
-              className="rounded-lg border border-[#dce3e8] bg-white p-4 text-left hover:border-[#9fc4d1] hover:bg-[#fbfdfe]"
+              className="rounded-lg border border-border bg-card p-4 text-left hover:border-[#9fc4d1] hover:bg-accent/40"
             >
               <div className="flex items-start justify-between gap-3">
-                <span className="text-xs font-semibold text-[#1d718f]">
+                <span className="text-xs font-semibold text-accent-foreground">
                   {valueText(item.contract_number)}
                 </span>
                 <StatusBadge tone={toneForStatus(item.status)}>
                   {titleCase(item.status)}
                 </StatusBadge>
               </div>
-              <div className="mt-2 text-xs font-medium text-[#203845]">
+              <div className="mt-2 text-xs font-medium text-foreground">
                 {valueText(item.title)}
               </div>
-              <div className="mt-1 text-[10px] text-slate-500">
+              <div className="mt-1 text-[11px] text-slate-500">
                 {valueText(item.supplier_name)} · Registered{' '}
                 {valueText(item.last_updated)}
               </div>

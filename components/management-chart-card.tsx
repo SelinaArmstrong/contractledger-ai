@@ -13,7 +13,7 @@ import type { ManagementChart } from '@/lib/management-insights';
 const managementChartConfig = {
   value: {
     label: 'Value',
-    color: '#2c7f9b',
+    color: '#277b69',
   },
 } satisfies ChartConfig;
 
@@ -23,9 +23,9 @@ export function ManagementChartCard({ chart }: { chart: ManagementChart }) {
     value: chart.valueFormat === 'currency' ? item.value / 100 : item.value,
   }));
   return (
-    <article className="rounded-xl border border-[#dce3e8] bg-white p-4">
-      <h3 className="text-xs font-semibold text-[#203845]">{chart.title}</h3>
-      <p className="mt-1 text-[10px] leading-4 text-slate-500">
+    <article className="rounded-xl border border-border bg-card p-4">
+      <h3 className="text-xs font-semibold text-foreground">{chart.title}</h3>
+      <p className="mt-1 text-[11px] leading-4 text-slate-500">
         {chart.description}
       </p>
       {data.length ? (
@@ -65,7 +65,7 @@ export function ManagementChartCard({ chart }: { chart: ManagementChart }) {
               tick={{ fontSize: 10 }}
             />
             <ChartTooltip
-              cursor={{ fill: '#edf4f6' }}
+              cursor={{ fill: '#e7eee7' }}
               content={<ChartTooltipContent hideLabel />}
             />
             <Bar
@@ -77,7 +77,7 @@ export function ManagementChartCard({ chart }: { chart: ManagementChart }) {
           </BarChart>
         </ChartContainer>
       ) : (
-        <div className="mt-3 flex h-[220px] items-center justify-center rounded-lg bg-[#f8fafb] text-xs text-slate-500">
+        <div className="mt-3 flex h-[220px] items-center justify-center rounded-lg bg-muted text-xs text-slate-500">
           No dated records are available for this chart.
         </div>
       )}

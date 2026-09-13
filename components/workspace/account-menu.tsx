@@ -26,28 +26,28 @@ export function AccountMenu({
       <details className="group relative">
         <summary
           aria-label={`Open account menu for ${currentUser.displayName}`}
-          className="grid h-11 w-full cursor-pointer list-none grid-cols-[36px] items-center rounded-xl border border-transparent p-0 text-left outline-none transition-colors hover:border-[#dce3e8] hover:bg-slate-50 focus-visible:border-[#8ebdce] focus-visible:ring-2 focus-visible:ring-[#6aa9bd]/40 [&::-webkit-details-marker]:hidden sm:grid-cols-[36px_minmax(0,1fr)_16px] sm:gap-2 sm:px-1.5"
+          className="grid h-11 w-full cursor-pointer list-none grid-cols-[36px] items-center rounded-xl border border-transparent p-0 text-left outline-none transition-colors hover:border-border hover:bg-slate-50 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 [&::-webkit-details-marker]:hidden sm:grid-cols-[36px_minmax(0,1fr)_16px] sm:gap-2 sm:px-1.5"
         >
-          <span className="flex size-9 items-center justify-center rounded-lg bg-[#d7ebf2] text-xs font-semibold text-[#17425a]">
+          <span className="flex size-9 items-center justify-center rounded-lg bg-accent text-xs font-semibold text-foreground">
             {initials || 'U'}
           </span>
           <span className="hidden min-w-0 sm:block">
             <span className="block truncate text-xs font-semibold">
               {currentUser.displayName}
             </span>
-            <span className="block truncate text-[10px] text-slate-500">
+            <span className="block truncate text-[11px] text-slate-500">
               {roleLabel}
             </span>
           </span>
           <ChevronDown className="hidden size-4 text-slate-400 transition-transform group-open:rotate-180 sm:block" />
         </summary>
 
-        <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 overflow-hidden rounded-lg bg-white p-1.5 text-slate-950 shadow-lg ring-1 ring-slate-900/10">
+        <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 overflow-hidden rounded-lg bg-card p-1.5 text-slate-950 shadow-lg ring-1 ring-slate-900/10">
           <div className="px-2 py-1.5 text-xs font-medium text-slate-500">
             Account
           </div>
           <div className="flex items-center gap-3 px-2 py-2.5">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#d7ebf2] text-xs font-semibold text-[#17425a]">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent text-xs font-semibold text-foreground">
               {initials || 'U'}
             </span>
             <span className="min-w-0">
@@ -58,7 +58,7 @@ export function AccountMenu({
                 {currentUser.email || roleLabel}
               </span>
               {currentUser.email ? (
-                <span className="mt-0.5 block text-[10px] text-slate-400">
+                <span className="mt-0.5 block text-[11px] text-slate-400">
                   {roleLabel}
                 </span>
               ) : null}
@@ -72,12 +72,12 @@ export function AccountMenu({
                 href={signInPath}
                 className="flex items-center gap-2 rounded-md px-2 py-2.5 outline-none hover:bg-slate-100 focus-visible:bg-slate-100"
               >
-                <LogIn className="size-4 text-[#1d718f]" />
+                <LogIn className="size-4 text-accent-foreground" />
                 <span>
                   <span className="block text-sm font-medium">
                     Sign in to workspace
                   </span>
-                  <span className="block text-[10px] text-slate-500">
+                  <span className="block text-[11px] text-slate-500">
                     Use your reviewer credentials
                   </span>
                 </span>

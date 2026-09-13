@@ -10,6 +10,7 @@ import {
   FlaskConical,
   FolderKanban,
   LayoutDashboard,
+  Scale,
   ShieldCheck,
   Users,
 } from 'lucide-react';
@@ -55,6 +56,10 @@ export const navigationGroups: Array<{
       { label: 'Portfolio Case Study', icon: BookOpenCheck },
       { label: 'AI Accuracy & Validation', icon: FlaskConical },
     ],
+  },
+  {
+    label: 'Reference',
+    items: [{ label: 'Playbook & Approval Rules', icon: Scale }],
   },
 ];
 
@@ -182,6 +187,14 @@ export const portfolioDemoChapters: Array<{
 
 export const navItems = navigationGroups.flatMap((group) => group.items);
 
+/**
+ * One geometry for every modal in the workspace, matched to the Ask AI dialog.
+ * Overflow is left to each dialog: most use a grid with `overflow-hidden`,
+ * while the record detail scrolls its whole body.
+ */
+export const dialogSurfaceClass =
+  'relative m-0 h-[84dvh] min-h-[min(620px,90dvh)] max-h-[94dvh] w-[96vw] max-w-[1440px] rounded-xl bg-card p-0 text-sm shadow-2xl ring-1 ring-slate-900/10';
+
 export const extractionFields = [
   ['documentTitle', 'Document title'],
   ['supplierLegalName', 'Supplier legal name'],
@@ -194,6 +207,7 @@ export const extractionFields = [
   ['noticeDays', 'Notice period'],
   ['governingLaw', 'Governing law'],
   ['paymentTerms', 'Payment terms'],
+  ['liabilityCap', 'Liability cap'],
 ] as const satisfies ReadonlyArray<readonly [keyof ContractAnalysis, string]>;
 
 export const amendmentExtractionFields = [

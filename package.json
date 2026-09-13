@@ -18,7 +18,9 @@
     "check:baseline": "node scripts/verify-release-baseline.mjs",
     "quality": "npm run check:phase && npm run check:dod && npm test && npm run lint && npm run typecheck && npm run build",
     "format": "oxfmt",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "brand:generate": "node scripts/generate-brand-assets.mjs",
+    "check:seo": "node scripts/check-seo.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
@@ -58,6 +60,7 @@
     "oxlint": "1.76.0",
     "oxlint-tsgolint": "7.0.2001",
     "shadcn": "^4.18.0",
+    "sharp": "0.35.2",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
     "vite": "8.2.2",

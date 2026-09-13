@@ -36,7 +36,7 @@ export function FilterSelect({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 h-9 w-full rounded-md border border-input bg-white px-3 text-xs"
+        className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-xs"
       >
         {includeAll ? <option value="all">{allLabel}</option> : null}
         {options.map((option) => {
@@ -121,7 +121,7 @@ export function USDateInput({
         <PopoverTrigger
           type="button"
           aria-label={`Open ${ariaLabel} calendar`}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-r-md border border-input bg-white text-slate-500 transition hover:bg-[#edf6f8] hover:text-[#1d718f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6aa9bd]"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-r-md border border-input bg-card text-slate-500 transition hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <CalendarDays className="size-4" />
         </PopoverTrigger>
@@ -167,7 +167,7 @@ export function DateFilter({
         <select
           value={condition}
           onChange={(event) => onConditionChange(event.target.value)}
-          className="h-9 rounded-l-md border border-r-0 border-input bg-white px-2 text-xs"
+          className="h-9 rounded-l-md border border-r-0 border-input bg-card px-2 text-xs"
         >
           <option value="all">Any date</option>
           <option value="on_or_before">On or before</option>
@@ -178,7 +178,7 @@ export function DateFilter({
           value={date}
           onChange={onDateChange}
           ariaLabel={`${label} filter date in month/day/year format`}
-          className="h-9 rounded-none bg-white text-xs"
+          className="h-9 rounded-none bg-card text-xs"
         />
       </div>
     </div>
@@ -186,8 +186,19 @@ export function DateFilter({
 }
 
 export function useFloatingTableScrollbar() {
-  const tableScrollerRef = useRef<HTMLDivElement>(null);
+  const tableScrollerRef = useRef<HTMLDivElement | null>(null);
   const floatingScrollerRef = useRef<HTMLDivElement>(null);
+  /**
+   * The table only mounts once the workspace has loaded, so a plain ref object
+   * is still null when the measuring effect first runs — and the effect never
+   * re-runs, which left the floating scrollbar permanently hidden. Tracking the
+   * node in state re-runs the effect the moment it attaches.
+   */
+  const [scrollerNode, setScrollerNode] = useState<HTMLDivElement | null>(null);
+  const attachTableScroller = useCallback((node: HTMLDivElement | null) => {
+    tableScrollerRef.current = node;
+    setScrollerNode(node);
+  }, []);
   const [floating, setFloating] = useState({
     visible: false,
     left: 0,
@@ -220,7 +231,7 @@ export function useFloatingTableScrollbar() {
   }, []);
 
   useEffect(() => {
-    const scroller = tableScrollerRef.current;
+    const scroller = scrollerNode;
     if (!scroller) return;
     updateFloatingPosition();
     const observer = new ResizeObserver(updateFloatingPosition);
@@ -236,7 +247,7 @@ export function useFloatingTableScrollbar() {
       window.removeEventListener('resize', updateFloatingPosition);
       window.removeEventListener('scroll', updateFloatingPosition);
     };
-  }, [updateFloatingPosition]);
+  }, [scrollerNode, updateFloatingPosition]);
 
   useEffect(() => {
     if (floating.visible && floatingScrollerRef.current)
@@ -256,7 +267,7 @@ export function useFloatingTableScrollbar() {
   };
 
   return {
-    tableScrollerRef,
+    tableScrollerRef: attachTableScroller,
     floatingScrollerRef,
     floating,
     syncFloatingToTable,
@@ -286,7 +297,7 @@ export function FloatingTableScrollbar({
       ref={floatingScrollerRef}
       aria-label={label}
       onScroll={onScroll}
-      className="fixed bottom-0 z-40 h-5 overflow-x-scroll overflow-y-hidden border-x border-t border-[#a9c7d2] bg-white/95 shadow-[0_-3px_10px_rgb(15_23_42/12%)] backdrop-blur"
+      className="fixed bottom-0 z-40 h-5 overflow-x-scroll overflow-y-hidden border-x border-t border-[#a9c7d2] bg-card/95 shadow-[0_-3px_10px_rgb(15_23_42/12%)] backdrop-blur"
       style={{ left: floating.left, width: floating.width }}
     >
       <div
@@ -327,7 +338,7 @@ export function TablePagination({
   return (
     <nav
       aria-label={label}
-      className={`${floatingVisible ? 'fixed bottom-5 z-40 shadow-[0_-3px_10px_rgb(15_23_42/10%)] backdrop-blur' : 'border-t border-[#e3e9ed]'} flex min-h-11 flex-wrap items-center justify-end gap-x-4 gap-y-2 bg-white/95 px-4 py-2 text-[11px] text-slate-600`}
+      className={`${floatingVisible ? 'fixed bottom-5 z-40 shadow-[0_-3px_10px_rgb(15_23_42/10%)] backdrop-blur' : 'border-t border-border'} flex min-h-11 flex-wrap items-center justify-end gap-x-4 gap-y-2 bg-card/95 px-4 py-2 text-[11px] text-slate-600`}
       style={
         floatingVisible
           ? { left: floating?.left, width: floating?.width }
@@ -339,9 +350,9 @@ export function TablePagination({
         <select
           value={pageSize}
           onChange={(event) => onPageSizeChange(Number(event.target.value))}
-          className="h-7 rounded-md border border-input bg-white px-2 text-[11px]"
+          className="h-7 rounded-md border border-input bg-card px-2 text-[11px]"
         >
-          {[10, 20, 50].map((option) => (
+          {[20, 50, 100].map((option) => (
             <option key={option} value={option}>
               {option}
             </option>
@@ -351,7 +362,7 @@ export function TablePagination({
       <span className="whitespace-nowrap">
         {firstRecord}–{lastRecord} of {total}
       </span>
-      <span className="whitespace-nowrap font-medium text-[#294958]">
+      <span className="whitespace-nowrap font-medium text-foreground">
         Page {page} of {pageCount}
       </span>
       <div className="flex items-center gap-2">
@@ -361,7 +372,7 @@ export function TablePagination({
           variant="outline"
           onClick={() => onPageChange(page - 1)}
           disabled={page <= 1}
-          className="bg-white"
+          className="bg-card"
         >
           Previous
         </Button>
@@ -371,7 +382,7 @@ export function TablePagination({
           variant="outline"
           onClick={() => onPageChange(page + 1)}
           disabled={page >= pageCount || total === 0}
-          className="bg-white"
+          className="bg-card"
         >
           Next
         </Button>

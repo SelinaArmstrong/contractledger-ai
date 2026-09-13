@@ -234,8 +234,17 @@ async function main() {
   );
   const imports = await json('/api/imports');
   assert(
-    imports.batches.length === 1,
-    'Reset must produce one import preview batch.',
+    imports.batches.length === 2,
+    'Reset must produce the import preview batch and the reversed batch.',
+  );
+  assert(
+    imports.batches.filter((batch) => batch.status === 'rolled_back').length ===
+      1,
+    'Reset must retain the rolled-back import batch that proves reversibility.',
+  );
+  assert(
+    Number.isFinite(imports.metrics.medianMigrationMinutes),
+    'Reset must produce a completed batch so migration duration is measurable.',
   );
 
   const exportAuthorization = await json('/api/exports/authorize', {

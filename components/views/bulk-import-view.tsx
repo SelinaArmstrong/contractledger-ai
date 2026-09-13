@@ -2,7 +2,6 @@
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -18,13 +17,20 @@ import type {
 } from '@/lib/contract-ledger-types';
 import {
   AlertCircle,
+  Check,
   Database,
   Download,
   LoaderCircle,
   RotateCcw,
   Upload,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  buildManagementReport,
+  DATA_QUALITY_ISSUES,
+  isDataQualityIssue,
+} from '@/lib/management-insights';
+import type { ManagementAttentionItem } from '@/lib/management-insights';
 import {
   titleCase,
   toneForStatus,
@@ -38,20 +44,27 @@ import {
   PanelHeader,
   StatusBadge,
 } from '@/components/workspace/primitives';
+import { TablePagination } from '@/components/workspace/table';
 
 export function BulkImportView({
+  workspace,
   onUpdated,
 }: {
+  workspace: Workspace | null;
   onUpdated: (workspace: Workspace) => void;
 }) {
   const [target, setTarget] = useState<'suppliers' | 'contracts'>('suppliers');
   const [file, setFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [batches, setBatches] = useState<
     Array<Record<string, string | number | null>>
   >([]);
   const [details, setDetails] = useState<ImportBatchDetails | null>(null);
   const [metrics, setMetrics] = useState<ImportPortfolioMetrics | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [rowPage, setRowPage] = useState(1);
+  const [rowPageSize, setRowPageSize] = useState(20);
+  const [exceptionLimit, setExceptionLimit] = useState(8);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -88,6 +101,7 @@ export function BulkImportView({
   const applyDetails = (next: ImportBatchDetails) => {
     setDetails(next);
     setMapping(next.batch.mapping);
+    setRowPage(1);
   };
 
   const openBatch = async (batchId: string) => {
@@ -195,6 +209,65 @@ export function BulkImportView({
     ) ?? [];
   const pendingRows =
     details?.rows.filter((row) => row.decision === 'pending').length ?? 0;
+  // A batch holds up to 150 rows, so the resolution table is paged like the
+  // register queues rather than rendered in one run.
+  /**
+   * The import flow grades rows on the way in; this grades what is already in
+   * the registers, using the same deterministic checks the management report
+   * runs. It is the "Data Quality" half of this page.
+   */
+  const registerExceptions = useMemo(() => {
+    if (!workspace) return [] as ManagementAttentionItem[];
+    const today = new Date().toISOString().slice(0, 10);
+    const shared = {
+      contracts: workspace.contracts,
+      suppliers: workspace.suppliers,
+      keyDates: workspace.keyDates,
+      supplierAlerts: workspace.supplierAlerts,
+      today,
+    };
+    const items = [
+      ...buildManagementReport({ ...shared, scope: 'contracts' })
+        .attentionItems,
+      ...buildManagementReport({ ...shared, scope: 'suppliers' })
+        .attentionItems,
+    ];
+    const priorityRank = { high: 0, medium: 1, low: 2 } as const;
+    return Array.from(
+      new Map(
+        items
+          .filter((item) => isDataQualityIssue(item.issue))
+          .map((item) => [item.id, item]),
+      ).values(),
+    ).sort(
+      (left, right) =>
+        priorityRank[left.priority] - priorityRank[right.priority] ||
+        left.issue.localeCompare(right.issue),
+    );
+  }, [workspace]);
+  const checkResults = [...DATA_QUALITY_ISSUES].map((issue) => ({
+    issue,
+    count: registerExceptions.filter((item) => item.issue === issue).length,
+  }));
+  const recordsChecked =
+    (workspace?.contracts.length ?? 0) + (workspace?.suppliers.length ?? 0);
+  const exceptionsByPriority = {
+    high: registerExceptions.filter((item) => item.priority === 'high').length,
+    medium: registerExceptions.filter((item) => item.priority === 'medium')
+      .length,
+    low: registerExceptions.filter((item) => item.priority === 'low').length,
+  };
+
+  const rowPageCount = Math.max(
+    1,
+    Math.ceil((details?.rows.length ?? 0) / rowPageSize),
+  );
+  const safeRowPage = Math.min(rowPage, rowPageCount);
+  const visibleRows =
+    details?.rows.slice(
+      (safeRowPage - 1) * rowPageSize,
+      safeRowPage * rowPageSize,
+    ) ?? [];
 
   return (
     <>
@@ -206,13 +279,13 @@ export function BulkImportView({
           <div className="flex flex-wrap gap-2">
             <a
               href={`/api/imports?template=${target}&format=csv`}
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-input bg-white px-3 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-input bg-card px-3 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
             >
               <Download className="size-3.5" /> CSV template
             </a>
             <a
               href={`/api/imports?template=${target}&format=xlsx`}
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-input bg-white px-3 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-input bg-card px-3 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
             >
               <Download className="size-3.5" /> XLSX template
             </a>
@@ -261,13 +334,15 @@ export function BulkImportView({
         ].map(([label, value, description]) => (
           <article
             key={label}
-            className="rounded-xl border border-[#dce3e8] bg-white p-4 shadow-sm"
+            className="rounded-xl border border-border bg-card p-4 shadow-sm"
           >
-            <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
               {label}
             </p>
-            <p className="mt-2 text-xl font-semibold text-[#183040]">{value}</p>
-            <p className="mt-1 text-[9px] text-slate-500">{description}</p>
+            <p className="mt-2 text-xl font-semibold text-foreground">
+              {value}
+            </p>
+            <p className="mt-1 text-[11px] text-slate-500">{description}</p>
           </article>
         ))}
       </div>
@@ -280,32 +355,46 @@ export function BulkImportView({
               description="Preview is isolated from official supplier and contract records. Maximum 5 MB and 150 data rows per batch."
             />
             <div className="grid gap-4 p-5 md:grid-cols-[220px_minmax(0,1fr)_auto] md:items-end">
-              <label className="text-[10px] font-medium text-slate-600">
+              <label className="text-[11px] font-medium text-slate-600">
                 Register type
                 <select
                   value={target}
                   onChange={(event) =>
                     setTarget(event.target.value as 'suppliers' | 'contracts')
                   }
-                  className="mt-1 block h-10 w-full rounded-md border border-input bg-white px-3 text-xs"
+                  className="mt-1 block h-10 w-full rounded-md border border-input bg-card px-3 text-xs"
                 >
-                  <option value="suppliers">Supplier master</option>
+                  <option value="suppliers">Supplier register</option>
                   <option value="contracts">Contract register</option>
                 </select>
               </label>
-              <label
-                htmlFor="bulk-import-file"
-                className="text-[10px] font-medium text-slate-600"
-              >
+              <div className="text-[11px] font-medium text-slate-600">
                 CSV or XLSX file
-                <Input
+                <input
+                  ref={fileInputRef}
                   id="bulk-import-file"
-                  className="mt-1 h-10 bg-white text-xs"
                   type="file"
                   accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="sr-only"
                   onChange={(event) => setFile(event.target.files?.[0] ?? null)}
                 />
-              </label>
+                <div className="mt-1 flex h-10 items-center gap-2 rounded-md border border-input bg-card pl-3 pr-1">
+                  <span
+                    className={`min-w-0 flex-1 truncate text-xs ${file ? 'text-foreground' : 'text-slate-400'}`}
+                  >
+                    {file ? file.name : 'No file selected'}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 shrink-0 bg-card text-[11px]"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {file ? 'Replace' : 'Browse'}
+                  </Button>
+                </div>
+              </div>
               <Button onClick={previewFile} disabled={!file || saving}>
                 {saving ? (
                   <LoaderCircle className="size-4 animate-spin" />
@@ -330,12 +419,12 @@ export function BulkImportView({
                 ].map(([label, value]) => (
                   <article
                     key={String(label)}
-                    className="rounded-xl border border-[#dce3e8] bg-white p-4 shadow-sm"
+                    className="rounded-xl border border-border bg-card p-4 shadow-sm"
                   >
-                    <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
                       {label}
                     </p>
-                    <p className="mt-2 text-xl font-semibold text-[#183040]">
+                    <p className="mt-2 text-xl font-semibold text-foreground">
                       {valueText(value)}
                     </p>
                   </article>
@@ -365,7 +454,7 @@ export function BulkImportView({
                   {details.fields.map((field) => (
                     <label
                       key={field.key}
-                      className="text-[10px] font-medium text-slate-600"
+                      className="text-[11px] font-medium text-slate-600"
                     >
                       {field.label}{' '}
                       {field.required ? (
@@ -380,7 +469,7 @@ export function BulkImportView({
                             [field.key]: event.target.value,
                           }))
                         }
-                        className="mt-1 block h-9 w-full rounded-md border border-input bg-white px-2 text-[11px]"
+                        className="mt-1 block h-9 w-full rounded-md border border-input bg-card px-2 text-[11px]"
                       >
                         <option value="">Not mapped</option>
                         {(details.batch.headers as string[]).map((header) => (
@@ -449,7 +538,7 @@ export function BulkImportView({
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {details.rows.map((row) => {
+                      {visibleRows.map((row) => {
                         const recordLabel =
                           valueText(row.normalized.legal_name) ||
                           valueText(row.normalized.contract_number) ||
@@ -460,16 +549,16 @@ export function BulkImportView({
                         return (
                           <TableRow key={row.id} className="align-top">
                             <TableCell className="pl-5">
-                              <p className="text-[11px] font-semibold text-[#1d718f]">
+                              <p className="text-[11px] font-semibold text-accent-foreground">
                                 Row {row.row_number} · {recordLabel}
                               </p>
-                              <p className="mt-1 max-w-64 truncate text-[9px] text-slate-500">
+                              <p className="mt-1 max-w-64 truncate text-[11px] text-slate-500">
                                 {valueText(row.normalized.title) ||
                                   valueText(row.normalized.category)}
                               </p>
                             </TableCell>
                             <TableCell className="max-w-72">
-                              <p className="text-[10px] leading-4 text-slate-600">
+                              <p className="text-[11px] leading-4 text-slate-600">
                                 {Object.entries(row.normalized)
                                   .filter(
                                     ([, value]) =>
@@ -496,7 +585,7 @@ export function BulkImportView({
                                 {titleCase(row.status)}
                               </StatusBadge>
                               {row.issues.length ? (
-                                <ul className="mt-2 space-y-1 text-[9px] leading-4 text-slate-500">
+                                <ul className="mt-2 space-y-1 text-[11px] leading-4 text-slate-500">
                                   {row.issues.map((issue, index) => (
                                     <li key={`${issue.code}-${index}`}>
                                       • {issue.message}
@@ -524,7 +613,7 @@ export function BulkImportView({
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    className="h-7 px-2 text-[9px]"
+                                    className="h-7 px-2 text-[11px]"
                                     disabled={!canAccept || saving}
                                     onClick={() =>
                                       void patchBatch({
@@ -540,7 +629,7 @@ export function BulkImportView({
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    className="h-7 px-2 text-[9px]"
+                                    className="h-7 px-2 text-[11px]"
                                     disabled={saving}
                                     onClick={() =>
                                       void patchBatch({
@@ -555,7 +644,7 @@ export function BulkImportView({
                                   </Button>
                                 </div>
                               ) : (
-                                <span className="text-[9px] text-slate-500">
+                                <span className="text-[11px] text-slate-500">
                                   {row.created_record_id
                                     ? `Created ${row.created_record_id}`
                                     : 'No official record'}
@@ -568,21 +657,32 @@ export function BulkImportView({
                     </TableBody>
                   </Table>
                 </div>
-                <div className="flex flex-col justify-between gap-3 border-t border-[#e3e9ed] bg-[#f8fafb] px-5 py-4 sm:flex-row sm:items-center">
+                <TablePagination
+                  label="Import row pagination"
+                  page={safeRowPage}
+                  pageSize={rowPageSize}
+                  total={details.rows.length}
+                  onPageChange={setRowPage}
+                  onPageSizeChange={(nextPageSize) => {
+                    setRowPageSize(nextPageSize);
+                    setRowPage(1);
+                  }}
+                />
+                <div className="flex flex-col justify-between gap-3 border-t border-border bg-muted px-5 py-4 sm:flex-row sm:items-center">
                   <div>
-                    <p className="text-[10px] font-medium text-slate-700">
+                    <p className="text-[11px] font-medium text-slate-700">
                       {pendingRows} unresolved ·{' '}
                       {valueText(details.batch.accepted_rows)} accepted ·{' '}
                       {valueText(details.batch.rejected_rows)} skipped
                     </p>
-                    <p className="mt-1 text-[9px] text-slate-500">
+                    <p className="mt-1 text-[11px] text-slate-500">
                       Dry run data remains isolated until commit.
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <a
                       href={`/api/imports?id=${encodeURIComponent(batchId)}&format=corrections`}
-                      className="inline-flex h-8 items-center gap-2 rounded-md border border-input bg-white px-3 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                      className="inline-flex h-8 items-center gap-2 rounded-md border border-input bg-card px-3 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
                     >
                       <Download className="size-3.5" /> Correction report
                     </a>
@@ -633,6 +733,124 @@ export function BulkImportView({
               />
             </Panel>
           )}
+
+          <Panel className="overflow-hidden">
+            <PanelHeader
+              title="Register data quality"
+              description="Deterministic exceptions found in records that are already official — the counterpart to the row checks above."
+              action={
+                <div className="flex flex-wrap gap-1.5">
+                  <StatusBadge tone="rose">
+                    {exceptionsByPriority.high} high
+                  </StatusBadge>
+                  <StatusBadge tone="amber">
+                    {exceptionsByPriority.medium} medium
+                  </StatusBadge>
+                  <StatusBadge tone="blue">
+                    {exceptionsByPriority.low} low
+                  </StatusBadge>
+                </div>
+              }
+            />
+            <div className="grid gap-2 border-b border-border bg-muted p-5 sm:grid-cols-2 xl:grid-cols-3">
+              {checkResults.map((check) => (
+                <div
+                  key={check.issue}
+                  className={`flex items-start gap-2 rounded-lg border px-3 py-2 ${check.count ? 'border-amber-200 bg-amber-50' : 'border-[#dce7eb] bg-card'}`}
+                >
+                  {check.count ? (
+                    <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
+                  ) : (
+                    <Check className="mt-0.5 size-3.5 shrink-0 text-emerald-600" />
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-medium text-foreground">
+                      {check.issue}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-slate-500">
+                      {check.count
+                        ? `${check.count} record${check.count === 1 ? '' : 's'} flagged`
+                        : 'Clear'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {registerExceptions.length ? (
+              <div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-24 pl-5">Priority</TableHead>
+                      <TableHead>Exception</TableHead>
+                      <TableHead>Record</TableHead>
+                      <TableHead className="pr-5">Detail</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {registerExceptions.slice(0, exceptionLimit).map((item) => (
+                      <TableRow key={item.id} className="align-top">
+                        <TableCell className="pl-5">
+                          <StatusBadge
+                            tone={
+                              item.priority === 'high'
+                                ? 'rose'
+                                : item.priority === 'medium'
+                                  ? 'amber'
+                                  : 'blue'
+                            }
+                          >
+                            {titleCase(item.priority)}
+                          </StatusBadge>
+                        </TableCell>
+                        <TableCell className="text-[11px] font-medium text-foreground">
+                          {item.issue}
+                        </TableCell>
+                        <TableCell className="text-[11px]">
+                          <div className="font-medium text-accent-foreground">
+                            {item.reference}
+                          </div>
+                          <div className="mt-1 max-w-56 truncate text-[11px] text-slate-500">
+                            {item.label} · {titleCase(item.entityType)}
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-80 whitespace-normal pr-5 text-[11px] leading-4 text-slate-600">
+                          {item.reason}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-muted px-5 py-3 text-[11px] text-slate-500">
+                  <span>
+                    Showing{' '}
+                    {Math.min(exceptionLimit, registerExceptions.length)} of{' '}
+                    {registerExceptions.length} exception
+                    {registerExceptions.length === 1 ? '' : 's'}.
+                  </span>
+                  {registerExceptions.length > exceptionLimit ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 bg-card text-[11px]"
+                      onClick={() =>
+                        setExceptionLimit(registerExceptions.length)
+                      }
+                    >
+                      Show all
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <p className="px-5 py-4 text-[11px] text-slate-600">
+                {workspace
+                  ? `All ${checkResults.length} checks passed across ${recordsChecked} official record${recordsChecked === 1 ? '' : 's'}. Time-based follow-up (expiring documents, due obligations) is tracked in Obligations & Evidence.`
+                  : 'Register records are still loading.'}
+              </p>
+            )}
+          </Panel>
         </div>
 
         <Panel className="h-fit overflow-hidden">
@@ -655,19 +873,19 @@ export function BulkImportView({
                   className="block w-full p-4 text-left transition hover:bg-[#f6fafb]"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-[11px] font-semibold text-[#203845]">
+                    <p className="truncate text-[11px] font-semibold text-foreground">
                       {valueText(batch.file_name)}
                     </p>
                     <StatusBadge tone={toneForStatus(batch.status)}>
                       {titleCase(batch.status)}
                     </StatusBadge>
                   </div>
-                  <p className="mt-2 text-[9px] text-slate-500">
+                  <p className="mt-2 text-[11px] text-slate-500">
                     {titleCase(batch.entity_type)} ·{' '}
                     {valueText(batch.total_rows)} rows ·{' '}
                     {usDateText(batch.created_at)}
                   </p>
-                  <p className="mt-1 text-[9px] text-slate-400">
+                  <p className="mt-1 text-[11px] text-slate-400">
                     {valueText(batch.accepted_rows)} accepted ·{' '}
                     {valueText(batch.invalid_rows)} invalid ·{' '}
                     {valueText(batch.duplicate_rows)} duplicates
