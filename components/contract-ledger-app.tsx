@@ -1,5 +1,7 @@
 'use client';
 
+import type { WorkspaceRole } from '@/lib/workspace-roles';
+
 import Link from 'next/link';
 import { BrandMark } from '@/components/brand-mark';
 
@@ -91,7 +93,7 @@ export function ContractLedgerApp({
     local: boolean;
     demo: boolean;
     guest: boolean;
-    role: string;
+    role: WorkspaceRole;
     permissions: string[];
   };
   signInPath: string | null;
@@ -706,6 +708,7 @@ export function ContractLedgerApp({
           ) : null}
           {activeView === 'Approvals & Exceptions' ? (
             <ApprovalQueueView
+              currentRole={currentUser.role}
               workspace={workspace}
               onUpdated={setWorkspace}
               onOpenIntake={setIntakeDetailId}
@@ -1013,6 +1016,53 @@ export function ContractLedgerApp({
                           : 'Waiting for analysis'}
                       </StatusBadge>
                     </div>
+                    {stage === 'executed' ? (
+                      <div className="mb-4 space-y-2">
+                        <label
+                          htmlFor="executed-review-intake"
+                          className="text-xs font-semibold"
+                        >
+                          Corresponding review intake
+                        </label>
+                        <select
+                          id="executed-review-intake"
+                          value={dialogIntake.intakeId}
+                          onChange={(event) =>
+                            dialogIntake.setIntakeId(event.target.value)
+                          }
+                          className="h-10 w-full rounded-md border border-input bg-card px-3 text-xs"
+                        >
+                          <option value="">
+                            No prior intake (only when no approvals are
+                            required)
+                          </option>
+                          {workspace?.intakes
+                            .filter((item) =>
+                              [
+                                'draft',
+                                'under_review',
+                                'revision_requested',
+                                'approved_for_signature',
+                              ].includes(String(item.status)),
+                            )
+                            .map((item) => (
+                              <option
+                                key={String(item.id)}
+                                value={String(item.id)}
+                              >
+                                {String(item.intake_number)} ·{' '}
+                                {String(item.proposed_supplier_name)} ·{' '}
+                                {String(item.title)}
+                              </option>
+                            ))}
+                        </select>
+                        <p className="text-[11px] text-slate-600">
+                          Select the review for this exact agreement. Changed
+                          terms require a new draft review and approvals before
+                          registration.
+                        </p>
+                      </div>
+                    ) : null}
                     {analysisStatus === 'analyzing' ? (
                       <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-border bg-card text-center">
                         <LoaderCircle className="size-7 animate-spin text-accent-foreground" />

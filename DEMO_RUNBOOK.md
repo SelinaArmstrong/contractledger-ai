@@ -90,3 +90,17 @@ If asked how phase scope is controlled, show `docs/execution-loop/phases/roadmap
 Start at `/about` for the public product narrative, feature overview and scope FAQ, then use its demo and case-study links to enter the existing workbench. The overview is available without workspace authentication. [Promotional copy and image guidance](docs/marketing/README.md) provides a consistent explanation for portfolio sharing. Public posts identify the fictional demonstration data.
 
 The refreshed workbench uses a mint selected-navigation state, navy primary actions and a consistent warm-paper surface. Contract tables keep horizontal scrolling; inspect the [visual-refresh notes](docs/design/WORKSPACE_VISUAL_REFRESH.md) for the responsive review scope.
+
+## Release controls (2026-09-14)
+
+- Execution registration now requires an explicit corresponding review intake whenever approval rules apply. Select it in **Corresponding review intake**. Approval is bound to the verified agreement terms, not just a supplier or an amount band.
+- If any verified term changes, submit the exact updated agreement through **New Contract Review**, complete its required approvals, then select that new intake during registration. Historical demo approvals without a verified terms snapshot cannot authorize a new registration; review them again through a new intake. No database migration is required.
+- Legal reviewers decide Legal Reviewer steps; procurement/compliance reviewers decide Procurement / Compliance and Compliance Reviewer steps; approvers decide Procurement Director, Finance / CFO, Chief Executive Officer and Contract Owner steps. Administrator and demo operator roles retain all-step access.
+- Expired insurance is evaluated using the expiration date on every read and execution check, even when an old stored label still says current.
+- For renewals, select the old document in the supplier upload replacement field. Only a verified, currently effective, issue-free replacement supersedes it. Old files remain available as history and stop affecting current qualification/expiry alerts. Unverified, future-dated or problematic uploads leave the old certificate active. Re-submit future-dated evidence once effective if it needs to replace an older record.
+
+### Local release verification
+
+Run `npm run quality` and `npm audit --audit-level=high`. For HTTP checks, start `node scripts/start-release-preview.mjs`, then run `npm run check:baseline -- --base-url http://127.0.0.1:8791` and `npm run check:seo -- http://127.0.0.1:8791 http://127.0.0.1:8791`. Stop the preview afterward; its data is disposable and isolated from deployment bindings and secrets.
+
+`npm run check:browser` starts its own isolated preview (port 8791 must be free). Install its Chromium once with `npx playwright install chromium`. CI runs these checks automatically. Browser regression checks frame navigation and visible PDF paper/content; a successful HTTP response alone is insufficient. The Codex in-app browser does not render native PDFs; use Chrome for manual visual verification.

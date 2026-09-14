@@ -89,6 +89,10 @@ async function fixtureText(path, fileName) {
 async function main() {
   const home = await request('/');
   assert(home.ok, `Application home returned ${home.status}.`);
+  assert(
+    home.headers.get('x-frame-options') === 'DENY',
+    'Application pages must reject framing.',
+  );
 
   const firstReset = await reset();
   const secondReset = await reset();
@@ -206,6 +210,15 @@ async function main() {
     assert(
       (response.headers.get('content-type') ?? '').includes('application/pdf'),
       `${documentId} is not served as a PDF.`,
+    );
+    assert(
+      response.headers.get('x-frame-options') === 'SAMEORIGIN',
+      `${documentId} blocks its same-origin reader.`,
+    );
+    const policy = response.headers.get('content-security-policy') ?? '';
+    assert(
+      policy.includes("frame-ancestors 'self'") && !policy.includes('sandbox'),
+      `${documentId} has an incompatible PDF framing policy.`,
     );
   }
 

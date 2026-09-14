@@ -38,6 +38,16 @@ export const ALLOWED_SUPPLIER_DOCUMENT_MIME_TYPES = [
 
 export const MAX_SUPPLIER_DOCUMENT_BYTES = 8 * 1024 * 1024;
 
+/** Dates, rather than a stale stored label, determine whether coverage expired. */
+export function effectiveInsuranceStatus(
+  status: string | null,
+  expiration: string | null,
+  asOfDate: string,
+) {
+  if (expiration && expiration < asOfDate) return 'expired';
+  return status || 'missing';
+}
+
 export type SupplierDocumentationStatus =
   | 'complete'
   | 'incomplete'

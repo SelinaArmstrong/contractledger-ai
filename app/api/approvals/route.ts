@@ -10,6 +10,7 @@ import {
   type ApprovalRequestStatus,
 } from '@/lib/approval-workflow';
 import { withApiRoute } from '@/lib/server/route-handler';
+import { roleCanApproveStep } from '@/lib/workspace-roles';
 
 const querySchema = z.object({ id: z.string().min(1).max(200) });
 
@@ -116,6 +117,14 @@ export const PATCH = withApiRoute(
         { status: 404 },
       );
 
+    if (!roleCanApproveStep(actor.role, step.owner_role)) {
+      return Response.json(
+        {
+          error: `This step requires ${step.owner_role}. Your role cannot decide it.`,
+        },
+        { status: 403 },
+      );
+    }
     const nextStepStatus = nextApprovalStatus(step.status, input.action);
     const siblingSteps = await env.DB.prepare(`SELECT id, status
       FROM approval_steps WHERE request_id = ? ORDER BY sequence`)

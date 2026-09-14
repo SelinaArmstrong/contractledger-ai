@@ -1,5 +1,7 @@
 'use client';
 
+import { roleCanApproveStep, type WorkspaceRole } from '@/lib/workspace-roles';
+
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,12 +34,14 @@ import { useDraggableDialog } from '@/components/workspace/use-draggable-dialog'
 
 export function ApprovalDecisionDialog({
   requestId,
+  currentRole,
   onClose,
   onUpdated,
   onOpenIntake,
   onOpenRule,
 }: {
   requestId: string;
+  currentRole: WorkspaceRole;
   onClose: () => void;
   onUpdated: (workspace: Workspace) => void;
   onOpenIntake: (id: string) => void;
@@ -90,6 +94,10 @@ export function ApprovalDecisionDialog({
   }, [loadDetails]);
 
   const step = details?.steps[0];
+  const canDecide = roleCanApproveStep(
+    currentRole,
+    String(step?.owner_role ?? ''),
+  );
   const terminal = ['approved', 'declined', 'cancelled'].includes(
     String(step?.status ?? ''),
   );
@@ -124,7 +132,7 @@ export function ApprovalDecisionDialog({
   ].includes(action);
 
   const submitDecision = async () => {
-    if (!step) return;
+    if (!step || !canDecide) return;
     if (reasonRequired && !reason.trim()) {
       setError('Record a reason for this decision or escalation.');
       return;
@@ -326,7 +334,13 @@ export function ApprovalDecisionDialog({
                   </div>
                 </article>
 
-                {!terminal ? (
+                {!terminal && !canDecide ? (
+                  <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">
+                    This decision belongs to {String(step?.owner_role)}. Your
+                    account can read the evidence but cannot decide this step.
+                  </p>
+                ) : null}
+                {!terminal && canDecide ? (
                   <article className="rounded-xl border border-[#bfd6df] bg-card p-4">
                     <h3 className="text-sm font-semibold text-foreground">
                       Record a controlled action
@@ -451,7 +465,7 @@ export function ApprovalDecisionDialog({
             <Button variant="outline" onClick={onClose} disabled={saving}>
               Close
             </Button>
-            {!terminal && details ? (
+            {!terminal && canDecide && details ? (
               <Button
                 onClick={() => void submitDecision()}
                 disabled={saving || (reasonRequired && !reason.trim())}

@@ -1,3 +1,4 @@
+import { effectiveInsuranceStatus } from './supplier-qualification';
 export const SUPPLIER_RISK_PROFILE_VERSION = 'supplier-risk-2026.1' as const;
 
 export type SupplierRiskLevel = 'low' | 'medium' | 'high';
@@ -99,7 +100,11 @@ export function calculateSupplierRiskProfile(
         },
   );
 
-  const insuranceStatus = input.insuranceStatus ?? 'missing';
+  const insuranceStatus = effectiveInsuranceStatus(
+    input.insuranceStatus,
+    input.insuranceExpiration,
+    input.asOfDate,
+  );
   const insuranceDays = daysUntil(input.insuranceExpiration, input.asOfDate);
   if (
     insuranceStatus === 'expired' ||

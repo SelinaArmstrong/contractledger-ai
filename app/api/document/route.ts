@@ -25,10 +25,13 @@ function documentHeaders(fileName: string, contentType: string) {
     'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`,
     'Cache-Control': 'private, no-store',
     'X-Content-Type-Options': 'nosniff',
-    // A stored document never needs to run script or be framed, whatever the
-    // deployment's default policy allows for the application itself.
+    // Source readers are same-origin frames. Outside sites must remain blocked.
+    'X-Frame-Options': 'SAMEORIGIN',
     'Content-Security-Policy':
-      "default-src 'none'; object-src 'none'; frame-ancestors 'none'; sandbox",
+      "default-src 'none'; img-src 'self' data:; object-src 'none'; frame-ancestors 'self'" +
+      // Browser PDF viewers cannot render a sandboxed response. MIME validation
+      // and nosniff keep this exception limited to PDF; other uploads stay sandboxed.
+      (contentType === 'application/pdf' ? '' : '; sandbox'),
   };
 }
 

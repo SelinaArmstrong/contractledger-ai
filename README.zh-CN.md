@@ -495,3 +495,7 @@ npm run deploy
 ## SEO 与宣传素材
 
 公开产品介绍页为 `/about`。完整 favicon、应用图标、分享图、社交平台海报与可编辑 SVG 源文件位于 `public/brand/` 和 `public/social/`。详见[素材使用说明](docs/marketing/README.md)、[中英文宣传文案](docs/marketing/COPY.md)和[验证记录](docs/marketing/QA.md)。使用 `npm run brand:generate` 重新生成图片；使用 `npm run check:seo -- <预览地址> <正式域名>` 检查实际页面。
+
+### 发布前修复与验证
+
+审批现在绑定具体审核单和已核实条款；条款变化或历史审批缺少快照时，需要重新送审。续证可明确替换旧证件，旧文件保留为历史，不再影响当前资格。详细操作、角色边界及隔离环境验证命令见 [演示操作手册](DEMO_RUNBOOK.md#release-controls-2026-09-14)。CI 已加入依赖高危检查、发布基线、SEO 和 PDF 浏览器回归检查。

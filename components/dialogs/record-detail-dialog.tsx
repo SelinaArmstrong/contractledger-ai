@@ -417,6 +417,7 @@ export function RecordDetailDialog({
             <SupplierDocumentUpload
               supplierId={String(supplier.id)}
               supplierName={String(supplier.legal_name)}
+              documents={details?.documents ?? []}
               onUploaded={async () => {
                 await onRefresh();
                 await loadDetails();

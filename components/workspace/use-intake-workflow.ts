@@ -47,6 +47,7 @@ export function useIntakeWorkflow({
   onSaved: (result: IntakeSaveResult) => boolean | void;
 }) {
   const [stage, setStage] = useState<IntakeStage>(initialStage);
+  const [intakeId, setIntakeId] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const previewUrlRef = useRef('');
@@ -101,6 +102,7 @@ export function useIntakeWorkflow({
   const begin = useCallback(
     (nextStage: IntakeStage = stage) => {
       setStage(nextStage);
+      setIntakeId('');
       selectFile(null);
     },
     [selectFile, stage],
@@ -277,6 +279,7 @@ export function useIntakeWorkflow({
         body: JSON.stringify({
           analysisRunId: analysisResult.analysisRunId,
           stage,
+          intakeId: stage === 'executed' ? intakeId || null : null,
           analysis: analysisResult.analysis,
           document: analysisResult.document,
           review: {
@@ -324,9 +327,12 @@ export function useIntakeWorkflow({
     pendingReviewCount,
     selectFile,
     stage,
+    intakeId,
   ]);
 
   return {
+    intakeId,
+    setIntakeId,
     stage,
     selectedFile,
     previewUrl,

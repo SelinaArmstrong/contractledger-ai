@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { securityHeaders } from './lib/security-headers';
 
 /**
  * Response headers applied to every route.
@@ -15,30 +16,9 @@ import type { NextConfig } from 'next';
  * this stack does not thread through yet; asserting `'unsafe-inline'` here
  * would look like a policy while permitting exactly what it claims to stop.
  * Stored files, which are the one place untrusted bytes are served, carry
- * their own `default-src 'none'; sandbox` policy in `app/api/document`.
+ * their own restrictive policy in `app/api/document`; only PDF responses omit
+ * sandbox to support native readers.
  */
-const securityHeaders = [
-  {
-    key: 'Content-Security-Policy',
-    value: [
-      "frame-ancestors 'none'",
-      "object-src 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-    ].join('; '),
-  },
-  { key: 'X-Content-Type-Options', value: 'nosniff' },
-  { key: 'X-Frame-Options', value: 'DENY' },
-  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-  {
-    key: 'Permissions-Policy',
-    value: 'camera=(), microphone=(), geolocation=(), payment=()',
-  },
-  {
-    key: 'Strict-Transport-Security',
-    value: 'max-age=31536000; includeSubDomains',
-  },
-];
 
 const nextConfig: NextConfig = {
   async headers() {

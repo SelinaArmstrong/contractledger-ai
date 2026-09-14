@@ -10,7 +10,11 @@ import {
   type ApprovalRuleDefinition,
   type ApprovalTriggerType,
 } from '@/lib/approval-workflow';
-import { normalizeSupplierName } from '@/lib/supplier-qualification';
+import {
+  normalizeSupplierName,
+  effectiveInsuranceStatus,
+} from '@/lib/supplier-qualification';
+import { approvedTerms, approvalCoversTerms } from '@/lib/approval-scope';
 import { validatedOverrideReason } from '@/lib/ai-governance';
 import {
   calculateObligationMetrics,
@@ -47,6 +51,7 @@ const reviewFieldNames = [
 
 const saveSchema = z.object({
   analysisRunId: z.string().min(1),
+  intakeId: z.string().min(1).max(200).nullable().optional(),
   stage: z.enum(['draft', 'executed']),
   document: z.object({
     fileName: z.string().min(1).max(255),
@@ -319,16 +324,16 @@ export async function getWorkspace() {
         WHEN EXISTS (SELECT 1 FROM contract_intakes i2 WHERE i2.supplier_id = s.id) THEN 'pre_contract'
         ELSE 'onboarding'
       END AS relationship_stage,
-      (SELECT COUNT(*) FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record') AS qualification_document_count,
-      (SELECT MIN(d.expiration_date) FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND d.expiration_date >= date('now')) AS next_document_expiration,
-      (SELECT COUNT(*) FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND d.expiration_date < date('now') AND COALESCE(d.review_status, '') != 'not_applicable') AS expired_qualification_document_count,
+      (SELECT COUNT(*) FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable')) AS qualification_document_count,
+      (SELECT MIN(d.expiration_date) FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable') AND d.expiration_date >= date('now')) AS next_document_expiration,
+      (SELECT COUNT(*) FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable') AND d.expiration_date < date('now') AND COALESCE(d.review_status, '') != 'not_applicable') AS expired_qualification_document_count,
       (SELECT MIN(candidate.expiration_date) FROM (
         SELECT s.insurance_expiration AS expiration_date
         UNION ALL
-        SELECT d.expiration_date FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record'
+        SELECT d.expiration_date FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable')
       ) candidate WHERE candidate.expiration_date >= date('now')) AS next_compliance_expiration,
       CASE WHEN s.insurance_expiration < date('now') OR EXISTS (
-        SELECT 1 FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND d.expiration_date < date('now') AND COALESCE(d.review_status, '') != 'not_applicable'
+        SELECT 1 FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable') AND d.expiration_date < date('now') AND COALESCE(d.review_status, '') != 'not_applicable'
       ) THEN 1 ELSE 0 END AS has_expired_compliance,
       (SELECT COUNT(*) FROM review_findings f
         JOIN contract_intakes i3 ON i3.id = f.intake_id
@@ -338,13 +343,13 @@ export async function getWorkspace() {
         WHERE k.supplier_id = s.id AND k.status != 'completed'
           AND k.due_date < date('now')) AS overdue_obligations,
       CASE WHEN EXISTS (SELECT 1 FROM documents d WHERE d.supplier_id = s.id
-        AND d.lifecycle_stage = 'supplier_record' AND d.file_type = 'cybersecurity_assessment')
+        AND d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable') AND d.file_type = 'cybersecurity_assessment')
         THEN 1 ELSE 0 END AS has_cybersecurity_record,
       CASE WHEN EXISTS (SELECT 1 FROM documents d WHERE d.supplier_id = s.id
-        AND d.lifecycle_stage = 'supplier_record' AND d.file_type = 'exclusion_screening')
+        AND d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable') AND d.file_type = 'exclusion_screening')
         THEN 1 ELSE 0 END AS has_exclusion_screening,
       CASE WHEN EXISTS (SELECT 1 FROM documents d WHERE d.supplier_id = s.id
-        AND d.lifecycle_stage = 'supplier_record'
+        AND d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable')
         AND d.file_type IN ('business_license', 'professional_license', 'good_standing'))
         THEN 1 ELSE 0 END AS has_license_or_good_standing
       FROM suppliers s LEFT JOIN contracts c ON c.supplier_id = s.id
@@ -414,7 +419,7 @@ export async function getWorkspace() {
           d.id AS document_id, d.issuer, d.document_number
         FROM documents d
         JOIN suppliers s ON s.id = d.supplier_id
-        WHERE d.lifecycle_stage = 'supplier_record'
+        WHERE d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable')
           AND d.expiration_date IS NOT NULL
         UNION ALL
         SELECT 'insurance:' || s.id AS alert_id,
@@ -430,7 +435,7 @@ export async function getWorkspace() {
           AND NOT EXISTS (
             SELECT 1 FROM documents d
             WHERE d.supplier_id = s.id
-              AND d.lifecycle_stage = 'supplier_record'
+              AND d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable')
               AND d.file_type = 'insurance_certificate'
               AND d.expiration_date IS NOT NULL
           )
@@ -588,6 +593,19 @@ export async function getWorkspace() {
   ]);
 
   const asOfDate = new Date().toISOString().slice(0, 10);
+  for (const supplier of supplierRows.results) {
+    supplier.insurance_status = effectiveInsuranceStatus(
+      typeof supplier.insurance_status === 'string'
+        ? supplier.insurance_status
+        : null,
+      typeof supplier.insurance_expiration === 'string'
+        ? supplier.insurance_expiration
+        : null,
+      asOfDate,
+    );
+    if (supplier.has_expired_compliance)
+      supplier.qualification_status = 'expired';
+  }
   const portfolioValueCents = Number(metricRow?.current_value_cents ?? 0);
   const supplierRiskProfiles = Object.fromEntries(
     supplierRows.results.map((supplier) => [
@@ -764,7 +782,7 @@ export const POST = withApiRoute(
     );
     const documentId = `doc-${crypto.randomUUID()}`;
     const supplierRecord = await db
-      .prepare(`SELECT id, status, risk_tier, insurance_status
+      .prepare(`SELECT id, status, risk_tier, insurance_status, insurance_expiration
         FROM suppliers WHERE normalized_name = ? LIMIT 1`)
       .bind(normalizedName)
       .first<{
@@ -772,6 +790,7 @@ export const POST = withApiRoute(
         status: string;
         risk_tier: string | null;
         insurance_status: string | null;
+        insurance_expiration: string | null;
       }>();
     // A resolved playbook key is what lets an approval request point back at
     // the finding that caused it, and it makes the stored standard the
@@ -792,7 +811,11 @@ export const POST = withApiRoute(
       proposedValueCents: valueCents,
       governingLaw: stringValue(input.analysis.governingLaw) || null,
       renewalType: stringValue(input.analysis.renewalType) || null,
-      insuranceStatus: supplierRecord?.insurance_status ?? 'missing',
+      insuranceStatus: effectiveInsuranceStatus(
+        supplierRecord?.insurance_status ?? null,
+        supplierRecord?.insurance_expiration ?? null,
+        now.slice(0, 10),
+      ),
       supplierRiskTier: supplierRecord?.risk_tier ?? null,
       liabilityCap: stringValue(input.analysis.liabilityCap) || null,
       findings: findingRecords.map((finding) => ({
@@ -825,31 +848,28 @@ export const POST = withApiRoute(
 
     let linkedIntakeId: string | null = null;
     if (input.stage === 'executed') {
-      const candidates = await db
-        .prepare(`SELECT i.id, i.supplier_id, i.proposed_supplier_name
+      if (input.intakeId) {
+        const intake = await db
+          .prepare(`SELECT i.id, i.proposed_supplier_name
           FROM contract_intakes i
-          LEFT JOIN contracts c ON c.intake_id = i.id
-          WHERE c.id IS NULL
-            AND i.status IN ('draft', 'under_review', 'revision_requested', 'approved_for_signature')
-          ORDER BY i.updated_at DESC
-          LIMIT 100`)
-        .all<{
-          id: string;
-          supplier_id: string | null;
-          proposed_supplier_name: string;
-        }>();
-      const matchingCandidates = candidates.results.filter(
-        (candidate) =>
-          (supplierRecord && candidate.supplier_id === supplierRecord.id) ||
-          normalizeSupplierName(candidate.proposed_supplier_name) ===
-            normalizedName,
-      );
-      if (matchingCandidates.length === 1) {
-        linkedIntakeId = matchingCandidates[0].id;
+          WHERE i.id = ? AND i.status IN ('draft', 'under_review', 'revision_requested', 'approved_for_signature')
+            AND NOT EXISTS (SELECT 1 FROM contracts c WHERE c.intake_id = i.id)`)
+          .bind(input.intakeId)
+          .first<{ id: string; proposed_supplier_name: string }>();
+        if (
+          !intake ||
+          normalizeSupplierName(intake.proposed_supplier_name) !==
+            normalizedName
+        ) {
+          throw new Error(
+            'Choose an unregistered review intake for this supplier.',
+          );
+        }
+        linkedIntakeId = intake.id;
       }
       if (linkedIntakeId) {
         const existingApprovals = await db
-          .prepare(`SELECT ar.rule_id, ar.status, r.mandatory
+          .prepare(`SELECT ar.rule_id, ar.status, ar.rule_snapshot_json, r.mandatory
             FROM approval_requests ar
             JOIN approval_rules r ON r.id = ar.rule_id
             WHERE ar.intake_id = ? AND r.mandatory = 1`)
@@ -858,7 +878,19 @@ export const POST = withApiRoute(
             rule_id: string;
             status: ApprovalRequestStatus;
             mandatory: number;
+            rule_snapshot_json: string;
           }>();
+        const terms = approvedTerms(input.analysis);
+        if (
+          existingApprovals.results.some(
+            (approval) =>
+              !approvalCoversTerms(approval.rule_snapshot_json, terms),
+          )
+        ) {
+          throw new Error(
+            'The executed terms differ from the approved review, or the old approval has no verified terms snapshot. Submit this agreement as a new draft review, complete its approvals, then select that intake here.',
+          );
+        }
         const existingRuleIds = new Set(
           existingApprovals.results.map((approval) => approval.rule_id),
         );
@@ -991,7 +1023,11 @@ export const POST = withApiRoute(
               requirement.sourceFindingId,
               documentId,
               requirement.reason,
-              JSON.stringify(requirement.rule),
+              JSON.stringify({
+                ...requirement.rule,
+                reviewedTerms: approvedTerms(input.analysis),
+                sourceAnalysisRunId: input.analysisRunId,
+              }),
               now,
               dueAt,
               now,

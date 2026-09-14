@@ -49,9 +49,9 @@ Several properties are deliberate and are covered by tests in
   never sufficient on its own to grant the administrator role.
 - **`X-Forwarded-For` is ignored** unless `TRUST_PROXY_ADDRESS_HEADER` is set,
   so rate-limit and AI-budget keys cannot be rotated by a caller.
-- **Stored documents are served with `nosniff` and a `sandbox` CSP**, and their
+- **Stored documents are served with `nosniff` and same-origin framing only**, and their
   recorded media type is checked against an allowlist on write and again on
-  read.
+  read. PDFs omit CSP sandbox so native PDF readers work; other media remain sandboxed.
 - **The AI assistant never generates SQL.** The model returns a structured
   query plan whose entities and fields are validated against an allowlist, and
   it is executed in memory against records the caller may already read.
@@ -69,3 +69,7 @@ release fixes that do not require a breaking downgrade.
 | [GHSA-67mh-4wv8-2f99](https://github.com/advisories/GHSA-67mh-4wv8-2f99) (`esbuild`) | `drizzle-kit` → `@esbuild-kit/*` → `esbuild` | Concerns the esbuild development server. `drizzle-kit` is a development dependency invoked by hand through `npm run db:generate`; it is not part of `npm run quality`, CI, the build, or anything that runs in production. |
 
 Every high-severity advisory in the tree has been cleared.
+
+Audit rechecked on 2026-09-14: zero high/critical and six moderate reports.
+`sharp` is pinned to 0.35.4 and overridden across the dependency tree, including
+Miniflare, to remove the vulnerable libheif version. CI rejects high/critical reports.

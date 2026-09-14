@@ -32,13 +32,16 @@ import {
 export function SupplierDocumentUpload({
   supplierId,
   supplierName,
+  documents,
   onUploaded,
 }: {
   supplierId: string;
   supplierName: string;
+  documents: Array<Record<string, string | number | null>>;
   onUploaded: () => Promise<void>;
 }) {
   const [documentType, setDocumentType] = useState('w9');
+  const [replacesDocumentId, setReplacesDocumentId] = useState('');
   const [effectiveDate, setEffectiveDate] = useState('');
   const [expirationDate, setExpirationDate] = useState('');
   const [issuer, setIssuer] = useState('');
@@ -91,6 +94,7 @@ export function SupplierDocumentUpload({
         SUPPLIER_DOCUMENT_TYPES.includes(extractedType as SupplierDocumentType)
       )
         setDocumentType(extractedType);
+      if (extractedType !== documentType) setReplacesDocumentId('');
       setIssuer(valueText(body.analysis.issuer.value).replace('Not found', ''));
       setDocumentNumber(
         valueText(body.analysis.documentNumber.value).replace('Not found', ''),
@@ -127,6 +131,7 @@ export function SupplierDocumentUpload({
     try {
       const form = new FormData();
       form.append('supplierId', supplierId);
+      form.append('replacesDocumentId', replacesDocumentId);
       form.append('analysisRunId', aiResult?.analysisRunId ?? '');
       form.append('documentType', documentType);
       form.append('effectiveDate', effectiveDate);
@@ -145,6 +150,7 @@ export function SupplierDocumentUpload({
         throw new Error(body.error || 'Unable to upload the document.');
       setMessage('Document archived; supplier data and status updated.');
       setFile(null);
+      setReplacesDocumentId('');
       setAiResult(null);
       setIssuer('');
       setDocumentNumber('');
@@ -181,8 +187,12 @@ export function SupplierDocumentUpload({
       </p>
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <select
+          aria-label="Qualification document type"
           value={documentType}
-          onChange={(event) => setDocumentType(event.target.value)}
+          onChange={(event) => {
+            setDocumentType(event.target.value);
+            setReplacesDocumentId('');
+          }}
           className="h-9 rounded-md border border-input bg-card px-3 text-xs"
         >
           {SUPPLIER_DOCUMENT_TYPES.map((type) => (
@@ -190,6 +200,28 @@ export function SupplierDocumentUpload({
               {SUPPLIER_DOCUMENT_LABELS[type]}
             </option>
           ))}
+        </select>
+        <select
+          aria-label="Replace an existing qualification document"
+          value={replacesDocumentId}
+          onChange={(event) => setReplacesDocumentId(event.target.value)}
+          className="h-9 rounded-md border border-input bg-card px-3 text-xs"
+        >
+          <option value="">Additional document (no replacement)</option>
+          {documents
+            .filter(
+              (item) =>
+                item.file_type === documentType &&
+                !['superseded', 'not_applicable'].includes(
+                  String(item.review_status),
+                ),
+            )
+            .map((item) => (
+              <option key={String(item.id)} value={String(item.id)}>
+                Replace: {String(item.file_name)} ·{' '}
+                {String(item.document_number ?? '')}
+              </option>
+            ))}
         </select>
         <Input
           value={issuer}
@@ -259,6 +291,13 @@ export function SupplierDocumentUpload({
           </Button>
         </div>
       </div>
+      {replacesDocumentId ? (
+        <p className="mt-2 text-[11px] text-slate-600">
+          The selected old file stays in history. It stops affecting current
+          qualification only after this replacement is AI-reviewed, confirmed,
+          and effective, with no unresolved findings.
+        </p>
+      ) : null}
       {aiResult ? (
         <SupplierDocumentAIReview
           result={aiResult}

@@ -38,3 +38,6 @@ next-env.d.ts
 /.wrangler/
 /output/
 /work/
+
+/playwright-report/
+/test-results/

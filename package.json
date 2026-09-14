@@ -10,7 +10,7 @@
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",
     "deploy": "npm run build && wrangler deploy --config dist/server/wrangler.json",
-    "lint": "oxlint app components db lib scripts",
+    "lint": "oxlint app components db lib scripts tests middleware.ts next.config.ts playwright.config.ts",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "check:dod": "node scripts/check-definition-of-done.mjs",
@@ -20,7 +20,8 @@
     "format": "oxfmt",
     "db:generate": "drizzle-kit generate",
     "brand:generate": "node scripts/generate-brand-assets.mjs",
-    "check:seo": "node scripts/check-seo.mjs"
+    "check:seo": "node scripts/check-seo.mjs",
+    "check:browser": "playwright test"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
@@ -49,6 +50,7 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.54.4",
     "@cloudflare/workers-types": "^5.20260904.1",
+    "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
@@ -60,12 +62,15 @@
     "oxlint": "1.76.0",
     "oxlint-tsgolint": "7.0.2001",
     "shadcn": "^4.18.0",
-    "sharp": "0.35.2",
+    "sharp": "0.35.4",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
     "vite": "8.2.2",
     "vitest": "^4.1.11",
     "wrangler": "^4.129.0"
   },
-  "type": "module"
+  "type": "module",
+  "overrides": {
+    "sharp": "$sharp"
+  }
 }

@@ -16,6 +16,7 @@ import { withApiRoute } from '@/lib/server/route-handler';
 
 const fieldsSchema = z.object({
   supplierId: z.string().min(1),
+  replacesDocumentId: z.string().max(200).optional().or(z.literal('')),
   analysisRunId: z.string().optional().or(z.literal('')),
   documentType: z.enum(SUPPLIER_DOCUMENT_TYPES),
   effectiveDate: isoDateSchema.optional().or(z.literal('')),
@@ -33,10 +34,12 @@ export const POST = withApiRoute(
   },
   async ({ request, actor }) => {
     let newlyStoredKey: string | null = null;
+    let documentCommitted = false;
     try {
       const form = await request.formData();
       const fields = fieldsSchema.parse({
         supplierId: form.get('supplierId'),
+        replacesDocumentId: form.get('replacesDocumentId') ?? '',
         analysisRunId: form.get('analysisRunId') ?? '',
         documentType: form.get('documentType'),
         effectiveDate: form.get('effectiveDate') ?? '',
@@ -117,15 +120,29 @@ export const POST = withApiRoute(
           { status: 400 },
         );
 
+      const replacedDocument = fields.replacesDocumentId
+        ? await env.DB.prepare(`SELECT id, review_status FROM documents
+            WHERE id = ? AND supplier_id = ? AND file_type = ?
+              AND lifecycle_stage = 'supplier_record'
+              AND COALESCE(review_status, '') NOT IN ('superseded', 'not_applicable')`)
+            .bind(
+              fields.replacesDocumentId,
+              fields.supplierId,
+              fields.documentType,
+            )
+            .first<{ id: string; review_status: string | null }>()
+        : null;
+      if (fields.replacesDocumentId && !replacedDocument) {
+        throw new Error(
+          'Choose a current document of the same type for this supplier to replace.',
+        );
+      }
+
       const now = new Date().toISOString();
       const documentId = `doc-${crypto.randomUUID()}`;
       const storageKey =
         analysisRun?.storage_key ??
         `supplier-documents/${fields.supplierId}/${crypto.randomUUID()}-${safeSupplierFileName(file.name)}`;
-      const insuranceStatus =
-        fields.expirationDate && fields.expirationDate < now.slice(0, 10)
-          ? 'expired'
-          : 'current';
       const analyzedResult = analysisRun
         ? (JSON.parse(analysisRun.original_result_json) as Record<
             string,
@@ -154,7 +171,8 @@ export const POST = withApiRoute(
       const documentReviewStatus =
         fields.expirationDate && fields.expirationDate < now.slice(0, 10)
           ? 'expired'
-          : !analysisRun
+          : !analysisRun ||
+              (fields.effectiveDate && fields.effectiveDate > now.slice(0, 10))
             ? 'under_review'
             : !supplierNameMatches || analysisHasIssues
               ? 'needs_follow_up'
@@ -170,17 +188,33 @@ export const POST = withApiRoute(
         newlyStoredKey = storageKey;
       }
 
+      const canReplace = Boolean(
+        replacedDocument && documentReviewStatus === 'current',
+      );
       const documentStatusUpdate =
         fields.documentType === 'w9'
           ? env.DB.prepare(
               "UPDATE suppliers SET w9_status = 'received', updated_at = ? WHERE id = ?",
             ).bind(now, fields.supplierId)
           : fields.documentType === 'insurance_certificate'
-            ? env.DB.prepare(
-                'UPDATE suppliers SET insurance_status = ?, insurance_expiration = ?, updated_at = ? WHERE id = ?',
-              ).bind(
-                insuranceStatus,
-                fields.expirationDate,
+            ? env.DB.prepare(`UPDATE suppliers SET
+              insurance_expiration = (SELECT MIN(expiration_date) FROM documents
+                WHERE supplier_id = ? AND file_type = 'insurance_certificate'
+                  AND lifecycle_stage = 'supplier_record'
+                  AND COALESCE(review_status, '') NOT IN ('superseded', 'not_applicable')),
+              insurance_status = CASE
+                WHEN EXISTS (SELECT 1 FROM documents WHERE supplier_id = ?
+                  AND file_type = 'insurance_certificate' AND lifecycle_stage = 'supplier_record'
+                  AND COALESCE(review_status, '') NOT IN ('superseded', 'not_applicable')
+                  AND expiration_date < ?) THEN 'expired'
+                WHEN EXISTS (SELECT 1 FROM documents WHERE supplier_id = ?
+                  AND file_type = 'insurance_certificate' AND lifecycle_stage = 'supplier_record'
+                  AND COALESCE(review_status, '') NOT IN ('superseded', 'not_applicable', 'current', 'approved')) THEN 'missing'
+                ELSE 'current' END, updated_at = ? WHERE id = ?`).bind(
+                fields.supplierId,
+                fields.supplierId,
+                now.slice(0, 10),
+                fields.supplierId,
                 now,
                 fields.supplierId,
               )
@@ -228,17 +262,20 @@ export const POST = withApiRoute(
         WHEN insurance_status = 'expired' OR EXISTS (
           SELECT 1 FROM documents d WHERE d.supplier_id = suppliers.id
             AND d.lifecycle_stage = 'supplier_record'
+            AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable')
             AND (d.review_status = 'expired' OR d.expiration_date < date('now'))
         ) THEN 'expired'
         WHEN EXISTS (
           SELECT 1 FROM documents d WHERE d.supplier_id = suppliers.id
             AND d.lifecycle_stage = 'supplier_record'
+            AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable')
             AND d.review_status = 'needs_follow_up'
         ) THEN 'needs_follow_up'
         WHEN w9_status = 'missing' OR insurance_status = 'missing' THEN 'incomplete'
         WHEN EXISTS (
           SELECT 1 FROM documents d WHERE d.supplier_id = suppliers.id
             AND d.lifecycle_stage = 'supplier_record'
+            AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable')
             AND d.review_status = 'under_review'
         ) THEN 'under_review'
         ELSE 'complete'
@@ -332,12 +369,13 @@ export const POST = withApiRoute(
 
       await env.DB.batch([
         env.DB.prepare(`INSERT INTO documents
-        (id, supplier_id, file_name, file_type, lifecycle_stage, storage_key,
+        (id, supplier_id, parent_document_id, file_name, file_type, lifecycle_stage, storage_key,
          mime_type, issuer, document_number, effective_date, expiration_date,
          coverage_summary, review_status, ai_status, uploaded_at)
-        VALUES (?, ?, ?, ?, 'supplier_record', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+        VALUES (?, ?, ?, ?, ?, 'supplier_record', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
           documentId,
           fields.supplierId,
+          replacedDocument?.id ?? null,
           file.name,
           fields.documentType,
           storageKey,
@@ -351,6 +389,13 @@ export const POST = withApiRoute(
           analysisRun ? 'verified' : 'needs_review',
           now,
         ),
+        ...(canReplace
+          ? [
+              env.DB.prepare(
+                "UPDATE documents SET review_status = 'superseded' WHERE id = ?",
+              ).bind(replacedDocument!.id),
+            ]
+          : []),
         documentStatusUpdate,
         profileUpdate,
         ...aiReviewStatements,
@@ -365,6 +410,8 @@ export const POST = withApiRoute(
             documentType: fields.documentType,
             fileName: file.name,
             documentReviewStatus,
+            replacesDocumentId: replacedDocument?.id ?? null,
+            replacementActivated: canReplace,
             supplierProfileUpdated: supplierNameMatches && Boolean(analysisRun),
             analysisRunId: analysisRun?.id ?? null,
             model: analysisRun?.model ?? null,
@@ -374,13 +421,17 @@ export const POST = withApiRoute(
         ),
       ]);
 
+      documentCommitted = true;
+
       return Response.json({
         uploaded: true,
         documentId,
         workspace: await getWorkspace(),
       });
     } catch (error) {
-      if (newlyStoredKey) {
+      // Once committed, the file belongs to a saved record even if refreshing
+      // the response fails. Cleanup only compensates for a failed save.
+      if (newlyStoredKey && !documentCommitted) {
         try {
           await env.FILES.delete(newlyStoredKey);
         } catch {

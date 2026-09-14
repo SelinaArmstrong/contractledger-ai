@@ -107,3 +107,22 @@ export function roleCan(role: WorkspaceRole, permission: WorkspacePermission) {
 export function permissionsForRole(role: WorkspaceRole) {
   return workspacePermissions.filter((permission) => roleCan(role, permission));
 }
+
+/** Business owners are distinct from the general ability to review a queue. */
+export function roleCanApproveStep(role: WorkspaceRole, ownerRole: string) {
+  if (role === 'administrator' || role === 'demo_operator') return true;
+  const owners: Partial<Record<WorkspaceRole, readonly string[]>> = {
+    legal_reviewer: ['Legal Reviewer'],
+    procurement_compliance_reviewer: [
+      'Procurement / Compliance',
+      'Compliance Reviewer',
+    ],
+    approver: [
+      'Procurement Director',
+      'Finance / CFO',
+      'Chief Executive Officer',
+      'Contract Owner',
+    ],
+  };
+  return owners[role]?.includes(ownerRole) ?? false;
+}

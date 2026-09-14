@@ -457,3 +457,7 @@ If you are evaluating this for a role, the [interview one-pager](docs/INTERVIEW_
 The public product overview lives at `/about`. A coordinated favicon family, Open Graph/Twitter previews, editable SVG masters and social exports are included in `public/brand/` and `public/social/`. See [the brand kit](docs/marketing/README.md) for assets and regeneration, [bilingual promotional copy](docs/marketing/COPY.md) for ready-to-use posts, and [QA evidence](docs/marketing/QA.md) for verification. Run `npm run brand:generate` to reproduce the graphics and `npm run check:seo -- <preview-origin> <public-origin>` to validate a running site.
 
 The operations workspace now shares the public page’s navy, warm-paper and mint identity. See the [workspace visual-refresh notes](docs/design/WORKSPACE_VISUAL_REFRESH.md) for scope and browser validation.
+
+### Release controls
+
+Approvals now cover an explicit intake and its verified terms. Changed terms and legacy approvals without a snapshot require a fresh review. Supplier renewals can explicitly supersede earlier documents while preserving history. See the [runbook](DEMO_RUNBOOK.md#release-controls-2026-09-14) for roles, migration behavior and isolated release checks. CI also checks high-severity dependency advisories, the HTTP baseline, SEO and browser PDF rendering.

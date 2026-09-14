@@ -1,5 +1,7 @@
 'use client';
 
+import type { WorkspaceRole } from '@/lib/workspace-roles';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -31,11 +33,13 @@ import {
 
 export function ApprovalQueueView({
   workspace,
+  currentRole,
   onUpdated,
   onOpenIntake,
   onOpenRule,
 }: {
   workspace: Workspace | null;
+  currentRole: WorkspaceRole;
   onUpdated: (workspace: Workspace) => void;
   onOpenIntake: (id: string) => void;
   /** Opens the read-only rules reference at the control that fired. */
@@ -260,6 +264,7 @@ export function ApprovalQueueView({
 
       {selectedRequestId ? (
         <ApprovalDecisionDialog
+          currentRole={currentRole}
           requestId={selectedRequestId}
           onClose={() => setSelectedRequestId(null)}
           onUpdated={onUpdated}
