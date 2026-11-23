@@ -59,7 +59,7 @@ export const GET = withApiRoute(
 
     if (document.storage_key.startsWith('public:/demo-documents/')) {
       const publicPath = document.storage_key.slice('public:'.length);
-      const asset = await fetch(new URL(publicPath, url));
+      const asset = await env.ASSETS.fetch(new URL(publicPath, url));
       if (!asset.ok || !asset.body)
         return Response.json(
           { error: 'Demo file not found.' },

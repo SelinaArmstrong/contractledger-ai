@@ -109,6 +109,7 @@ beforeAll(async () => {
   Object.assign(process.env, testEnvironment);
   Object.assign(env, {
     DB: databaseBinding(sqlite),
+    ASSETS: { fetch: vi.fn() },
     FILES: {
       put: async (key: string, bytes: ArrayBuffer) => {
         files.set(key, bytes);
@@ -568,6 +569,27 @@ describe('supplier renewal lifecycle', () => {
 });
 
 describe('stored document framing', () => {
+  it('reads a seeded PDF from the deployed static assets binding', async () => {
+    const asset = vi.spyOn(env.ASSETS, 'fetch').mockResolvedValue(
+      new Response(new Uint8Array(pdf), {
+        headers: { 'Content-Type': 'application/pdf' },
+      }),
+    );
+    const response = await documentRoute.GET(
+      new Request('http://localhost/api/document?id=doc-demo-coi-harbor'),
+    );
+    expect(asset).toHaveBeenCalledWith(
+      new URL(
+        'http://localhost/demo-documents/05_Harbor_Technology_Demo_Insurance_Certificate.pdf',
+      ),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-frame-options')).toBe('SAMEORIGIN');
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+      new Uint8Array(pdf),
+    );
+  });
+
   it('allows same-origin PDF readers without allowing external framing', async () => {
     const uploaded = await upload('2099-01-01');
     const response = await documentRoute.GET(

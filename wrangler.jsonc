@@ -6,6 +6,9 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "preview_urls": true,
+  "assets": {
+    "binding": "ASSETS"
+  },
   "routes": [
     {
       "pattern": "contractledger.selinaq.com",

@@ -18,7 +18,7 @@ const config = {
   compatibility_flags: built.compatibility_flags,
   no_bundle: true,
   rules: built.rules,
-  assets: { directory: resolve(root, 'dist/client') },
+  assets: { ...built.assets, directory: resolve(root, 'dist/client') },
   vars: {
     SITE_URL: 'http://127.0.0.1:8791',
     DEMO_GUEST_ACCESS: 'true',
