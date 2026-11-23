@@ -39,27 +39,29 @@ export const navigationGroups: Array<{
   items: Array<{ label: ViewName; icon: ElementType }>;
 }> = [
   {
-    label: 'Workspace',
+    label: 'Operations',
     items: [
       { label: 'Dashboard', icon: LayoutDashboard },
       { label: 'New Contract Review', icon: FileSearch },
       { label: 'Approvals & Exceptions', icon: ShieldCheck },
-      { label: 'Bulk Import & Data Quality', icon: FileSpreadsheet },
-      { label: 'Contract Register', icon: FolderKanban },
-      { label: 'Supplier Register', icon: Users },
       { label: 'Obligations & Evidence', icon: BellRing },
     ],
   },
   {
-    label: 'Portfolio evidence',
+    label: 'Records',
     items: [
-      { label: 'Portfolio Case Study', icon: BookOpenCheck },
-      { label: 'AI Accuracy & Validation', icon: FlaskConical },
+      { label: 'Contract Register', icon: FolderKanban },
+      { label: 'Supplier Register', icon: Users },
+      { label: 'Bulk Import & Data Quality', icon: FileSpreadsheet },
     ],
   },
   {
-    label: 'Reference',
-    items: [{ label: 'Playbook & Approval Rules', icon: Scale }],
+    label: 'Governance',
+    items: [
+      { label: 'Playbook & Approval Rules', icon: Scale },
+      { label: 'AI Accuracy & Validation', icon: FlaskConical },
+      { label: 'Portfolio Case Study', icon: BookOpenCheck },
+    ],
   },
 ];
 
@@ -184,8 +186,6 @@ export const portfolioDemoChapters: Array<{
     proof: 'Review package, workbook, calendar, evidence, and limitations.',
   },
 ];
-
-export const navItems = navigationGroups.flatMap((group) => group.items);
 
 /**
  * One geometry for every modal in the workspace, matched to the Ask AI dialog.

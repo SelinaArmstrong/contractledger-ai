@@ -2,6 +2,7 @@
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { needsSourceOverride } from '@/lib/ai-governance';
 import type {
@@ -58,7 +59,7 @@ export function AmendmentDialog({
   const [overrideReasons, setOverrideReasons] = useState<
     Partial<Record<AmendmentFieldKey, string>>
   >({});
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const draggable = useDraggableDialog({ surfaceRef: dialogRef });
 
   const selectFile = useCallback((nextFile: File | null) => {
@@ -213,25 +214,21 @@ export function AmendmentDialog({
     : 0;
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-[2px]"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && status !== 'saving')
-          closeDialog();
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && status !== 'saving') closeDialog();
       }}
     >
-      <dialog
+      <DialogContent
         ref={dialogRef}
+        showCloseButton={false}
         style={draggable.surfaceStyle}
         onPointerDown={draggable.onPointerDown}
         onPointerMove={draggable.onPointerMove}
         onPointerUp={draggable.onPointerUp}
         onPointerCancel={draggable.onPointerCancel}
-        open
-        aria-modal="true"
-        aria-labelledby="amendment-dialog-title"
-        className={`${dialogSurfaceClass} grid grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden`}
+        className={`${dialogSurfaceClass} fixed sm:max-w-[1440px] grid grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden`}
       >
         <button
           type="button"
@@ -250,9 +247,9 @@ export function AmendmentDialog({
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent-foreground">
             <Sparkles className="size-3.5" /> AI-assisted contract versioning
           </div>
-          <h2 id="amendment-dialog-title" className="mt-1">
+          <DialogTitle className="mt-1">
             Add amendment to {valueText(contract.contract_number)}
-          </h2>
+          </DialogTitle>
           <p className="mt-1 text-xs text-slate-500">
             Extract only the signed changes, verify them against the source,
             then update current effective terms and monitoring dates.
@@ -510,8 +507,8 @@ export function AmendmentDialog({
             </Button>
           )}
         </footer>
-      </dialog>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

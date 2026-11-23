@@ -18,6 +18,7 @@ const workspace: Workspace = {
     active_contracts: 2,
     current_value_cents: 45_000_000,
     active_suppliers: 2,
+    supplier_documentation_follow_up: 0,
     pending_suppliers: 0,
     records_to_verify: 0,
     total_contracts: 0,
@@ -98,6 +99,7 @@ const workspace: Workspace = {
     },
   ],
   intakes: [],
+  pendingReviews: [],
   keyDates: [
     {
       id: 'date-1',

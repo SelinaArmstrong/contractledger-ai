@@ -2,6 +2,7 @@
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -22,6 +23,12 @@ const config = {
     SITE_URL: 'http://127.0.0.1:8791',
     DEMO_GUEST_ACCESS: 'true',
     ALLOW_LOCAL_MAINTAINER: 'true',
+    ...(process.env.CONTRACTLEDGER_TEST_PASSWORD && {
+      DEMO_AUTH_USERNAME: 'browser-requester',
+      DEMO_AUTH_PASSWORD: process.env.CONTRACTLEDGER_TEST_PASSWORD,
+      DEMO_AUTH_ROLE: 'requester',
+      WORKSPACE_SESSION_SECRET: randomUUID(),
+    }),
   },
   d1_databases: [
     {

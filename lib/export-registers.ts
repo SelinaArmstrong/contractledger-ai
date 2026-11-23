@@ -8,8 +8,13 @@ function dollars(cents: unknown) {
   return typeof cents === 'number' ? cents / 100 : 0;
 }
 
-export async function exportCurrentRegisters(
-  workspace: Workspace,
+export type RegisterExportData = Pick<
+  Workspace,
+  'contracts' | 'suppliers' | 'supplierDocuments' | 'keyDates' | 'approvalQueue'
+>;
+
+export async function buildRegisterWorkbook(
+  workspace: RegisterExportData,
   scope: 'all' | 'suppliers' = 'all',
 ) {
   const ExcelJS = await import('exceljs');
@@ -402,7 +407,14 @@ export async function exportCurrentRegisters(
     workbook.removeWorksheet(approvalSheet.id);
   }
 
-  const buffer = await workbook.xlsx.writeBuffer();
+  return workbook.xlsx.writeBuffer();
+}
+
+export async function exportCurrentRegisters(
+  workspace: RegisterExportData,
+  scope: 'all' | 'suppliers' = 'all',
+) {
+  const buffer = await buildRegisterWorkbook(workspace, scope);
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });

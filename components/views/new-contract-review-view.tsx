@@ -27,7 +27,7 @@ import {
   Search,
   ShieldCheck,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ElementType, ReactNode } from 'react';
 import {
   alertTiming,
@@ -185,8 +185,61 @@ export function NewContractReviewView({
     () => new Set(),
   );
   const reviewTableScroll = useFloatingTableScrollbar();
-  const intakes = (workspace?.intakes ?? []).filter(
-    (item) => item.status !== 'executed',
+  const [history, setHistory] = useState<{
+    workspace: Workspace;
+    rows: Workspace['intakes'];
+    error?: string;
+  }>();
+  const [attempt, setAttempt] = useState(0);
+  const needsHistory =
+    !!workspace && workspace.metrics.total_intakes > workspace.intakes.length;
+  useEffect(() => {
+    if (!workspace || !needsHistory) return;
+    const controller = new AbortController();
+    const loadHistory = async () => {
+      let cursor = workspace.intakes.at(-1);
+      const rows: Workspace['intakes'] = [];
+      try {
+        while (cursor) {
+          const params = new URLSearchParams({
+            beforeDate: String(cursor.received_at),
+            afterId: String(cursor.id),
+          });
+          const response = await fetch('/api/intakes?' + params, {
+            signal: controller.signal,
+          });
+          if (!response.ok)
+            throw new Error('Older reviews could not be loaded.');
+          const page = (await response.json()) as {
+            rows: Workspace['intakes'];
+            hasMore: boolean;
+          };
+          rows.push(...page.rows);
+          cursor = page.hasMore ? page.rows.at(-1) : undefined;
+        }
+        if (!controller.signal.aborted) setHistory({ workspace, rows });
+      } catch {
+        if (!controller.signal.aborted)
+          setHistory({
+            workspace,
+            rows: [],
+            error: 'Older reviews could not be loaded.',
+          });
+      }
+    };
+    void loadHistory();
+    return () => controller.abort();
+  }, [workspace, needsHistory, attempt]);
+  const loadedHistory = history?.workspace === workspace ? history : undefined;
+  const loadingHistory = needsHistory && !loadedHistory;
+  const intakes = useMemo(
+    () => [
+      ...(workspace?.intakes ?? []).filter(
+        (item) => item.status !== 'executed',
+      ),
+      ...(loadedHistory?.rows ?? []),
+    ],
+    [workspace, loadedHistory],
   );
   const ownerNames = useMemo(
     () =>
@@ -374,10 +427,11 @@ export function NewContractReviewView({
       !['approved_for_signature', 'not_awarded'].includes(String(item.status)),
   ).length;
   const highRisk = intakes.filter((item) => item.risk_level === 'high').length;
+  // `required_approval` is a GROUP_CONCAT of rule names, so comparing it to a
+  // single rule's display text never matched. The per-row count of open
+  // mandatory requests is the value this card was always meant to show.
   const approvalRequired = intakes.filter(
-    (item) =>
-      item.required_approval === 'CFO approval' &&
-      item.approval_status !== 'approved',
+    (item) => Number(item.open_approval_count ?? 0) > 0,
   ).length;
   const approvedForSignature = intakes.filter(
     (item) => item.status === 'approved_for_signature',
@@ -403,7 +457,7 @@ export function NewContractReviewView({
     {
       label: 'Approval required',
       value: approvalRequired,
-      note: 'CFO approval not complete',
+      note: 'Mandatory approvals still open',
       icon: ShieldCheck,
     },
     {
@@ -435,7 +489,9 @@ export function NewContractReviewView({
                     {metric.label}
                   </p>
                   <p className="mt-1 text-2xl font-semibold text-[#193141]">
-                    {metric.value}
+                    {!workspace || loadingHistory || loadedHistory?.error
+                      ? '—'
+                      : metric.value}
                   </p>
                 </div>
                 <span className="flex size-8 items-center justify-center rounded-lg bg-[#edf7fa] text-[#26718b]">
@@ -461,8 +517,30 @@ export function NewContractReviewView({
       <Panel className="overflow-hidden">
         <PanelHeader
           title="Contract review work queue"
-          description={`${visibleIntakes.length} of ${intakes.length} pre-execution review${intakes.length === 1 ? '' : 's'} shown`}
+          description={
+            loadingHistory
+              ? 'Loading older reviews…'
+              : `${visibleIntakes.length} of ${intakes.length} ${loadedHistory?.error ? 'loaded ' : ''}pre-execution review${intakes.length === 1 ? '' : 's'} shown`
+          }
         />
+        {loadedHistory?.error && (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-2 px-4 py-2 text-sm"
+          >
+            <span>{loadedHistory.error}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setHistory(undefined);
+                setAttempt((n) => n + 1);
+              }}
+            >
+              Retry
+            </Button>
+          </div>
+        )}
         <div className="border-b border-border bg-muted p-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
             <label
@@ -766,8 +844,18 @@ export function NewContractReviewView({
           </div>
         ) : (
           <EmptyState
-            title="No reviews match the current filters"
-            description="Clear one or more filters, or upload a new draft contract."
+            title={
+              loadingHistory
+                ? 'Searching older reviews…'
+                : 'No reviews match the current filters'
+            }
+            description={
+              loadingHistory
+                ? 'Matching records will appear when loading finishes.'
+                : intakePanel
+                  ? 'Clear the filters or upload a new draft contract.'
+                  : 'Try clearing the current filters.'
+            }
           />
         )}
       </Panel>

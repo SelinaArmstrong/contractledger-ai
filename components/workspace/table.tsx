@@ -2,16 +2,257 @@
 
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { CalendarDays } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RefObject } from 'react';
+import {
+  CalendarDays,
+  ChevronRight,
+  FileSpreadsheet,
+  LoaderCircle,
+  MoreHorizontal,
+  Search,
+  SlidersHorizontal,
+  Sparkles,
+  X,
+} from 'lucide-react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { titleCase, usDateText } from '@/components/workspace/formatters';
+
+export function RegisterUtilities({
+  hasPrimaryAction,
+  exportLabel,
+  onExport,
+  exportDisabled,
+  exporting,
+  onInsights,
+  insightsDisabled,
+}: {
+  hasPrimaryAction: boolean;
+  exportLabel: string;
+  onExport?: () => void;
+  exportDisabled: boolean;
+  exporting: boolean;
+  onInsights?: () => void;
+  insightsDisabled: boolean;
+}) {
+  if (!onExport && !onInsights) return null;
+
+  const ExportIcon = exporting ? LoaderCircle : FileSpreadsheet;
+  const compact = hasPrimaryAction || Boolean(onExport && onInsights);
+
+  return (
+    <>
+      <div
+        className={compact ? 'hidden flex-wrap gap-2 sm:flex' : 'flex gap-2'}
+      >
+        {onExport ? (
+          <Button
+            variant="outline"
+            onClick={onExport}
+            disabled={exportDisabled}
+            className="h-11 bg-card"
+          >
+            <ExportIcon className={exporting ? 'animate-spin' : undefined} />
+            {exportLabel}
+          </Button>
+        ) : null}
+        {onInsights ? (
+          <Button
+            variant="outline"
+            onClick={onInsights}
+            disabled={insightsDisabled}
+            className="h-11 bg-card text-accent-foreground"
+          >
+            <Sparkles /> AI management insights
+          </Button>
+        ) : null}
+      </div>
+      {compact ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label="More register actions"
+            render={
+              <Button
+                variant="outline"
+                size="icon"
+                className="size-11 bg-card sm:hidden"
+              />
+            }
+          >
+            <MoreHorizontal />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            {onExport ? (
+              <DropdownMenuItem
+                onClick={onExport}
+                disabled={exportDisabled}
+                className="min-h-11"
+              >
+                <ExportIcon
+                  className={exporting ? 'animate-spin' : undefined}
+                />
+                {exportLabel}
+              </DropdownMenuItem>
+            ) : null}
+            {onInsights ? (
+              <DropdownMenuItem
+                onClick={onInsights}
+                disabled={insightsDisabled}
+                className="min-h-11"
+              >
+                <Sparkles /> AI management insights
+              </DropdownMenuItem>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
+    </>
+  );
+}
+
+export function RegisterToolbar({
+  label,
+  placeholder,
+  search,
+  onSearch,
+  matchCount,
+  totalCount,
+  filterCount,
+  loading,
+  unavailable,
+  children,
+}: {
+  label: string;
+  placeholder: string;
+  search: string;
+  onSearch: (value: string) => void;
+  matchCount: number;
+  totalCount: number;
+  filterCount: number;
+  loading: boolean;
+  unavailable?: boolean;
+  children: ReactNode;
+}) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const filtersId = useId();
+
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-2.5 border-b border-border px-3 py-3 sm:px-5">
+        <div className="relative min-w-0 flex-1 sm:max-w-96">
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            ref={searchRef}
+            value={search}
+            onChange={(event) => onSearch(event.target.value)}
+            aria-label={label}
+            placeholder={placeholder}
+            className="h-11 bg-card pl-9 pr-11 text-base sm:text-sm"
+          />
+          {search ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={`Clear ${label.toLowerCase()}`}
+              className="absolute inset-y-0 right-0 size-11 text-muted-foreground"
+              onClick={() => {
+                onSearch('');
+                searchRef.current?.focus();
+              }}
+            >
+              <X aria-hidden="true" />
+            </Button>
+          ) : null}
+        </div>
+        <Button
+          type="button"
+          variant={filtersOpen || filterCount > 0 ? 'secondary' : 'outline'}
+          aria-expanded={filtersOpen}
+          aria-controls={filtersId}
+          onClick={() => setFiltersOpen(!filtersOpen)}
+          className="h-11"
+        >
+          <SlidersHorizontal aria-hidden="true" />
+          Filters
+          {filterCount > 0 ? (
+            <span className="rounded bg-card px-1.5 text-xs">
+              {filterCount}
+            </span>
+          ) : null}
+        </Button>
+        <output
+          aria-live="polite"
+          className="basis-full text-xs text-muted-foreground sm:ml-auto sm:basis-auto"
+        >
+          {unavailable
+            ? 'Record count unavailable'
+            : loading
+              ? 'Loading records…'
+              : matchCount === totalCount
+                ? `${totalCount} record${totalCount === 1 ? '' : 's'}`
+                : `${matchCount} of ${totalCount} records`}
+        </output>
+      </div>
+      <div id={filtersId} hidden={!filtersOpen}>
+        {children}
+      </div>
+    </>
+  );
+}
+
+export function RegisterRecord({
+  title,
+  subtitle,
+  children,
+  onOpen,
+}: {
+  title: string;
+  subtitle: string;
+  children: ReactNode;
+  onOpen: () => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="group flex w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-accent/50"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block break-words text-sm font-semibold text-accent-foreground">
+            {title}
+          </span>
+          <span className="mt-0.5 block break-words text-xs text-muted-foreground">
+            {subtitle}
+          </span>
+          <span className="mt-2 flex flex-wrap items-center gap-2">
+            {children}
+          </span>
+        </span>
+        <ChevronRight
+          aria-hidden="true"
+          className="size-4 shrink-0 text-muted-foreground"
+        />
+      </button>
+    </li>
+  );
+}
 
 export function FilterSelect({
   label,
@@ -66,9 +307,7 @@ export function USDateInput({
   ariaLabel: string;
   className?: string;
 }) {
-  const [displayValue, setDisplayValue] = useState(
-    value ? usDateText(value) : '',
-  );
+  const [displayValue, setDisplayValue] = useState<string | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
 
   const parseUSDate = (input: string) => {
@@ -100,7 +339,7 @@ export function USDateInput({
         inputMode="numeric"
         autoComplete="off"
         placeholder="MM/DD/YYYY"
-        value={displayValue}
+        value={displayValue ?? (value ? usDateText(value) : '')}
         onChange={(event) => {
           const nextValue = event.target.value
             .replace(/[^0-9/]/g, '')
@@ -110,10 +349,7 @@ export function USDateInput({
           const parsed = parseUSDate(nextValue);
           if (parsed) onChange(parsed);
         }}
-        onBlur={() => {
-          if (!parseUSDate(displayValue))
-            setDisplayValue(value ? usDateText(value) : '');
-        }}
+        onBlur={() => setDisplayValue(null)}
         aria-label={ariaLabel}
         className={`${className} rounded-r-none border-r-0`}
       />
@@ -133,7 +369,7 @@ export function USDateInput({
             onSelect={(nextDate) => {
               if (!nextDate) return;
               const nextValue = `${String(nextDate.getFullYear()).padStart(4, '0')}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
-              setDisplayValue(usDateText(nextValue));
+              setDisplayValue(null);
               onChange(nextValue);
               setCalendarOpen(false);
             }}

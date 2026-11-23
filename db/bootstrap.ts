@@ -527,7 +527,9 @@ const schemaStatements = [
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_contracts_intake_id_unique ON contracts(intake_id) WHERE intake_id IS NOT NULL',
 ];
 
-const CURRENT_SCHEMA_VERSION = 25;
+const CURRENT_SCHEMA_VERSION = 26;
+const DEMO_SCENARIO_SCHEMA_VERSION = 25;
+const INITIAL_SEED_PENDING = 0;
 const DEMO_RESET_TIMESTAMP = '2026-09-02T00:00:00.000Z';
 
 const runtimeMigrationStatements = [
@@ -1418,11 +1420,6 @@ async function syncEnhancedDemoScenario(db: D1Database, now: string) {
   ]);
   await syncObligationDemoScenario(db);
   await syncApprovalDemoScenario(db);
-  await db
-    .prepare(
-      `UPDATE approval_rules SET active = 0 WHERE id = 'approval-rule-financial-v1'`,
-    )
-    .run();
   await seedBulkImportDemo(db, now);
   await seedReversedImportDemo(db);
   await seedDemonstrationEvaluationRun(db, now);
@@ -1781,10 +1778,6 @@ async function syncApprovalDemoScenario(db: D1Database) {
       );
     }
   }
-  statements.push(
-    db.prepare(`UPDATE contract_intakes SET approval_status = 'pending'
-      WHERE id = 'int-001' AND approval_status != 'approved'`),
-  );
   const completedRule = rules.get('high_risk_supplier');
   if (completedRule) {
     const completedRequestId = 'approval-demo-int-003-supplier-risk';
@@ -1862,7 +1855,7 @@ async function syncApprovalDemoScenario(db: D1Database) {
           completedAt,
         ),
       db.prepare(`UPDATE contract_intakes SET approval_status = 'approved'
-        WHERE id = 'int-003'`),
+        WHERE id = 'int-003' AND approval_status = 'not_required'`),
     );
   }
   await db.batch(statements);
@@ -2510,7 +2503,7 @@ async function ensureWorkspaceColumns(db: D1Database) {
 async function seedWorkspaceDatabase(db: D1Database, now: string) {
   const supplierStatements = suppliersSeed.map((row) =>
     db
-      .prepare(`INSERT INTO suppliers
+      .prepare(`INSERT OR IGNORE INTO suppliers
         (id, legal_name, normalized_name, category, status, primary_contact, email, w9_status, insurance_status, insurance_expiration, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(...row, now, now),
@@ -2519,7 +2512,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
 
   const intakeStatements = intakeSeed.map((row) =>
     db
-      .prepare(`INSERT INTO contract_intakes
+      .prepare(`INSERT OR IGNORE INTO contract_intakes
         (id, intake_number, supplier_id, proposed_supplier_name, title, contract_type, proposed_value_cents, status, review_status, received_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(...row, now),
@@ -2528,7 +2521,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
 
   const contractStatements = contractsSeed.map((row) =>
     db
-      .prepare(`INSERT INTO contracts
+      .prepare(`INSERT OR IGNORE INTO contracts
         (id, contract_number, supplier_id, title, contract_type, department, owner, original_value_cents, amendment_value_cents, current_value_cents, effective_date, expiration_date, renewal_type, notice_days, notice_deadline, status, last_updated)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(...row, now),
@@ -2537,7 +2530,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
 
   await db.batch([
     db
-      .prepare(`INSERT INTO key_dates
+      .prepare(`INSERT OR IGNORE INTO key_dates
       (id, contract_id, supplier_id, type, title, due_date,
        internal_review_date, status, owner, backup_owner, priority, assigned_at,
        decision, source_clause, source_page, created_at, updated_at)
@@ -2562,7 +2555,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
         '2026-08-20T16:00:00.000Z',
       ),
     db
-      .prepare(`INSERT INTO key_dates
+      .prepare(`INSERT OR IGNORE INTO key_dates
       (id, contract_id, supplier_id, type, title, due_date,
        internal_review_date, status, owner, backup_owner, priority, assigned_at,
        source_clause, source_page, created_at, updated_at)
@@ -2586,7 +2579,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
         '2026-08-25T17:00:00.000Z',
       ),
     db
-      .prepare(`INSERT INTO key_dates
+      .prepare(`INSERT OR IGNORE INTO key_dates
       (id, contract_id, supplier_id, type, title, due_date,
        internal_review_date, status, owner, backup_owner, priority, assigned_at,
        source_clause, source_page, created_at, updated_at)
@@ -2610,7 +2603,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
         '2026-08-01T17:00:00.000Z',
       ),
     db
-      .prepare(`INSERT INTO key_dates
+      .prepare(`INSERT OR IGNORE INTO key_dates
       (id, contract_id, supplier_id, type, title, due_date,
        internal_review_date, status, owner, backup_owner, priority, assigned_at,
        completed_at, completed_by, completion_note, evidence_reference,
@@ -2637,7 +2630,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
         '2026-08-14T21:00:00.000Z',
       ),
     db
-      .prepare(`INSERT INTO key_dates
+      .prepare(`INSERT OR IGNORE INTO key_dates
       (id, contract_id, supplier_id, type, title, due_date,
        internal_review_date, status, owner, backup_owner, priority, assigned_at,
        source_clause, source_page, created_at, updated_at)
@@ -2659,7 +2652,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
         '2026-08-29T17:00:00.000Z',
       ),
     db
-      .prepare(`INSERT INTO obligation_events
+      .prepare(`INSERT OR IGNORE INTO obligation_events
       (id, key_date_id, event_type, from_status, to_status, actor, note,
        metadata_json, created_at)
       VALUES (?, ?, 'status_changed', 'evidence_required', 'completed', ?, ?, '{}', ?)`)
@@ -2671,7 +2664,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
         '2026-08-14T21:00:00.000Z',
       ),
     db
-      .prepare(`INSERT INTO integration_outbox
+      .prepare(`INSERT OR IGNORE INTO integration_outbox
       (id, event_type, aggregate_type, aggregate_id, payload_json, status,
        attempt_count, occurred_at)
       VALUES (?, 'obligation.completed', 'obligation', ?, ?, 'pending', 0, ?)`)
@@ -2689,7 +2682,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
         '2026-08-14T21:00:00.000Z',
       ),
     db
-      .prepare(`INSERT INTO obligation_events
+      .prepare(`INSERT OR IGNORE INTO obligation_events
       (id, key_date_id, event_type, from_status, to_status, actor, note,
        metadata_json, created_at)
       VALUES (?, ?, 'status_changed', 'in_progress', 'evidence_required', ?, ?, '{}', ?)`)
@@ -2701,7 +2694,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
         '2026-08-29T17:00:00.000Z',
       ),
     db
-      .prepare(`INSERT INTO review_findings (id, intake_id, field, rule_name, standard_text, observed_text, severity, source_page, status)
+      .prepare(`INSERT OR IGNORE INTO review_findings (id, intake_id, field, rule_name, standard_text, observed_text, severity, source_page, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(
         'finding-001',
@@ -2715,7 +2708,7 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
         'open',
       ),
     db
-      .prepare(`INSERT INTO review_findings (id, intake_id, field, rule_name, standard_text, observed_text, severity, source_page, status)
+      .prepare(`INSERT OR IGNORE INTO review_findings (id, intake_id, field, rule_name, standard_text, observed_text, severity, source_page, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(
         'finding-002',
@@ -2736,6 +2729,12 @@ async function seedWorkspaceDatabase(db: D1Database, now: string) {
 
 let workspaceInitialization: Promise<void> | undefined;
 
+function retireLegacyFinancialApprovalRules(db: D1Database) {
+  return db.prepare(`UPDATE approval_rules SET active = 0
+    WHERE active = 1 AND id IN ('approval-rule-financial-v1',
+                               'approval-rule-financial-director-v1')`);
+}
+
 async function initializeWorkspaceDatabase() {
   const db = env.DB;
   if (!db) throw new Error('D1 database binding is unavailable.');
@@ -2752,29 +2751,42 @@ async function initializeWorkspaceDatabase() {
     : null;
   if ((version?.version ?? 0) >= CURRENT_SCHEMA_VERSION) return;
 
-  const supplierTable = await db
-    .prepare(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'suppliers'",
-    )
-    .first<{ name: string }>();
+  const now = isoNow();
+  const markVersion = (number: number) =>
+    db
+      .prepare(
+        'INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)',
+      )
+      .bind(number, now);
+  if ((version?.version ?? 0) < DEMO_SCENARIO_SCHEMA_VERSION) {
+    const supplierTable = await db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'suppliers'",
+      )
+      .first<{ name: string }>();
 
-  if (!supplierTable) {
-    await db.batch(schemaStatements.map((statement) => db.prepare(statement)));
-    await seedWorkspaceDatabase(db, isoNow());
-  } else {
-    await ensureWorkspaceColumns(db);
-    await db.batch(
-      runtimeMigrationStatements.map((statement) => db.prepare(statement)),
-    );
-    await syncEnhancedDemoScenario(db, isoNow());
+    if (!supplierTable || version?.version === INITIAL_SEED_PENDING) {
+      if (!supplierTable) {
+        await db.batch([
+          ...schemaStatements.map((statement) => db.prepare(statement)),
+          markVersion(INITIAL_SEED_PENDING),
+        ]);
+      }
+      await seedWorkspaceDatabase(db, now);
+    } else {
+      await ensureWorkspaceColumns(db);
+      await db.batch(
+        runtimeMigrationStatements.map((statement) => db.prepare(statement)),
+      );
+      await syncEnhancedDemoScenario(db, now);
+    }
+    await markVersion(DEMO_SCENARIO_SCHEMA_VERSION).run();
   }
 
-  await db
-    .prepare(
-      'INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?, ?)',
-    )
-    .bind(CURRENT_SCHEMA_VERSION, isoNow())
-    .run();
+  await db.batch([
+    retireLegacyFinancialApprovalRules(db),
+    markVersion(CURRENT_SCHEMA_VERSION),
+  ]);
 }
 
 export async function ensureWorkspaceDatabase() {
@@ -2834,4 +2846,5 @@ export async function resetWorkspaceDatabase() {
     ].map((table) => db.prepare(`DELETE FROM ${table}`)),
   );
   await seedWorkspaceDatabase(db, DEMO_RESET_TIMESTAMP);
+  await retireLegacyFinancialApprovalRules(db).run();
 }

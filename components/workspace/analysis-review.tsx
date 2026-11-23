@@ -28,6 +28,7 @@ export function AnalysisReview({
   result,
   originalAnalysis,
   stage,
+  readOnly = false,
   density = 'compact',
   fieldColumns = 2,
   fieldReviews,
@@ -38,6 +39,7 @@ export function AnalysisReview({
   onOverrideReasonChange,
 }: {
   result: AnalysisResponse;
+  readOnly?: boolean;
   originalAnalysis: ContractAnalysis | null;
   stage: IntakeStage;
   /** `comfortable` is for the full-width inline workspace; `compact` for dialogs. */
@@ -79,55 +81,57 @@ export function AnalysisReview({
   return (
     <div className="space-y-5">
       <DocumentQualitySummary report={result.qualityReport} />
-      <div className="rounded-xl border border-border bg-accent p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-sm font-semibold text-foreground">
-                Human verification required
-              </h3>
-              <Badge
-                variant="outline"
-                className="border-sky-200 bg-card text-sky-800"
-              >
-                {result.model}
-              </Badge>
+      {!readOnly && (
+        <div className="rounded-xl border border-border bg-accent p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Human verification required
+                </h3>
+                <Badge
+                  variant="outline"
+                  className="border-sky-200 bg-card text-sky-800"
+                >
+                  {result.model}
+                </Badge>
+              </div>
+              <p className="mt-1 text-[11px] text-slate-600">
+                Confirm or correct every AI-extracted field before database
+                values can change.
+              </p>
             </div>
-            <p className="mt-1 text-[11px] text-slate-600">
-              Confirm or correct every AI-extracted field before database values
-              can change.
-            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={onConfirmAll}
+              disabled={confirmedCount === extractionFields.length}
+              className="bg-card"
+            >
+              <Check /> Confirm all unchanged
+            </Button>
           </div>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={onConfirmAll}
-            disabled={confirmedCount === extractionFields.length}
-            className="bg-card"
-          >
-            <Check /> Confirm all unchanged
-          </Button>
+          <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-card">
+            <div
+              className="h-full rounded-full bg-[#287d9b] transition-all"
+              style={{
+                width: `${(confirmedCount / extractionFields.length) * 100}%`,
+              }}
+            />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
+            <span>
+              {confirmedCount} of {extractionFields.length} fields reviewed
+            </span>
+            <span>
+              {correctedCount
+                ? `${correctedCount} human correction${correctedCount === 1 ? '' : 's'} recorded`
+                : 'No corrections recorded yet'}
+            </span>
+          </div>
         </div>
-        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-card">
-          <div
-            className="h-full rounded-full bg-[#287d9b] transition-all"
-            style={{
-              width: `${(confirmedCount / extractionFields.length) * 100}%`,
-            }}
-          />
-        </div>
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
-          <span>
-            {confirmedCount} of {extractionFields.length} fields reviewed
-          </span>
-          <span>
-            {correctedCount
-              ? `${correctedCount} human correction${correctedCount === 1 ? '' : 's'} recorded`
-              : 'No corrections recorded yet'}
-          </span>
-        </div>
-      </div>
+      )}
       <div className={`grid gap-3 ${fieldGridColumns}`}>
         {extractionFields.map(([key, label]) => {
           const field = result.analysis[key] as ExtractedField;
@@ -160,26 +164,32 @@ export function AnalysisReview({
                 </span>
                 <div className="flex items-center gap-1.5">
                   <FieldConfidence field={originalField} />
-                  <StatusBadge
-                    tone={
-                      reviewStatus === 'accepted'
-                        ? 'green'
-                        : reviewStatus === 'corrected'
-                          ? 'amber'
-                          : lowConfidence
-                            ? 'rose'
-                            : 'blue'
-                    }
-                  >
-                    {reviewStatus === 'pending'
-                      ? lowConfidence
-                        ? 'Needs review'
-                        : 'Pending'
-                      : titleCase(reviewStatus)}
-                  </StatusBadge>
+                  {!readOnly && (
+                    <StatusBadge
+                      tone={
+                        reviewStatus === 'accepted'
+                          ? 'green'
+                          : reviewStatus === 'corrected'
+                            ? 'amber'
+                            : lowConfidence
+                              ? 'rose'
+                              : 'blue'
+                      }
+                    >
+                      {reviewStatus === 'pending'
+                        ? lowConfidence
+                          ? 'Needs review'
+                          : 'Pending'
+                        : titleCase(reviewStatus)}
+                    </StatusBadge>
+                  )}
                 </div>
               </div>
-              {key === 'liabilityCap' ? (
+              {readOnly ? (
+                <p className="mt-2 break-words text-sm font-medium">
+                  {inputValue || 'Not found in document'}
+                </p>
+              ) : key === 'liabilityCap' ? (
                 <select
                   aria-label={label}
                   value={inputValue}
@@ -244,7 +254,7 @@ export function AnalysisReview({
                     : ' · No supporting quote found'}
                 </span>
               </div>
-              {sourceOverrideRequired ? (
+              {!readOnly && sourceOverrideRequired ? (
                 <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2">
                   <label
                     htmlFor={`source-override-${key}`}
@@ -267,24 +277,26 @@ export function AnalysisReview({
                   </p>
                 </div>
               ) : null}
-              <div className="mt-3 flex justify-end">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={reviewStatus === 'pending' ? 'default' : 'outline'}
-                  onClick={() => onConfirmField(key)}
-                  className={
-                    roomy ? 'h-8 px-3 text-xs' : 'h-7 px-2.5 text-[11px]'
-                  }
-                >
-                  <Check />
-                  {reviewStatus === 'pending'
-                    ? 'Confirm field'
-                    : reviewStatus === 'corrected'
-                      ? 'Correction recorded'
-                      : 'Confirmed'}
-                </Button>
-              </div>
+              {!readOnly && (
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={reviewStatus === 'pending' ? 'default' : 'outline'}
+                    onClick={() => onConfirmField(key)}
+                    className={
+                      roomy ? 'h-8 px-3 text-xs' : 'h-7 px-2.5 text-[11px]'
+                    }
+                  >
+                    <Check />
+                    {reviewStatus === 'pending'
+                      ? 'Confirm field'
+                      : reviewStatus === 'corrected'
+                        ? 'Correction recorded'
+                        : 'Confirmed'}
+                  </Button>
+                </div>
+              )}
             </div>
           );
         })}

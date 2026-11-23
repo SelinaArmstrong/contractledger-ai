@@ -1,6 +1,8 @@
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 
+import { intakeRegisterQuery, orderedRows } from '@/lib/server/register-data';
+import type { RegisterRow } from '@/lib/registers';
 import { getWorkspace } from '@/app/api/workspace/route';
 import {
   buildIntakeWorkflowUpdate,
@@ -209,6 +211,30 @@ export const GET = withApiRoute(
     fallbackError: 'Unable to load the review intake.',
   },
   async ({ url }) => {
+    if (url.searchParams.has('beforeDate')) {
+      const beforeDate = z
+        .string()
+        .min(1)
+        .max(64)
+        .parse(url.searchParams.get('beforeDate'));
+      const afterId = querySchema.shape.id.parse(
+        url.searchParams.get('afterId'),
+      );
+      const pageSize = 250;
+      const query = {
+        ...intakeRegisterQuery,
+        select: `${intakeRegisterQuery.select}
+          WHERE i.status <> 'executed' AND
+          (i.received_at < ? OR (i.received_at = ? AND i.id > ?))`,
+      };
+      const { results } = await env.DB.prepare(orderedRows(query, pageSize + 1))
+        .bind(beforeDate, beforeDate, afterId)
+        .all<RegisterRow>();
+      return Response.json({
+        rows: results.slice(0, pageSize),
+        hasMore: results.length > pageSize,
+      });
+    }
     const { id } = querySchema.parse({ id: url.searchParams.get('id') });
     const details = await getIntakeDetails(id);
     if (!details)

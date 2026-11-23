@@ -52,7 +52,13 @@ const steps = [
  * work queue so the source document and the extraction fields both get the full
  * page width and can grow downwards instead of scrolling inside a modal.
  */
-export function DraftIntakePanel({ intake }: { intake: IntakeWorkflow }) {
+export function DraftIntakePanel({
+  intake,
+  canVerify,
+}: {
+  intake: IntakeWorkflow;
+  canVerify: boolean;
+}) {
   const [layout, setLayout] = useState<PanelLayout>('split');
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -70,6 +76,8 @@ export function DraftIntakePanel({ intake }: { intake: IntakeWorkflow }) {
     selectedFile,
   } = intake;
 
+  const permissionNote =
+    'You can analyze a draft and inspect its sources. A reviewer with verification permission must confirm and save the intake.';
   const activeStep = analysisResult ? 3 : selectedFile ? 2 : 1;
   const expanded = Boolean(selectedFile) || analysisStatus === 'saved';
   const showDocument = layout !== 'fields';
@@ -137,12 +145,14 @@ export function DraftIntakePanel({ intake }: { intake: IntakeWorkflow }) {
           <Upload className="size-7" />
         </span>
         <h2 className="app-section-title">
-          Upload a draft contract for review
+          {canVerify
+            ? 'Upload a draft contract for review'
+            : 'Analyze a draft contract'}
         </h2>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
-          Drop the file here, or browse. DeepSeek extracts the proposed fields
-          and playbook differences, and every value waits for your confirmation
-          before anything is stored.
+          {canVerify
+            ? 'Upload a draft to extract proposed fields and playbook differences. Confirm each value before saving.'
+            : permissionNote}
         </p>
         <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
           <Button
@@ -187,7 +197,11 @@ export function DraftIntakePanel({ intake }: { intake: IntakeWorkflow }) {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge tone={analysisResult ? 'green' : 'amber'}>
-              {analysisResult ? 'Ready to verify' : 'Waiting for analysis'}
+              {analysisResult
+                ? canVerify
+                  ? 'Ready to verify'
+                  : 'Analysis complete'
+                : 'Waiting for analysis'}
             </StatusBadge>
             <Button
               type="button"
@@ -200,8 +214,17 @@ export function DraftIntakePanel({ intake }: { intake: IntakeWorkflow }) {
             </Button>
           </div>
         </div>
-        <ol className="grid gap-2 sm:grid-cols-3">
-          {steps.map((step, index) => {
+        {!canVerify && (
+          <p className="text-sm text-muted-foreground">{permissionNote}</p>
+        )}
+        <ol
+          className={
+            canVerify
+              ? 'grid gap-2 sm:grid-cols-3'
+              : 'grid gap-2 sm:grid-cols-2'
+          }
+        >
+          {(canVerify ? steps : steps.slice(0, 2)).map((step, index) => {
             const state =
               index + 1 < activeStep
                 ? 'done'
@@ -316,7 +339,7 @@ export function DraftIntakePanel({ intake }: { intake: IntakeWorkflow }) {
           <div className="min-w-0 xl:sticky xl:top-4">
             <DocumentViewer
               title="Draft source copy"
-              description="Read the original language while you verify each extracted value."
+              description="Compare extracted values with the original contract language."
               fileName={selectedFile?.name}
               sourceUrl={previewUrl}
               isPdf={selectedFile?.type === 'application/pdf'}
@@ -347,6 +370,7 @@ export function DraftIntakePanel({ intake }: { intake: IntakeWorkflow }) {
               </div>
             ) : analysisResult ? (
               <AnalysisReview
+                readOnly={!canVerify}
                 result={analysisResult}
                 originalAnalysis={originalAnalysis}
                 stage="draft"
@@ -382,50 +406,54 @@ export function DraftIntakePanel({ intake }: { intake: IntakeWorkflow }) {
         ) : null}
       </div>
 
-      <footer className="sticky bottom-0 z-10 flex flex-col-reverse gap-3 rounded-b-xl border-t border-border bg-slate-50 px-5 py-4 shadow-[0_-1px_2px_rgb(15_23_42/4%)] sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-slate-500">
-          {analysisResult
-            ? pendingReviewCount
-              ? `${pendingReviewCount} field${pendingReviewCount === 1 ? '' : 's'} still need confirmation.`
-              : missingOverrideCount
-                ? `${missingOverrideCount} critical field${missingOverrideCount === 1 ? '' : 's'} still need an override reason.`
-                : 'Every field is confirmed. Saving keeps the draft outside the official register.'
-            : 'Nothing is written to the database until you confirm every extracted field.'}
-        </p>
-        {analysisResult ? (
-          <Button
-            onClick={() => void intake.save()}
-            disabled={
-              analysisStatus === 'saving' ||
-              pendingReviewCount > 0 ||
-              missingOverrideCount > 0
-            }
-            className="bg-primary hover:bg-primary/90"
-          >
-            {analysisStatus === 'saving' ? (
-              <LoaderCircle className="animate-spin" />
-            ) : (
-              <Database />
-            )}
-            {pendingReviewCount
-              ? `Confirm ${pendingReviewCount} fields to save`
-              : 'Save reviewed intake'}
-          </Button>
-        ) : (
-          <Button
-            onClick={() => void intake.analyze()}
-            disabled={!selectedFile || analysisStatus === 'analyzing'}
-            className="bg-primary hover:bg-primary/90"
-          >
-            {analysisStatus === 'analyzing' ? (
-              <LoaderCircle className="animate-spin" />
-            ) : (
-              <Sparkles />
-            )}
-            Analyze with DeepSeek
-          </Button>
-        )}
-      </footer>
+      {(canVerify || !analysisResult) && (
+        <footer className="sticky bottom-0 z-10 flex flex-col-reverse gap-3 rounded-b-xl border-t border-border bg-slate-50 px-5 py-4 shadow-[0_-1px_2px_rgb(15_23_42/4%)] sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-slate-500">
+            {analysisResult
+              ? pendingReviewCount
+                ? `${pendingReviewCount} field${pendingReviewCount === 1 ? '' : 's'} still need confirmation.`
+                : missingOverrideCount
+                  ? `${missingOverrideCount} critical field${missingOverrideCount === 1 ? '' : 's'} still need an override reason.`
+                  : 'Every field is confirmed. Saving keeps the draft outside the official register.'
+              : canVerify
+                ? 'Confirm each field before saving the draft.'
+                : 'Analysis results are available in this session.'}
+          </p>
+          {analysisResult ? (
+            <Button
+              onClick={() => void intake.save()}
+              disabled={
+                analysisStatus === 'saving' ||
+                pendingReviewCount > 0 ||
+                missingOverrideCount > 0
+              }
+              className="bg-primary hover:bg-primary/90"
+            >
+              {analysisStatus === 'saving' ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <Database />
+              )}
+              {pendingReviewCount
+                ? `Confirm ${pendingReviewCount} fields to save`
+                : 'Save reviewed intake'}
+            </Button>
+          ) : (
+            <Button
+              onClick={() => void intake.analyze()}
+              disabled={!selectedFile || analysisStatus === 'analyzing'}
+              className="bg-primary hover:bg-primary/90"
+            >
+              {analysisStatus === 'analyzing' ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <Sparkles />
+              )}
+              Analyze with DeepSeek
+            </Button>
+          )}
+        </footer>
+      )}
     </section>
   );
 }

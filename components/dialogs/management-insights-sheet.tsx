@@ -36,6 +36,8 @@ import {
 } from '@/components/workspace/formatters';
 import { useDraggableDialog } from '@/components/workspace/use-draggable-dialog';
 
+import { MANAGEMENT_INSIGHTS_REGISTER_LIMIT } from '@/lib/registers';
+
 export const ManagementChartCard = lazy(() =>
   import('@/components/management-chart-card').then((module) => ({
     default: module.ManagementChartCard,
@@ -46,16 +48,18 @@ export function ManagementInsightsSheet({
   open,
   onOpenChange,
   scope,
-  currentRecordIds,
-  allRecordIds,
+  criteria,
+  matchCount,
+  totalCount,
   onSelectRecord,
   onOpenAlerts,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   scope: ManagementInsightScope;
-  currentRecordIds: string[];
-  allRecordIds: string[];
+  criteria: string;
+  matchCount: number;
+  totalCount: number;
   onSelectRecord: (id: string) => void;
   onOpenAlerts: () => void;
 }) {
@@ -65,18 +69,13 @@ export function ManagementInsightsSheet({
   const [error, setError] = useState('');
   const requestSequence = useRef(0);
   const previousOpen = useRef(false);
-  const currentIdsKey = currentRecordIds.join('\u001f');
-  const allIdsKey = allRecordIds.join('\u001f');
   const label = scope === 'contracts' ? 'Contract' : 'Supplier';
   const sheetRef = useRef<HTMLDivElement>(null);
   const draggable = useDraggableDialog({ surfaceRef: sheetRef });
 
   const runAnalysis = useCallback(
     async (nextSelection: 'current' | 'all') => {
-      const ids = (nextSelection === 'current' ? currentIdsKey : allIdsKey)
-        .split('\u001f')
-        .filter(Boolean);
-      if (!ids.length) {
+      if (!(nextSelection === 'current' ? matchCount : totalCount)) {
         setError('No records are available in this analysis scope.');
         return;
       }
@@ -94,7 +93,11 @@ export function ManagementInsightsSheet({
         const response = await fetch('/api/management-insights', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scope, recordIds: ids, asOfDate }),
+          body: JSON.stringify({
+            scope,
+            criteria: nextSelection === 'current' ? criteria : '',
+            asOfDate,
+          }),
         });
         const body = (await response.json()) as ManagementInsightResponse & {
           error?: string;
@@ -115,7 +118,7 @@ export function ManagementInsightsSheet({
         if (requestId === requestSequence.current) setLoading(false);
       }
     },
-    [allIdsKey, currentIdsKey, scope],
+    [criteria, matchCount, scope, totalCount],
   );
 
   useEffect(() => {
@@ -175,27 +178,31 @@ export function ManagementInsightsSheet({
                 size="sm"
                 variant={selection === 'current' ? 'default' : 'outline'}
                 onClick={() => void runAnalysis('current')}
-                disabled={loading || !currentRecordIds.length}
+                disabled={loading || !matchCount}
                 className={
                   selection === 'current'
                     ? 'bg-primary hover:bg-primary/90'
                     : 'bg-card'
                 }
               >
-                Current view · {currentRecordIds.length}
+                {matchCount > MANAGEMENT_INSIGHTS_REGISTER_LIMIT
+                  ? `Current view · first ${MANAGEMENT_INSIGHTS_REGISTER_LIMIT} of ${matchCount}`
+                  : `Current view · ${matchCount}`}
               </Button>
               <Button
                 size="sm"
                 variant={selection === 'all' ? 'default' : 'outline'}
                 onClick={() => void runAnalysis('all')}
-                disabled={loading || !allRecordIds.length}
+                disabled={loading || !totalCount}
                 className={
                   selection === 'all'
                     ? 'bg-primary hover:bg-primary/90'
                     : 'bg-card'
                 }
               >
-                Entire register · {allRecordIds.length}
+                {totalCount > MANAGEMENT_INSIGHTS_REGISTER_LIMIT
+                  ? `Register · first ${MANAGEMENT_INSIGHTS_REGISTER_LIMIT} of ${totalCount}`
+                  : `Entire register · ${totalCount}`}
               </Button>
             </div>
             {result ? (

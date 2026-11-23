@@ -1,14 +1,11 @@
 'use client';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type {
-  ExtractedField,
-  IntakeDetails,
-  Workspace,
-} from '@/lib/contract-ledger-types';
+import type { IntakeDetails, Workspace } from '@/lib/contract-ledger-types';
 import {
   AlertCircle,
   Building2,
@@ -39,12 +36,14 @@ import { useDraggableDialog } from '@/components/workspace/use-draggable-dialog'
 
 export function IntakeReviewDialog({
   intakeId,
+  canEditWorkflow,
   onClose,
   onUpdated,
   onOpenSupplier,
   onOpenRule,
 }: {
   intakeId: string;
+  canEditWorkflow: boolean;
   onClose: () => void;
   onUpdated: (workspace: Workspace) => void;
   onOpenSupplier: (supplierId: string) => void;
@@ -65,7 +64,7 @@ export function IntakeReviewDialog({
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(
     null,
   );
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const draggable = useDraggableDialog({ surfaceRef: dialogRef });
 
   const applyDetails = useCallback((nextDetails: IntakeDetails) => {
@@ -121,7 +120,7 @@ export function IntakeReviewDialog({
   }, [loadDetails]);
 
   const saveWorkflow = async () => {
-    if (!details) return;
+    if (!details || !canEditWorkflow) return;
     setSaving(true);
     setError('');
     try {
@@ -171,29 +170,26 @@ export function IntakeReviewDialog({
     ? extractionFields.map(([fieldName, label]) => ({
         fieldName,
         label,
-        field: analysis[fieldName] as ExtractedField,
+        field: analysis[fieldName],
       }))
     : [];
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 p-4 backdrop-blur-[2px]"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !saving) onClose();
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !saving) onClose();
       }}
     >
-      <dialog
+      <DialogContent
+        showCloseButton={false}
         ref={dialogRef}
         style={draggable.surfaceStyle}
         onPointerDown={draggable.onPointerDown}
         onPointerMove={draggable.onPointerMove}
         onPointerUp={draggable.onPointerUp}
         onPointerCancel={draggable.onPointerCancel}
-        open
-        aria-modal="true"
-        aria-labelledby="intake-review-dialog-title"
-        className={`${dialogSurfaceClass} grid grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden`}
+        className={`${dialogSurfaceClass} fixed sm:max-w-[1440px] grid grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden`}
       >
         <header
           data-dialog-drag-handle
@@ -217,12 +213,9 @@ export function IntakeReviewDialog({
               </StatusBadge>
             ) : null}
           </div>
-          <h2
-            id="intake-review-dialog-title"
-            className="mt-1 pr-10 text-xl font-semibold text-foreground"
-          >
+          <DialogTitle className="mt-1 pr-10 text-xl font-semibold text-foreground">
             {details ? valueText(details.intake.title) : 'Loading review…'}
-          </h2>
+          </DialogTitle>
           {details ? (
             <p className="mt-1 text-xs text-slate-500">
               {valueText(details.intake.intake_number)} ·{' '}
@@ -322,12 +315,14 @@ export function IntakeReviewDialog({
                             <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">
                               {label}
                             </span>
-                            <FieldConfidence field={field} />
+                            {field && <FieldConfidence field={field} />}
                           </div>
                           <p className="mt-1 truncate text-[11px] font-medium text-foreground">
-                            {fieldName === 'contractValue'
-                              ? moneyFromCents(Number(field.value ?? 0) * 100)
-                              : valueText(field.value)}
+                            {field?.value == null
+                              ? 'Not recorded'
+                              : fieldName === 'contractValue'
+                                ? moneyFromCents(Number(field.value) * 100)
+                                : valueText(field.value)}
                           </p>
                         </div>
                       ))}
@@ -457,6 +452,7 @@ export function IntakeReviewDialog({
                                   {titleCase(finding.severity)}
                                 </StatusBadge>
                                 <select
+                                  disabled={!canEditWorkflow}
                                   aria-label={`${valueText(finding.rule_name)} finding status`}
                                   value={
                                     findingStatuses[String(finding.id)] ??
@@ -542,6 +538,7 @@ export function IntakeReviewDialog({
                     >
                       Review owner
                       <Input
+                        readOnly={!canEditWorkflow}
                         id="review-workflow-owner"
                         value={owner}
                         onChange={(event) => setOwner(event.target.value)}
@@ -554,6 +551,7 @@ export function IntakeReviewDialog({
                     >
                       Target review date
                       <Input
+                        readOnly={!canEditWorkflow}
                         id="review-workflow-target-date"
                         type="date"
                         value={targetReviewDate}
@@ -566,6 +564,7 @@ export function IntakeReviewDialog({
                     <label className="text-[11px] font-medium text-slate-600">
                       Workflow status
                       <select
+                        disabled={!canEditWorkflow}
                         value={status}
                         onChange={(event) => setStatus(event.target.value)}
                         className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-xs"
@@ -608,6 +607,7 @@ export function IntakeReviewDialog({
                   <label className="mt-3 block text-[11px] font-medium text-slate-600">
                     Internal review notes
                     <textarea
+                      readOnly={!canEditWorkflow}
                       value={internalNotes}
                       onChange={(event) => setInternalNotes(event.target.value)}
                       rows={3}
@@ -645,17 +645,19 @@ export function IntakeReviewDialog({
             <Button variant="outline" onClick={onClose} disabled={saving}>
               Close
             </Button>
-            <Button
-              onClick={() => void saveWorkflow()}
-              disabled={!details || saving || !owner.trim()}
-              className="bg-primary hover:bg-primary/90"
-            >
-              {saving ? <LoaderCircle className="animate-spin" /> : <Check />}
-              Save review workflow
-            </Button>
+            {canEditWorkflow && (
+              <Button
+                onClick={() => void saveWorkflow()}
+                disabled={!details || saving || !owner.trim()}
+                className="bg-primary hover:bg-primary/90"
+              >
+                {saving ? <LoaderCircle className="animate-spin" /> : <Check />}
+                Save review workflow
+              </Button>
+            )}
           </div>
         </footer>
-      </dialog>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

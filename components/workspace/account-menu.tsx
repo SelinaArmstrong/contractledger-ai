@@ -22,11 +22,11 @@ export function AccountMenu({
   const roleLabel = titleCase(currentUser.role.replaceAll('_', ' '));
 
   return (
-    <div className="w-10 shrink-0 sm:w-[220px]">
+    <div className="w-11 shrink-0 sm:w-44">
       <details className="group relative">
         <summary
           aria-label={`Open account menu for ${currentUser.displayName}`}
-          className="grid h-11 w-full cursor-pointer list-none grid-cols-[36px] items-center rounded-xl border border-transparent p-0 text-left outline-none transition-colors hover:border-border hover:bg-slate-50 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 [&::-webkit-details-marker]:hidden sm:grid-cols-[36px_minmax(0,1fr)_16px] sm:gap-2 sm:px-1.5"
+          className="grid h-11 w-full cursor-pointer list-none place-items-center rounded-xl border border-transparent p-0 text-left outline-none transition-colors hover:border-border hover:bg-slate-50 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 [&::-webkit-details-marker]:hidden sm:grid-cols-[36px_minmax(0,1fr)_16px] sm:justify-items-start sm:gap-2 sm:px-1.5"
         >
           <span className="flex size-9 items-center justify-center rounded-lg bg-accent text-xs font-semibold text-foreground">
             {initials || 'U'}

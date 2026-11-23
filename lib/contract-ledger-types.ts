@@ -274,6 +274,7 @@ export type Workspace = {
     current_value_cents: number;
     active_suppliers: number;
     pending_suppliers: number;
+    supplier_documentation_follow_up: number;
     records_to_verify: number;
     total_contracts: number;
     total_suppliers: number;
@@ -293,6 +294,7 @@ export type Workspace = {
   suppliers: Array<Record<string, string | number | null>>;
   supplierRiskProfiles?: Record<string, SupplierRiskProfile>;
   intakes: Array<Record<string, string | number | null>>;
+  pendingReviews: Workspace['intakes'];
   keyDates: Array<Record<string, string | number | null>>;
   obligationMetrics: {
     open_obligations: number;
@@ -341,7 +343,7 @@ export type IntakeDetails = {
   supplier: Record<string, string | number | null> | null;
   documents: Array<Record<string, string | number | null>>;
   findings: Array<Record<string, string | number | null>>;
-  analysis: ContractAnalysis | null;
+  analysis: Partial<ContractAnalysis> | null;
   analysisMeta: Record<string, string | number | null> | null;
   fieldReviews: Array<Record<string, string | number | null>>;
   auditLogs: Array<Record<string, string | number | null>>;

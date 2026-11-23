@@ -6,6 +6,11 @@ import {
   type ManagementReport,
 } from '@/lib/management-insights';
 import { getWorkspace } from '@/app/api/workspace/route';
+import { MANAGEMENT_INSIGHTS_REGISTER_LIMIT } from '@/lib/registers';
+import {
+  getRegisterPage,
+  getRegisterRowsByIds,
+} from '@/lib/server/register-list';
 import { enforceRateLimit } from '@/lib/server/request-security';
 import { withApiRoute } from '@/lib/server/route-handler';
 import { reserveAIBudget } from '@/lib/server/ai-budget';
@@ -13,14 +18,23 @@ import { reserveAIBudget } from '@/lib/server/ai-budget';
 const MODEL = 'deepseek-v4-flash';
 const PROMPT_VERSION = 'management-insights-2026.1';
 
-const requestSchema = z.object({
-  scope: z.enum(['contracts', 'suppliers']),
-  recordIds: z.array(z.string().min(1)).min(1).max(500),
-  asOfDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
-});
+const requestSchema = z
+  .object({
+    scope: z.enum(['contracts', 'suppliers']),
+    recordIds: z
+      .array(z.string().min(1).max(200))
+      .min(1)
+      .max(MANAGEMENT_INSIGHTS_REGISTER_LIMIT)
+      .optional(),
+    criteria: z.string().max(32_000).optional(),
+    asOfDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+  })
+  .refine(
+    (input) => input.recordIds !== undefined || input.criteria !== undefined,
+  );
 
 const aiOutputSchema = z.object({
   executiveSummary: z.string().min(1).max(1_200),
@@ -156,22 +170,32 @@ export const POST = withApiRoute(
       'management-insights',
     );
     if (overBudget) return overBudget;
-    const workspace = await getWorkspace();
-    const selectedIds = new Set(input.recordIds);
+    const [workspace, selection] = await Promise.all([
+      getWorkspace(),
+      input.recordIds
+        ? getRegisterRowsByIds(env.DB, input.scope, input.recordIds)
+        : getRegisterPage(
+            env.DB,
+            input.scope,
+            new URLSearchParams(input.criteria),
+            MANAGEMENT_INSIGHTS_REGISTER_LIMIT,
+          ).then((page) => page.rows),
+    ]);
     const contracts =
       input.scope === 'contracts'
-        ? workspace.contracts.filter((item) => selectedIds.has(String(item.id)))
-        : workspace.contracts.filter((item) =>
-            selectedIds.has(String(item.supplier_id)),
+        ? selection
+        : await getRegisterRowsByIds(
+            env.DB,
+            'contracts',
+            selection.map((item) => String(item.id)),
+            true,
           );
     const suppliers =
       input.scope === 'suppliers'
-        ? workspace.suppliers.filter((item) => selectedIds.has(String(item.id)))
-        : workspace.suppliers.filter((item) =>
-            contracts.some(
-              (contract) => String(contract.supplier_id) === String(item.id),
-            ),
-          );
+        ? selection
+        : await getRegisterRowsByIds(env.DB, 'suppliers', [
+            ...new Set(contracts.map((item) => String(item.supplier_id))),
+          ]);
     const actualIds = new Set(
       (input.scope === 'contracts' ? contracts : suppliers).map((item) =>
         String(item.id),

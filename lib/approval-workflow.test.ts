@@ -163,19 +163,21 @@ describe('approval rule evaluation', () => {
       ).map((item) => item.rule.ownerRole);
 
     it('routes a value to one owner instead of every band beneath it', () => {
-      expect(financialOwners(20_000_000)).toEqual(['Procurement Director']);
       expect(financialOwners(58_500_000)).toEqual(['Finance / CFO']);
+      // Above the Finance ceiling the value escapes upward rather than
+      // collecting both owners.
       expect(financialOwners(500_000_000)).toEqual(['Chief Executive Officer']);
     });
 
-    it('places a band boundary in the lower band', () => {
-      // USD 500,000 exactly is the Director ceiling, not the Finance floor.
-      expect(financialOwners(50_000_000)).toEqual(['Procurement Director']);
+    it('treats a band floor as exclusive and its ceiling as inclusive', () => {
+      expect(financialOwners(50_000_000)).toEqual([]);
       expect(financialOwners(50_000_001)).toEqual(['Finance / CFO']);
+      expect(financialOwners(200_000_000)).toEqual(['Finance / CFO']);
+      expect(financialOwners(200_000_001)).toEqual(['Chief Executive Officer']);
     });
 
     it('leaves values below the lowest floor unrouted', () => {
-      expect(financialOwners(5_000_000)).toEqual([]);
+      expect(financialOwners(20_000_000)).toEqual([]);
     });
   });
 

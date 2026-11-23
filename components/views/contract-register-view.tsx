@@ -11,15 +11,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { Workspace } from '@/lib/contract-ledger-types';
-import {
-  ChevronDown,
-  FileSpreadsheet,
-  LoaderCircle,
-  RotateCcw,
-  Search,
-  Sparkles,
-  Upload,
-} from 'lucide-react';
+import { ChevronDown, RotateCcw, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ManagementInsightsSheet } from '@/components/dialogs/management-insights-sheet';
 import {
@@ -31,17 +23,19 @@ import {
 import {
   PageHeading,
   Panel,
-  PanelHeader,
   StatusBadge,
 } from '@/components/workspace/primitives';
 import {
   DateFilter,
   FilterSelect,
   FloatingTableScrollbar,
+  RegisterRecord,
+  RegisterToolbar,
+  RegisterUtilities,
   TablePagination,
   useFloatingTableScrollbar,
 } from '@/components/workspace/table';
-import type { RegisterTruncation } from '@/lib/workspace-limits';
+import { useRegisterPage } from '@/components/workspace/use-register-page';
 
 /**
  * `current_value_cents` already includes amendments, and the Original value and
@@ -55,37 +49,36 @@ function amendmentDelta(value: unknown) {
 }
 
 export function ContractRegisterView({
-  contracts,
-  allContracts,
-  recentContracts,
+  workspace,
   search,
   onSearch,
   onRegister,
+  canExport,
+  canUseInsights,
+  workspaceUnavailable,
   onExport,
   exporting,
   onSelect,
   onOpenAlerts,
   openInsightsRequest,
   onInsightsRequestHandled,
-  truncation,
 }: {
-  contracts: Workspace['contracts'];
-  allContracts: Workspace['contracts'];
-  recentContracts: Workspace['contracts'];
+  workspace: Workspace | null;
   search: string;
   onSearch: (value: string) => void;
-  onRegister: () => void;
+  onRegister?: () => void;
+  canExport: boolean;
+  canUseInsights: boolean;
+  workspaceUnavailable: boolean;
   onExport: () => void;
   exporting: boolean;
   onSelect: (id: string) => void;
   onOpenAlerts: () => void;
   openInsightsRequest: boolean;
   onInsightsRequestHandled: () => void;
-  truncation: RegisterTruncation;
 }) {
   const contractTableScroll = useFloatingTableScrollbar();
   const [insightsOpen, setInsightsOpen] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [typeFilter, setTypeFilter] = useState('all');
   const [supplierFilter, setSupplierFilter] = useState('all');
@@ -97,75 +90,37 @@ export function ContractRegisterView({
   const [effectiveDate, setEffectiveDate] = useState('');
   const [expirationCondition, setExpirationCondition] = useState('all');
   const [expirationDate, setExpirationDate] = useState('');
-  useEffect(() => {
-    if (!openInsightsRequest) return;
-    const timer = window.setTimeout(() => {
-      setInsightsOpen(true);
-      onInsightsRequestHandled();
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [onInsightsRequestHandled, openInsightsRequest]);
-  const options = (key: string) =>
-    Array.from(
-      new Set(
-        contracts
-          .map((item) => valueText(item[key]))
-          .filter((value) => value !== 'Not found'),
-      ),
-    ).sort((a, b) => a.localeCompare(b));
-  const visibleContracts = contracts.filter((item) => {
-    if (typeFilter !== 'all' && item.contract_type !== typeFilter) return false;
-    if (supplierFilter !== 'all' && item.supplier_name !== supplierFilter)
-      return false;
-    if (departmentFilter !== 'all' && item.department !== departmentFilter)
-      return false;
-    if (statusFilter !== 'all' && item.status !== statusFilter) return false;
-    const thresholdCents = Number(amountValue) * 100;
-    const currentCents = Number(item.current_value_cents ?? 0);
-    if (amountComparison === 'greater' && currentCents <= thresholdCents)
-      return false;
-    if (amountComparison === 'less' && currentCents >= thresholdCents)
-      return false;
-    const matchesDate = (
-      value: unknown,
-      condition: string,
-      filterDate: string,
-    ) => {
-      if (condition === 'all' || !filterDate) return true;
-      const dateValue = typeof value === 'string' ? value : '';
-      if (!dateValue) return false;
-      return condition === 'on_or_before'
-        ? dateValue <= filterDate
-        : dateValue >= filterDate;
-    };
-    return (
-      matchesDate(item.effective_date, effectiveCondition, effectiveDate) &&
-      matchesDate(item.expiration_date, expirationCondition, expirationDate)
-    );
-  });
-  const pageCount = Math.max(1, Math.ceil(visibleContracts.length / pageSize));
-  const activePage = Math.min(currentPage, pageCount);
-  const pageStart = (activePage - 1) * pageSize;
-  const paginatedContracts = visibleContracts.slice(
-    pageStart,
-    pageStart + pageSize,
-  );
-  useEffect(() => {
-    const timer = window.setTimeout(() => setCurrentPage(1), 0);
-    return () => window.clearTimeout(timer);
-  }, [
+  const criteria = new URLSearchParams({
+    search,
+    contract_type: typeFilter,
+    supplier_name: supplierFilter,
+    department: departmentFilter,
+    status: statusFilter,
     amountComparison,
     amountValue,
-    departmentFilter,
     effectiveCondition,
     effectiveDate,
     expirationCondition,
     expirationDate,
-    search,
-    statusFilter,
-    supplierFilter,
-    typeFilter,
-  ]);
+  }).toString();
+  const [pagination, setPagination] = useState({ criteria, page: 1 });
+  if (pagination.criteria !== criteria) setPagination({ criteria, page: 1 });
+  const setCurrentPage = (page: number) => setPagination({ criteria, page });
+  const register = useRegisterPage(
+    'contracts',
+    workspace,
+    criteria,
+    pagination.criteria === criteria ? pagination.page : 1,
+    pageSize,
+  );
+  const paginatedContracts = register.page?.rows ?? [];
+  const matchCount = register.page?.matchCount ?? 0;
+  const totalCount =
+    register.page?.totalCount ?? workspace?.metrics.total_contracts ?? 0;
+  const activePage = register.page?.page ?? 1;
+  const loading = register.loading && !workspaceUnavailable;
+  const options = (key: string) => register.options[key] ?? [];
+  const recentContracts = workspace?.contracts.slice(0, 5) ?? [];
   const clearFilters = () => {
     setTypeFilter('all');
     setSupplierFilter('all');
@@ -179,176 +134,192 @@ export function ContractRegisterView({
     setExpirationDate('');
     setCurrentPage(1);
   };
+  useEffect(() => {
+    if (!openInsightsRequest || loading) return;
+    const timer = window.setTimeout(() => {
+      setInsightsOpen(true);
+      onInsightsRequestHandled();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loading, onInsightsRequestHandled, openInsightsRequest]);
+  const filterCount = [
+    typeFilter !== 'all',
+    supplierFilter !== 'all',
+    departmentFilter !== 'all',
+    statusFilter !== 'all',
+    amountComparison !== 'all',
+    effectiveCondition !== 'all' && Boolean(effectiveDate),
+    expirationCondition !== 'all' && Boolean(expirationDate),
+  ].filter(Boolean).length;
+
   return (
     <>
       <PageHeading
-        eyebrow="Official records only"
+        eyebrow="Records"
         title="Contract register"
-        description="Executed, active, expired, terminated, and closed contracts. Drafts and proposed values never appear here."
+        description="Find executed agreements, track amendments, and review current terms."
         action={
           <div className="flex flex-wrap gap-2">
-            <Button
-              onClick={onRegister}
-              className="bg-primary hover:bg-primary/90"
-            >
-              <Upload />
-              Register executed contract
-            </Button>
-            <Button variant="outline" onClick={onExport} className="bg-card">
-              {exporting ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <FileSpreadsheet />
-              )}
-              Export workbook
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setInsightsOpen(true)}
-              disabled={!visibleContracts.length}
-              className="border-input bg-accent text-accent-foreground hover:bg-accent"
-            >
-              <Sparkles />
-              AI management insights
-            </Button>
+            {onRegister ? (
+              <Button
+                onClick={onRegister}
+                className="workspace-primary-action h-11"
+              >
+                <Upload /> Register executed contract
+              </Button>
+            ) : null}
+            <RegisterUtilities
+              hasPrimaryAction={Boolean(onRegister)}
+              exportLabel="Export workbook"
+              onExport={canExport ? onExport : undefined}
+              exportDisabled={exporting || !totalCount}
+              exporting={exporting}
+              onInsights={
+                canUseInsights ? () => setInsightsOpen(true) : undefined
+              }
+              insightsDisabled={!matchCount}
+            />
           </div>
         }
       />
-      <div className="mb-5 rounded-xl border border-border bg-card px-5 py-4 shadow-[0_1px_2px_rgb(15_23_42/3%)]">
-        <div className="grid gap-3 md:grid-cols-4">
-          {[
-            ['01', 'Signed agreement', 'Upload the executed source copy'],
-            ['02', 'AI extraction', 'Read official values, dates, and terms'],
-            ['03', 'Human verification', 'Confirm fields and source pages'],
-            ['04', 'Official register', 'Update supplier, dates, and totals'],
-          ].map(([number, title, description], index) => (
-            <div
-              key={number}
-              className={`relative rounded-lg px-3 py-2 ${index ? 'md:border-l md:border-[#dce4e8] md:pl-5' : ''}`}
-            >
-              <div className="text-[11px] font-semibold tracking-[0.14em] text-accent-foreground">
-                STEP {number}
-              </div>
-              <div className="mt-1 text-xs font-semibold text-foreground">
-                {title}
-              </div>
-              <div className="mt-0.5 text-[11px] leading-4 text-slate-500">
-                {description}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
       <Panel className="overflow-hidden">
-        <PanelHeader
-          title="Current contract register"
-          description={`${visibleContracts.length} of ${contracts.length} verified records match the current view`}
-          action={
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-              <Input
-                value={search}
-                onChange={(event) => onSearch(event.target.value)}
-                placeholder="Filter register…"
-                className="pl-9"
+        <RegisterToolbar
+          label="Search contracts"
+          placeholder="Search contracts…"
+          search={search}
+          onSearch={onSearch}
+          matchCount={matchCount}
+          totalCount={totalCount}
+          filterCount={filterCount}
+          loading={loading}
+          unavailable={Boolean(register.error) || workspaceUnavailable}
+        >
+          <div className="border-b border-border bg-muted p-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
+              <FilterSelect
+                label="Contract type"
+                value={typeFilter}
+                onChange={setTypeFilter}
+                options={options('contract_type')}
               />
-            </div>
-          }
-        />
-        <div className="border-b border-border bg-muted p-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
-            <FilterSelect
-              label="Contract type"
-              value={typeFilter}
-              onChange={setTypeFilter}
-              options={options('contract_type')}
-            />
-            <FilterSelect
-              label="Supplier"
-              value={supplierFilter}
-              onChange={setSupplierFilter}
-              options={options('supplier_name')}
-            />
-            <FilterSelect
-              label="Department"
-              value={departmentFilter}
-              onChange={setDepartmentFilter}
-              options={options('department')}
-            />
-            <FilterSelect
-              label="Status"
-              value={statusFilter}
-              onChange={setStatusFilter}
-              options={options('status')}
-              titleCaseOptions
-            />
-            <label className="text-[11px] font-medium text-slate-600">
-              Current value
-              <div className="mt-1 flex">
-                <select
-                  value={amountComparison}
-                  onChange={(event) => setAmountComparison(event.target.value)}
-                  className="h-9 rounded-l-md border border-r-0 border-input bg-card px-2 text-xs"
+              <FilterSelect
+                label="Supplier"
+                value={supplierFilter}
+                onChange={setSupplierFilter}
+                options={options('supplier_name')}
+              />
+              <FilterSelect
+                label="Department"
+                value={departmentFilter}
+                onChange={setDepartmentFilter}
+                options={options('department')}
+              />
+              <FilterSelect
+                label="Status"
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={options('status')}
+                titleCaseOptions
+              />
+              <label className="text-[11px] font-medium text-slate-600">
+                Current value
+                <div className="mt-1 flex">
+                  <select
+                    value={amountComparison}
+                    onChange={(event) =>
+                      setAmountComparison(event.target.value)
+                    }
+                    className="h-9 rounded-l-md border border-r-0 border-input bg-card px-2 text-xs"
+                  >
+                    <option value="all">Any amount</option>
+                    <option value="greater">Greater than</option>
+                    <option value="less">Less than</option>
+                  </select>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    value={amountValue}
+                    onChange={(event) => setAmountValue(event.target.value)}
+                    aria-label="Current value in US dollars"
+                    className="h-9 rounded-l-none bg-card text-xs"
+                  />
+                </div>
+              </label>
+              <DateFilter
+                label="Effective date"
+                condition={effectiveCondition}
+                onConditionChange={setEffectiveCondition}
+                date={effectiveDate}
+                onDateChange={setEffectiveDate}
+              />
+              <DateFilter
+                label="Expiration date"
+                condition={expirationCondition}
+                onConditionChange={setExpirationCondition}
+                date={expirationDate}
+                onDateChange={setExpirationDate}
+              />
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={clearFilters}
+                  className="h-9 w-full bg-card"
+                  disabled={
+                    !filterCount &&
+                    effectiveCondition === 'all' &&
+                    expirationCondition === 'all'
+                  }
                 >
-                  <option value="all">Any amount</option>
-                  <option value="greater">Greater than</option>
-                  <option value="less">Less than</option>
-                </select>
-                <Input
-                  type="number"
-                  min="0"
-                  step="1000"
-                  value={amountValue}
-                  onChange={(event) => setAmountValue(event.target.value)}
-                  aria-label="Current value in US dollars"
-                  className="h-9 rounded-l-none bg-card text-xs"
-                />
+                  <RotateCcw />
+                  Clear filters
+                </Button>
               </div>
-            </label>
-            <DateFilter
-              label="Effective date"
-              condition={effectiveCondition}
-              onConditionChange={setEffectiveCondition}
-              date={effectiveDate}
-              onDateChange={setEffectiveDate}
-            />
-            <DateFilter
-              label="Expiration date"
-              condition={expirationCondition}
-              onConditionChange={setExpirationCondition}
-              date={expirationDate}
-              onDateChange={setExpirationDate}
-            />
-            <div className="flex items-end">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={clearFilters}
-                className="h-9 w-full bg-card"
-              >
-                <RotateCcw />
-                Clear filters
-              </Button>
             </div>
+            <p className="mt-3 text-[11px] text-slate-500">
+              Amounts use current contract value in USD. Date filters are
+              inclusive and use U.S. English order; for example, “on or before
+              08/30/2026” includes August 30, 2026.
+            </p>
           </div>
-          <p className="mt-3 text-[11px] text-slate-500">
-            Amounts use current contract value in USD. Date filters are
-            inclusive and use U.S. English order; for example, “on or before
-            08/30/2026” includes August 30, 2026.
-          </p>
-        </div>
+        </RegisterToolbar>
+        {paginatedContracts.length ? (
+          <ul
+            className="divide-y divide-border md:hidden"
+            aria-label="Contract records"
+          >
+            {paginatedContracts.map((item) => (
+              <RegisterRecord
+                key={String(item.id)}
+                title={valueText(item.title)}
+                subtitle={`${valueText(item.contract_number)} · ${valueText(item.supplier_name)}`}
+                onOpen={() => onSelect(String(item.id))}
+              >
+                <StatusBadge tone={toneForStatus(item.status)}>
+                  {titleCase(item.status)}
+                </StatusBadge>
+                <span className="text-xs font-medium tabular-nums">
+                  {moneyFromCents(item.current_value_cents)}
+                </span>
+              </RegisterRecord>
+            ))}
+          </ul>
+        ) : null}
         <div>
           <Table
-            className="min-w-[2160px]"
+            aria-label="Contract records"
+            containerClassName="hidden md:block"
+            className="register-table min-w-[2160px]"
             containerRef={contractTableScroll.tableScrollerRef}
             onContainerScroll={contractTableScroll.syncTableToFloating}
           >
             <TableHeader>
               <TableRow className="bg-muted">
-                <TableHead className="w-14 px-4 text-center">No.</TableHead>
-                <TableHead>Contract</TableHead>
+                <TableHead className="register-key-column">Contract</TableHead>
                 <TableHead>Supplier</TableHead>
                 <TableHead>Current value</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Contract type</TableHead>
                 <TableHead>Department</TableHead>
                 <TableHead>Owner</TableHead>
@@ -361,17 +332,13 @@ export function ContractRegisterView({
                 <TableHead>Next obligation</TableHead>
                 <TableHead>Payment terms</TableHead>
                 <TableHead>Governing law</TableHead>
-                <TableHead>Status</TableHead>
                 <TableHead>Last updated</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedContracts.map((item, index) => (
+              {paginatedContracts.map((item) => (
                 <TableRow key={String(item.id)}>
-                  <TableCell className="px-4 py-3.5 text-center text-xs font-medium text-slate-500">
-                    {pageStart + index + 1}
-                  </TableCell>
-                  <TableCell className="py-3.5">
+                  <TableCell className="register-key-column">
                     <button
                       type="button"
                       onClick={() => onSelect(String(item.id))}
@@ -401,6 +368,11 @@ export function ContractRegisterView({
                         {amendmentDelta(item.amendment_value_cents)}
                       </div>
                     ) : null}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    <StatusBadge tone={toneForStatus(item.status)}>
+                      {titleCase(item.status)}
+                    </StatusBadge>
                   </TableCell>
                   <TableCell className="text-xs">
                     {valueText(item.contract_type)}
@@ -445,44 +417,44 @@ export function ContractRegisterView({
                     {valueText(item.governing_law)}
                   </TableCell>
                   <TableCell className="text-xs">
-                    <StatusBadge tone={toneForStatus(item.status)}>
-                      {titleCase(item.status)}
-                    </StatusBadge>
-                  </TableCell>
-                  <TableCell className="text-xs">
                     {valueText(item.last_updated)}
                   </TableCell>
                 </TableRow>
               ))}
-              {!paginatedContracts.length ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={18}
-                    className="h-36 text-center text-xs text-slate-500"
-                  >
-                    No contracts match the current search and filters.
-                  </TableCell>
-                </TableRow>
-              ) : null}
             </TableBody>
           </Table>
-          {truncation.truncated ? (
-            <p className="border-t border-border px-5 py-3 text-xs text-amber-700">
-              {truncation.message}
+          {!loading &&
+          !register.error &&
+          !workspaceUnavailable &&
+          !paginatedContracts.length ? (
+            <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+              {search.trim() || filterCount
+                ? 'No contracts match your search or filters.'
+                : 'No contracts to display.'}
             </p>
           ) : null}
-          <TablePagination
-            label="Contract register pagination"
-            page={activePage}
-            pageSize={pageSize}
-            total={visibleContracts.length}
-            onPageChange={setCurrentPage}
-            onPageSizeChange={(nextPageSize) => {
-              setPageSize(nextPageSize);
-              setCurrentPage(1);
-            }}
-            floating={contractTableScroll.floating}
-          />
+          {register.error || register.optionsError ? (
+            <p
+              role="alert"
+              className="border-t border-border px-5 py-3 text-sm text-destructive"
+            >
+              {register.error || register.optionsError}
+            </p>
+          ) : null}
+          {matchCount ? (
+            <TablePagination
+              label="Contract register pagination"
+              page={activePage}
+              pageSize={pageSize}
+              total={matchCount}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(nextPageSize) => {
+                setPageSize(nextPageSize);
+                setCurrentPage(1);
+              }}
+              floating={contractTableScroll.floating}
+            />
+          ) : null}
           <FloatingTableScrollbar
             label="Contract register horizontal scrollbar"
             floating={contractTableScroll.floating}
@@ -537,8 +509,9 @@ export function ContractRegisterView({
         open={insightsOpen}
         onOpenChange={setInsightsOpen}
         scope="contracts"
-        currentRecordIds={visibleContracts.map((item) => String(item.id))}
-        allRecordIds={allContracts.map((item) => String(item.id))}
+        criteria={criteria}
+        matchCount={matchCount}
+        totalCount={totalCount}
         onSelectRecord={onSelect}
         onOpenAlerts={onOpenAlerts}
       />

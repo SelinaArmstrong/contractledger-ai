@@ -1,6 +1,7 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
+import { SUPPLIER_ALERTS_ID } from '@/components/workspace/view-routing';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -14,7 +15,7 @@ import type { Workspace } from '@/lib/contract-ledger-types';
 import {
   AlertTriangle,
   ArrowRight,
-  BookOpenCheck,
+  Wallet,
   Building2,
   ChevronDown,
   CircleCheck,
@@ -50,67 +51,63 @@ export function DashboardView({
   workspace,
   onOpen,
   onNavigate,
+  onSelectIntake,
   onReset,
   resetting,
   canReset,
+  canReview,
+  canRegister,
+  canImport,
 }: {
   workspace: Workspace | null;
   onOpen: (stage: IntakeStage) => void;
-  onNavigate: (view: ViewName) => void;
+  onNavigate: (view: ViewName, section?: typeof SUPPLIER_ALERTS_ID) => void;
+  onSelectIntake: (id: string) => void;
   onReset: () => void;
   resetting: boolean;
   canReset: boolean;
+  canReview: boolean;
+  canRegister: boolean;
+  canImport: boolean;
 }) {
   const metrics = [
-    {
-      label: 'Active contracts',
-      value: String(workspace?.metrics.active_contracts ?? '—'),
-      note: 'Executed contracts only',
-      icon: FileText,
-      tone: 'blue',
-    },
     {
       label: 'Current contract value',
       value: workspace
         ? moneyFromCents(workspace.metrics.current_value_cents, true)
         : '—',
-      note: 'No draft amounts included',
-      icon: BookOpenCheck,
-      tone: 'slate',
+      note: 'Executed portfolio · USD',
+      icon: Wallet,
+      featured: true,
+    },
+    {
+      label: 'Active contracts',
+      value: String(workspace?.metrics.active_contracts ?? '—'),
+      note: workspace
+        ? `${workspace.metrics.total_contracts} executed in register`
+        : 'Executed agreements',
+      icon: FileText,
     },
     {
       label: 'Active suppliers',
       value: String(workspace?.metrics.active_suppliers ?? '—'),
-      note: `${workspace?.metrics.pending_suppliers ?? 0} pending onboarding`,
+      note: workspace
+        ? `${workspace.metrics.pending_suppliers} pending onboarding`
+        : 'Supplier onboarding',
       icon: Building2,
-      tone: 'green',
-    },
-    {
-      label: 'Records to verify',
-      value: String(workspace?.metrics.records_to_verify ?? '—'),
-      note: 'Human confirmation required',
-      icon: AlertTriangle,
-      tone: 'amber',
     },
   ];
-  const iconColors: Record<string, string> = {
-    blue: 'bg-accent text-accent-foreground',
-    slate: 'bg-slate-100 text-slate-700',
-    green: 'bg-emerald-50 text-emerald-700',
-    amber: 'bg-amber-50 text-amber-700',
-  };
   const contractRecords = workspace?.contracts ?? [];
   const supplierRecords = workspace?.suppliers ?? [];
-  const reviewRecords = workspace?.intakes.slice(0, 4) ?? [];
+  const reviewRecords = workspace?.pendingReviews ?? [];
   const contractAlerts =
     workspace?.keyDates
       .filter((item) => item.status !== 'completed')
       .slice(0, 4) ?? [];
   const allSupplierAlerts = workspace?.supplierAlerts ?? [];
   const supplierAlerts = allSupplierAlerts.slice(0, 4);
-  const supplierFollowUpCount = supplierRecords.filter(
-    (item) => item.qualification_status !== 'complete',
-  ).length;
+  const supplierFollowUpCount =
+    workspace?.metrics.supplier_documentation_follow_up ?? '—';
   const attentionItems: Array<{
     label: string;
     value: string;
@@ -118,6 +115,7 @@ export function DashboardView({
     icon: typeof FileSearch;
     tone: string;
     view: ViewName;
+    section?: typeof SUPPLIER_ALERTS_ID;
   }> = [
     {
       label: 'Records to verify',
@@ -130,7 +128,9 @@ export function DashboardView({
     {
       label: 'Open approvals',
       value: String(workspace?.approvalMetrics.open_requests ?? '—'),
-      note: `${workspace?.approvalMetrics.overdue_requests ?? 0} overdue · ${workspace?.approvalMetrics.blocked_intakes ?? 0} blocked`,
+      note: workspace
+        ? `${workspace.approvalMetrics.overdue_requests} overdue · ${workspace.approvalMetrics.blocked_intakes} blocked intake${workspace.approvalMetrics.blocked_intakes === 1 ? '' : 's'}`
+        : 'Review requests and exceptions',
       icon: ShieldCheck,
       tone: 'bg-accent text-accent-foreground',
       view: 'Approvals & Exceptions',
@@ -138,49 +138,54 @@ export function DashboardView({
     {
       label: 'Open obligations',
       value: String(workspace?.obligationMetrics.open_obligations ?? '—'),
-      note: `${workspace?.obligationMetrics.overdue_obligations ?? 0} calculated overdue`,
+      note: workspace
+        ? `${workspace.obligationMetrics.overdue_obligations} overdue`
+        : 'Track dates and evidence',
       icon: AlertTriangle,
       tone: 'bg-amber-50 text-amber-700',
       view: 'Obligations & Evidence',
     },
     {
       label: 'Supplier documents',
-      value: String(allSupplierAlerts.length),
-      note: `${supplierFollowUpCount} suppliers need follow-up`,
+      value: workspace ? String(allSupplierAlerts.length) : '—',
+      note: workspace
+        ? `Across ${new Set(allSupplierAlerts.map((alert) => alert.supplier_id)).size} suppliers`
+        : 'Review qualifications',
       icon: Building2,
       tone: 'bg-rose-50 text-rose-700',
-      view: 'Supplier Register',
+      view: 'Obligations & Evidence',
+      section: SUPPLIER_ALERTS_ID,
     },
   ];
-  const startWorkItems: Array<{
-    eyebrow: string;
-    title: string;
-    description: string;
-    icon: typeof FileSearch;
-    action: () => void;
-    featured?: boolean;
-  }> = [
+  const quickActions = [
     {
-      eyebrow: 'Pre-execution',
-      title: 'Review a draft',
-      description: 'Extract proposed terms without changing official records.',
-      icon: FileSearch,
-      action: () => onOpen('draft'),
-      featured: true,
-    },
-    {
-      eyebrow: 'Post-execution',
-      title: 'Register a signed contract',
-      description: 'Verify the source of truth and activate monitoring.',
+      title: canRegister ? 'Register a signed contract' : 'Browse contracts',
+      description: canRegister
+        ? 'Upload and verify an executed agreement'
+        : 'Find agreements, amendments, and terms',
       icon: FileCheck2,
-      action: () => onOpen('executed'),
+      action: canRegister
+        ? () => onOpen('executed')
+        : () => onNavigate('Contract Register'),
     },
     {
-      eyebrow: 'Legacy data',
-      title: 'Import a register',
-      description: 'Stage, normalize, and resolve data-quality exceptions.',
-      icon: Database,
-      action: () => onNavigate('Bulk Import & Data Quality'),
+      title: 'Browse suppliers',
+      description: 'Check qualifications and supplier files',
+      icon: Users,
+      action: () => onNavigate('Supplier Register'),
+    },
+    {
+      title: canImport ? 'Import a register' : 'View approval rules',
+      description: canImport
+        ? 'Stage a CSV or Excel workbook for review'
+        : 'Check approval thresholds and owners',
+      icon: canImport ? Database : ShieldCheck,
+      action: () =>
+        onNavigate(
+          canImport
+            ? 'Bulk Import & Data Quality'
+            : 'Playbook & Approval Rules',
+        ),
     },
   ];
   const aiBudget = workspace?.aiBudget;
@@ -191,158 +196,147 @@ export function DashboardView({
   return (
     <>
       <PageHeading
-        eyebrow="Your workspace · Overview"
+        eyebrow="Portfolio overview"
         title="Contract operations"
-        description="Review what needs a decision. Keep contracts, suppliers and obligations connected—with evidence behind every record."
+        description="Review approvals, track obligations, and manage contract and supplier records."
         action={
-          canReset || showBudgetWarning ? (
-            <div className="flex flex-wrap items-center gap-2">
-              {aiBudget && showBudgetWarning ? (
-                <StatusBadge tone={aiBudget.remainingUnits ? 'amber' : 'rose'}>
-                  {aiBudget.remainingUnits
-                    ? `${aiBudget.remainingUnits} shared AI units left today`
-                    : 'Shared AI budget resets at 00:00 UTC'}
-                </StatusBadge>
-              ) : null}
-              {canReset ? (
-                <Button
-                  variant="outline"
-                  onClick={onReset}
-                  disabled={resetting}
-                  className="h-9 border-border bg-card px-3 text-slate-600 shadow-sm"
-                >
-                  {resetting ? (
-                    <LoaderCircle className="animate-spin" />
-                  ) : (
-                    <RotateCcw />
-                  )}
-                  Reset demo
-                </Button>
-              ) : null}
-            </div>
-          ) : null
+          <div className="flex flex-wrap items-center gap-2">
+            {canReset ? (
+              <Button
+                variant="outline"
+                onClick={onReset}
+                disabled={resetting}
+                className="h-11 bg-card"
+              >
+                {resetting ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <RotateCcw />
+                )}
+                Reset demo
+              </Button>
+            ) : null}
+            <Button
+              size="lg"
+              onClick={() =>
+                canRegister
+                  ? onOpen('draft')
+                  : onNavigate('New Contract Review')
+              }
+              className="workspace-primary-action"
+            >
+              <FileSearch />
+              {canRegister
+                ? 'Review a draft'
+                : canReview
+                  ? 'Analyze a draft'
+                  : 'View contract reviews'}
+            </Button>
+          </div>
         }
       />
+      {aiBudget && showBudgetWarning ? (
+        <div className="mb-4">
+          <StatusBadge tone={aiBudget.remainingUnits ? 'amber' : 'rose'}>
+            {aiBudget.remainingUnits
+              ? `${aiBudget.remainingUnits} shared AI units left today`
+              : 'Shared AI budget resets at 00:00 UTC'}
+          </StatusBadge>
+        </div>
+      ) : null}
       <section
-        aria-label="Portfolio overview"
-        className="dashboard-metrics mb-7 grid grid-cols-2 gap-3 xl:grid-cols-4"
+        aria-label="Portfolio metrics"
+        className="dashboard-metrics mb-6"
       >
-        {metrics.map((metric) => {
-          const Icon = metric.icon;
-          return (
-            <div
-              key={metric.label}
-              data-featured={
-                metric.label === 'Current contract value' || undefined
-              }
-              className="dashboard-metric rounded-xl border border-border bg-card p-4 sm:p-5"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-[12px] font-medium text-slate-500">
-                    {metric.label}
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-foreground sm:text-[28px]">
-                    {metric.value}
-                  </p>
-                </div>
-                <span
-                  className={`flex size-9 items-center justify-center rounded-lg ${iconColors[metric.tone]}`}
-                >
-                  <Icon className="size-[17px]" />
-                </span>
-              </div>
-              <p className="mt-3 text-[11px] text-slate-500">{metric.note}</p>
+        {metrics.map(({ label, value, note, icon: Icon, featured }) => (
+          <div
+            key={label}
+            data-featured={featured || undefined}
+            className="dashboard-metric"
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="dashboard-metric-icon">
+                <Icon aria-hidden="true" className="size-4" />
+              </span>
+              <p className="dashboard-metric-label">{label}</p>
             </div>
-          );
-        })}
+            <p className="dashboard-metric-value">{value}</p>
+            <p className="dashboard-metric-note">{note}</p>
+          </div>
+        ))}
       </section>
-      <Panel className="dashboard-attention mb-7 overflow-hidden">
-        <PanelHeader
-          title="Needs attention"
-          description="Move directly from portfolio signals to the queue that needs a decision."
-        />
-        <div className="grid grid-cols-2 gap-px bg-[#dce5e9] xl:grid-cols-4">
-          {attentionItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.label}
-                type="button"
-                onClick={() => onNavigate(item.view)}
-                className="attention-card group min-h-32 bg-card p-4 text-left transition hover:bg-muted focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:p-5"
-                aria-label={`Open ${item.label}`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <span
-                    className={`flex size-9 items-center justify-center rounded-lg ${item.tone}`}
-                  >
-                    <Icon className="size-[17px]" />
-                  </span>
-                  <ArrowRight className="size-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-accent-foreground" />
-                </div>
-                <p className="mt-4 text-2xl font-semibold tracking-tight text-foreground">
-                  {item.value}
-                </p>
-                <p className="mt-1 text-sm font-semibold text-foreground">
-                  {item.label}
-                </p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">
-                  {item.note}
-                </p>
-              </button>
-            );
-          })}
-        </div>
-      </Panel>
 
-      <Panel className="dashboard-start mb-7 overflow-hidden">
-        <PanelHeader
-          title="Start work"
-          description="Choose the source and keep drafts, executed records, and legacy data in the right workflow."
-        />
-        <div className="grid gap-3 bg-muted p-4 sm:grid-cols-3 sm:p-5">
-          {startWorkItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.title}
-                type="button"
-                onClick={item.action}
-                data-featured={item.featured || undefined}
-                className={`start-work-card group flex min-h-36 flex-col rounded-xl border p-5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                  item.featured
-                    ? 'border-[#a9cfdd] bg-accent hover:border-[#79afc2]'
-                    : 'border-border bg-card hover:border-[#a9c6d1] hover:bg-accent/40'
-                }`}
-              >
-                <div className="flex w-full items-start justify-between gap-3">
-                  <span
-                    className={`flex size-9 items-center justify-center rounded-lg ${item.featured ? 'bg-card text-accent-foreground' : 'bg-slate-100 text-slate-600'}`}
+      <div className="dashboard-worklists mb-6 grid gap-4">
+        <Panel className="min-w-0 overflow-hidden">
+          <PanelHeader title="Needs attention" />
+          <ul className="divide-y divide-border">
+            {attentionItems.map(
+              ({ label, value, note, icon: Icon, tone, view, section }) => (
+                <li key={label}>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate(view, section)}
+                    className="dashboard-work-row group"
+                    aria-label={`${label}: ${value}. ${note}`}
                   >
-                    <Icon className="size-[17px]" />
+                    <span className={`dashboard-row-icon ${tone}`}>
+                      <Icon aria-hidden="true" className="size-[17px]" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold">
+                        {label}
+                      </span>
+                      <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">
+                        {note}
+                      </span>
+                    </span>
+                    <span className="dashboard-row-count" aria-hidden="true">
+                      {value}
+                    </span>
+                    <ArrowRight
+                      aria-hidden="true"
+                      className="dashboard-row-arrow"
+                    />
+                  </button>
+                </li>
+              ),
+            )}
+          </ul>
+        </Panel>
+        <Panel className="min-w-0 overflow-hidden">
+          <PanelHeader title="Quick actions" />
+          <ul className="divide-y divide-border">
+            {quickActions.map(({ title, description, icon: Icon, action }) => (
+              <li key={title}>
+                <button
+                  type="button"
+                  onClick={action}
+                  className="dashboard-work-row group"
+                >
+                  <span className="dashboard-row-icon bg-muted text-accent-foreground">
+                    <Icon aria-hidden="true" className="size-[17px]" />
                   </span>
-                  <ArrowRight className="size-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-accent-foreground" />
-                </div>
-                <p className="mt-4 text-xs font-semibold uppercase tracking-[0.1em] text-accent-foreground">
-                  {item.eyebrow}
-                </p>
-                <h3 className="mt-1 text-sm font-semibold text-foreground">
-                  {item.title}
-                </h3>
-                <p className="mt-1 text-xs leading-5 text-slate-500">
-                  {item.description}
-                </p>
-              </button>
-            );
-          })}
-        </div>
-      </Panel>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold">{title}</span>
+                    <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">
+                      {description}
+                    </span>
+                  </span>
+                  <ArrowRight
+                    aria-hidden="true"
+                    className="dashboard-row-arrow"
+                  />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      </div>
 
       <Panel className="mb-7 overflow-hidden">
         <PanelHeader
           title="AI review queue"
-          description="Draft analyses waiting for human confirmation, correction, or follow-up."
+          description="Drafts awaiting confirmation or follow-up."
           action={
             <Button
               variant="ghost"
@@ -354,24 +348,15 @@ export function DashboardView({
             </Button>
           }
         />
-        <IntakeTable intakes={reviewRecords} />
+        {workspace ? (
+          <IntakeTable intakes={reviewRecords} onSelect={onSelectIntake} />
+        ) : (
+          <p className="p-5 text-sm text-muted-foreground">Loading reviews…</p>
+        )}
       </Panel>
 
       <Panel className="mb-7 overflow-hidden">
-        <div className="border-b border-border px-5 py-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-accent-foreground">
-              Official records
-            </p>
-            <h2 className="mt-1 text-lg font-semibold text-foreground">
-              Registers
-            </h2>
-            <p className="mt-1 text-[11px] text-slate-500">
-              Executed contracts and lifecycle supplier records are maintained
-              separately but linked by supplier.
-            </p>
-          </div>
-        </div>
+        <PanelHeader title="Registers" />
         <div className="grid gap-4 bg-muted p-5 xl:grid-cols-2">
           <article className="flex min-h-[300px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-[0_1px_2px_rgb(15_23_42/3%)]">
             <div className="flex items-start justify-between gap-4 border-b border-border bg-muted px-5 py-4">
@@ -391,7 +376,7 @@ export function DashboardView({
               <div>
                 <p className="text-[11px] text-slate-500">Total records</p>
                 <p className="mt-1 text-2xl font-semibold text-foreground">
-                  {contractRecords.length}
+                  {workspace?.metrics.total_contracts ?? '—'}
                 </p>
               </div>
               <div>
@@ -455,7 +440,7 @@ export function DashboardView({
               <div>
                 <p className="text-[11px] text-slate-500">Total suppliers</p>
                 <p className="mt-1 text-2xl font-semibold text-foreground">
-                  {supplierRecords.length}
+                  {workspace?.metrics.total_suppliers ?? '—'}
                 </p>
               </div>
               <div>
@@ -503,7 +488,6 @@ export function DashboardView({
       <Panel className="mb-7 overflow-hidden">
         <PanelHeader
           title="Priority alerts"
-          description="Contract obligations and supplier-document exceptions are separated for faster follow-up."
           action={
             <Button
               variant="ghost"
@@ -577,10 +561,6 @@ export function DashboardView({
             )}
           </section>
         </div>
-        <div className="flex items-center gap-2 border-t border-border bg-emerald-50 px-5 py-3 text-[11px] text-emerald-800">
-          <CircleCheck className="size-4" />
-          Official records and alerts use verified values only.
-        </div>
       </Panel>
 
       <details className="group mb-7 overflow-hidden rounded-xl border border-border bg-card shadow-[0_1px_2px_rgb(15_23_42/3%)]">
@@ -588,10 +568,6 @@ export function DashboardView({
           <span>
             <span className="block text-sm font-semibold text-foreground">
               Draft-to-executed comparison
-            </span>
-            <span className="mt-1 block text-xs leading-5 text-slate-500">
-              Expand the human-verified comparison when presenting the demo
-              evidence.
             </span>
           </span>
           <span className="flex items-center gap-2 text-xs font-medium text-accent-foreground">
@@ -756,12 +732,18 @@ export function DemoTransactionComparison({
   );
 }
 
-export function IntakeTable({ intakes }: { intakes: Workspace['intakes'] }) {
+function IntakeTable({
+  intakes,
+  onSelect,
+}: {
+  intakes: Workspace['intakes'];
+  onSelect: (id: string) => void;
+}) {
   if (!intakes.length)
     return (
       <EmptyState
         title="The queue is clear"
-        description="Upload a draft to create a pending review item."
+        description="No drafts are awaiting verification."
       />
     );
   return (
@@ -779,9 +761,13 @@ export function IntakeTable({ intakes }: { intakes: Workspace['intakes'] }) {
         {intakes.map((item) => (
           <TableRow key={String(item.id)}>
             <TableCell className="px-5 py-3.5">
-              <div className="font-medium text-foreground">
+              <button
+                type="button"
+                className="text-left font-medium text-accent-foreground hover:underline"
+                onClick={() => onSelect(String(item.id))}
+              >
                 {valueText(item.title)}
-              </div>
+              </button>
               <div className="mt-1 text-[11px] text-slate-500">
                 {valueText(item.intake_number)} ·{' '}
                 {valueText(item.proposed_supplier_name)}

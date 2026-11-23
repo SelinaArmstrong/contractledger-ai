@@ -11,8 +11,8 @@ import {
   type ApprovalTriggerType,
 } from '@/lib/approval-workflow';
 import {
-  normalizeSupplierName,
   effectiveInsuranceStatus,
+  normalizeSupplierName,
 } from '@/lib/supplier-qualification';
 import { approvedTerms, approvalCoversTerms } from '@/lib/approval-scope';
 import { validatedOverrideReason } from '@/lib/ai-governance';
@@ -21,7 +21,18 @@ import {
   type ObligationMetricRecord,
 } from '@/lib/obligation-workflow';
 import { playbookRule, resolvePlaybookKey } from '@/lib/contract-playbook';
-import { calculateSupplierRiskProfile } from '@/lib/supplier-risk';
+import {
+  approvalQueueQuery,
+  buildSupplierRiskProfiles,
+  contractRegisterQuery,
+  intakeRegisterQuery,
+  keyDatesQuery,
+  orderedRows,
+  supplierDocumentationFollowUp,
+  supplierDocumentsQuery,
+  supplierRegisterQuery,
+} from '@/lib/server/register-data';
+import type { RegisterRow } from '@/lib/registers';
 import { isIsoDate, storedDocumentMimeTypeSchema } from '@/lib/validation';
 import { withApiRoute } from '@/lib/server/route-handler';
 import { aiBudgetStatus } from '@/lib/server/ai-budget';
@@ -275,6 +286,7 @@ export async function getWorkspace() {
     contractRows,
     supplierRows,
     intakeRows,
+    pendingReviewRows,
     keyDateRows,
     supplierAlertRows,
     supplierDocumentRows,
@@ -296,119 +308,29 @@ export async function getWorkspace() {
       (SELECT COUNT(*) FROM contract_intakes WHERE review_status != 'complete') AS records_to_verify,
       (SELECT COUNT(*) FROM contracts) AS total_contracts,
       (SELECT COUNT(*) FROM suppliers) AS total_suppliers,
+      (SELECT COUNT(*) FROM suppliers s WHERE ${supplierDocumentationFollowUp}) AS supplier_documentation_follow_up,
       (SELECT COUNT(*) FROM contract_intakes) AS total_intakes,
       (SELECT COUNT(*) FROM key_dates) AS total_key_dates`)
       .first(),
     db
-      .prepare(`SELECT c.*, s.legal_name AS supplier_name,
-      (SELECT COUNT(*) FROM key_dates k
-        WHERE k.contract_id = c.id AND k.status != 'completed') AS open_obligation_count,
-      (SELECT MIN(k.due_date) FROM key_dates k
-        WHERE k.contract_id = c.id AND k.status != 'completed') AS next_obligation_date,
-      (SELECT COUNT(*) FROM amendments a
-        WHERE a.contract_id = c.id) AS amendment_count,
-      COALESCE((SELECT MAX(a.version_number) FROM amendments a
-        WHERE a.contract_id = c.id), 1) AS current_version
-      FROM contracts c JOIN suppliers s ON s.id = c.supplier_id
-      ORDER BY c.last_updated DESC
-      LIMIT ${WORKSPACE_REGISTER_LIMIT}`)
-      .all(),
+      .prepare(orderedRows(contractRegisterQuery, WORKSPACE_REGISTER_LIMIT))
+      .all<RegisterRow>(),
     db
-      .prepare(`SELECT s.*,
-      COALESCE(SUM(CASE WHEN c.status IN ('executed','active') THEN 1 ELSE 0 END), 0) AS active_contract_count,
-      COALESCE(SUM(CASE WHEN c.status IN ('executed','active') THEN c.current_value_cents ELSE 0 END), 0) AS total_contract_value_cents,
-      (SELECT GROUP_CONCAT(c2.contract_number || ' — ' || c2.title, '||') FROM contracts c2 WHERE c2.supplier_id = s.id) AS linked_contracts,
-      (SELECT GROUP_CONCAT(i.intake_number || ' — ' || i.title || ' [' || i.status || ']', '||') FROM contract_intakes i WHERE i.supplier_id = s.id) AS linked_intakes,
-      CASE
-        WHEN EXISTS (SELECT 1 FROM contracts c3 WHERE c3.supplier_id = s.id) THEN 'contracted'
-        WHEN EXISTS (SELECT 1 FROM contract_intakes i2 WHERE i2.supplier_id = s.id) THEN 'pre_contract'
-        ELSE 'onboarding'
-      END AS relationship_stage,
-      (SELECT COUNT(*) FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable')) AS qualification_document_count,
-      (SELECT MIN(d.expiration_date) FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable') AND d.expiration_date >= date('now')) AS next_document_expiration,
-      (SELECT COUNT(*) FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable') AND d.expiration_date < date('now') AND COALESCE(d.review_status, '') != 'not_applicable') AS expired_qualification_document_count,
-      (SELECT MIN(candidate.expiration_date) FROM (
-        SELECT s.insurance_expiration AS expiration_date
-        UNION ALL
-        SELECT d.expiration_date FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable')
-      ) candidate WHERE candidate.expiration_date >= date('now')) AS next_compliance_expiration,
-      CASE WHEN s.insurance_expiration < date('now') OR EXISTS (
-        SELECT 1 FROM documents d WHERE d.supplier_id = s.id AND d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable') AND d.expiration_date < date('now') AND COALESCE(d.review_status, '') != 'not_applicable'
-      ) THEN 1 ELSE 0 END AS has_expired_compliance,
-      (SELECT COUNT(*) FROM review_findings f
-        JOIN contract_intakes i3 ON i3.id = f.intake_id
-        WHERE i3.supplier_id = s.id AND f.status = 'open' AND f.severity = 'high')
-        AS open_high_risk_findings,
-      (SELECT COUNT(*) FROM key_dates k
-        WHERE k.supplier_id = s.id AND k.status != 'completed'
-          AND k.due_date < date('now')) AS overdue_obligations,
-      CASE WHEN EXISTS (SELECT 1 FROM documents d WHERE d.supplier_id = s.id
-        AND d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable') AND d.file_type = 'cybersecurity_assessment')
-        THEN 1 ELSE 0 END AS has_cybersecurity_record,
-      CASE WHEN EXISTS (SELECT 1 FROM documents d WHERE d.supplier_id = s.id
-        AND d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable') AND d.file_type = 'exclusion_screening')
-        THEN 1 ELSE 0 END AS has_exclusion_screening,
-      CASE WHEN EXISTS (SELECT 1 FROM documents d WHERE d.supplier_id = s.id
-        AND d.lifecycle_stage = 'supplier_record' AND COALESCE(d.review_status, '') NOT IN ('superseded', 'not_applicable')
-        AND d.file_type IN ('business_license', 'professional_license', 'good_standing'))
-        THEN 1 ELSE 0 END AS has_license_or_good_standing
-      FROM suppliers s LEFT JOIN contracts c ON c.supplier_id = s.id
-      GROUP BY s.id ORDER BY s.legal_name
-      LIMIT ${WORKSPACE_REGISTER_LIMIT}`)
-      .all(),
+      .prepare(orderedRows(supplierRegisterQuery, WORKSPACE_REGISTER_LIMIT))
+      .all<RegisterRow>(),
     db
-      .prepare(`SELECT i.*,
-      s.vendor_number, s.status AS supplier_status,
-      s.w9_status, s.insurance_status, s.qualification_status,
-      (SELECT COUNT(*) FROM review_findings f WHERE f.intake_id = i.id AND f.status = 'open') AS finding_count,
-      (SELECT COUNT(*) FROM review_findings f WHERE f.intake_id = i.id AND f.status = 'open' AND f.severity = 'high') AS high_finding_count,
-      CASE
-        WHEN EXISTS (SELECT 1 FROM review_findings f WHERE f.intake_id = i.id AND f.status = 'open' AND f.severity = 'high') THEN 'high'
-        WHEN EXISTS (SELECT 1 FROM review_findings f WHERE f.intake_id = i.id AND f.status = 'open' AND f.severity = 'medium') THEN 'medium'
-        -- Only a completed playbook review earns 'low'. Without one the risk is
-        -- unknown, not cleared, so the column stays NULL.
-        WHEN EXISTS (SELECT 1 FROM ai_analysis_runs r WHERE r.intake_id = i.id)
-          OR EXISTS (SELECT 1 FROM review_findings f WHERE f.intake_id = i.id) THEN 'low'
-        ELSE NULL
-      END AS risk_level,
-      (SELECT COUNT(*) FROM approval_requests arq
-        JOIN approval_rules arr ON arr.id = arq.rule_id
-        WHERE arq.intake_id = i.id AND arr.mandatory = 1) AS approval_request_count,
-      (SELECT COUNT(*) FROM approval_requests arq
-        JOIN approval_rules arr ON arr.id = arq.rule_id
-        WHERE arq.intake_id = i.id AND arr.mandatory = 1
-          AND arq.status != 'approved') AS open_approval_count,
-      COALESCE((SELECT GROUP_CONCAT(arr.name, '; ')
-        FROM approval_requests arq
-        JOIN approval_rules arr ON arr.id = arq.rule_id
-        WHERE arq.intake_id = i.id AND arq.status != 'cancelled'),
-        'No additional approval') AS required_approval
-      FROM contract_intakes i
-      LEFT JOIN suppliers s ON s.id = i.supplier_id
-      ORDER BY i.received_at DESC
-      LIMIT ${WORKSPACE_REGISTER_LIMIT}`)
-      .all(),
+      .prepare(orderedRows(intakeRegisterQuery, WORKSPACE_REGISTER_LIMIT))
+      .all<RegisterRow>(),
     db
-      .prepare(`SELECT k.*,
-      CASE WHEN k.status != 'completed' AND k.due_date < date('now')
-        THEN 'overdue' ELSE k.status END AS effective_status,
-      CASE WHEN k.status != 'completed' AND k.due_date < date('now')
-        THEN CAST(julianday(date('now')) - julianday(k.due_date) AS INTEGER)
-        ELSE 0 END AS overdue_days,
-      c.contract_number, c.title AS contract_title,
-      c.current_value_cents,
-      c.expiration_date AS contract_expiration_date, c.status AS contract_status,
-      s.legal_name AS supplier_name,
-      evidence.file_name AS evidence_file_name,
-      source.file_name AS source_file_name
-      FROM key_dates k
-      LEFT JOIN contracts c ON c.id = k.contract_id
-      LEFT JOIN suppliers s ON s.id = k.supplier_id
-      LEFT JOIN documents evidence ON evidence.id = k.evidence_document_id
-      LEFT JOIN documents source ON source.id = k.source_document_id
-      ORDER BY CASE WHEN k.status = 'completed' THEN 1 ELSE 0 END, k.due_date
-      LIMIT ${WORKSPACE_REGISTER_LIMIT}`)
-      .all<ObligationMetricRecord & Record<string, string | number | null>>(),
+      .prepare(`SELECT i.id, i.intake_number, i.title, i.proposed_supplier_name,
+        i.proposed_value_cents, i.status, i.received_at,
+        (SELECT COUNT(*) FROM review_findings f WHERE f.intake_id = i.id AND f.status = 'open') AS finding_count
+        FROM contract_intakes i WHERE i.review_status != 'complete'
+        ORDER BY i.received_at DESC, i.id LIMIT 4`)
+      .all<RegisterRow>(),
+    db
+      .prepare(orderedRows(keyDatesQuery, WORKSPACE_REGISTER_LIMIT))
+      .all<ObligationMetricRecord & RegisterRow>(),
     db
       .prepare(`SELECT * FROM (
         SELECT 'document:' || d.id AS alert_id, 'document' AS source_type,
@@ -461,15 +383,8 @@ export async function getWorkspace() {
         due_date, supplier_name`)
       .all(),
     db
-      .prepare(`SELECT d.id, d.supplier_id, s.vendor_number,
-        s.legal_name AS supplier_name, d.file_name, d.file_type,
-        d.issuer, d.document_number, d.effective_date, d.expiration_date,
-        d.coverage_summary, d.review_status, d.ai_status, d.uploaded_at
-      FROM documents d
-      JOIN suppliers s ON s.id = d.supplier_id
-      WHERE d.lifecycle_stage = 'supplier_record'
-      ORDER BY s.legal_name, d.file_type, d.uploaded_at DESC`)
-      .all(),
+      .prepare(orderedRows(supplierDocumentsQuery, WORKSPACE_REGISTER_LIMIT))
+      .all<RegisterRow>(),
     db
       .prepare(`SELECT r.id, r.stage, r.supplier_id,
         COALESCE(s.legal_name, i.proposed_supplier_name, 'Supplier not recorded') AS supplier_name,
@@ -553,29 +468,7 @@ export async function getWorkspace() {
           NULLIF(SUM(CASE WHEN action IN ('approve', 'approve_exception', 'decline') THEN 1 ELSE 0 END), 0), 1)
           FROM approval_decision_history), 0) AS exception_approval_rate`)
       .first(),
-    db
-      .prepare(`SELECT
-        ar.id AS request_id, ast.id AS step_id, ar.intake_id,
-        i.intake_number, i.title AS intake_title, i.proposed_supplier_name,
-        i.proposed_value_cents, ar.status AS request_status,
-        ast.status AS step_status, ar.reason, ar.generated_at, ar.due_at,
-        ar.completed_at, r.id AS rule_id, r.rule_key, r.name AS rule_name,
-        r.version AS rule_version, r.owner_role, r.mandatory,
-        ast.assigned_reviewer, ast.escalation_level,
-        ar.source_finding_id, ar.source_document_id,
-        ast.source_page, ast.source_quote, d.file_name AS source_file_name,
-        CAST(MAX(0, julianday(date('now')) - julianday(date(ar.generated_at))) AS INTEGER) AS age_days,
-        CASE WHEN ar.status IN ('pending', 'in_review', 'revision_requested')
-          AND ar.due_at < date('now') THEN 1 ELSE 0 END AS overdue
-      FROM approval_requests ar
-      JOIN approval_rules r ON r.id = ar.rule_id
-      JOIN approval_steps ast ON ast.request_id = ar.id
-      JOIN contract_intakes i ON i.id = ar.intake_id
-      LEFT JOIN documents d ON d.id = ar.source_document_id
-      ORDER BY CASE WHEN ar.status IN ('pending', 'in_review', 'revision_requested') THEN 0 ELSE 1 END,
-        overdue DESC, ar.due_at, r.name
-      LIMIT 500`)
-      .all(),
+    db.prepare(orderedRows(approvalQueueQuery, 500)).all<RegisterRow>(),
     db
       .prepare(`SELECT COUNT(*) AS total_events,
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_events,
@@ -593,59 +486,10 @@ export async function getWorkspace() {
   ]);
 
   const asOfDate = new Date().toISOString().slice(0, 10);
-  for (const supplier of supplierRows.results) {
-    supplier.insurance_status = effectiveInsuranceStatus(
-      typeof supplier.insurance_status === 'string'
-        ? supplier.insurance_status
-        : null,
-      typeof supplier.insurance_expiration === 'string'
-        ? supplier.insurance_expiration
-        : null,
-      asOfDate,
-    );
-    if (supplier.has_expired_compliance)
-      supplier.qualification_status = 'expired';
-  }
-  const portfolioValueCents = Number(metricRow?.current_value_cents ?? 0);
-  const supplierRiskProfiles = Object.fromEntries(
-    supplierRows.results.map((supplier) => [
-      String(supplier.id),
-      calculateSupplierRiskProfile({
-        declaredRiskTier:
-          typeof supplier.risk_tier === 'string' ? supplier.risk_tier : null,
-        w9Status:
-          typeof supplier.w9_status === 'string'
-            ? supplier.w9_status
-            : 'missing',
-        insuranceStatus:
-          typeof supplier.insurance_status === 'string'
-            ? supplier.insurance_status
-            : 'missing',
-        insuranceExpiration:
-          typeof supplier.insurance_expiration === 'string'
-            ? supplier.insurance_expiration
-            : null,
-        qualificationStatus:
-          typeof supplier.qualification_status === 'string'
-            ? supplier.qualification_status
-            : null,
-        qualificationDocumentCount: Number(
-          supplier.qualification_document_count ?? 0,
-        ),
-        hasCybersecurityRecord: Boolean(supplier.has_cybersecurity_record),
-        hasExclusionScreening: Boolean(supplier.has_exclusion_screening),
-        hasLicenseOrGoodStanding: Boolean(
-          supplier.has_license_or_good_standing,
-        ),
-        openHighRiskFindings: Number(supplier.open_high_risk_findings ?? 0),
-        overdueObligations: Number(supplier.overdue_obligations ?? 0),
-        activeContractValueCents: Number(
-          supplier.total_contract_value_cents ?? 0,
-        ),
-        portfolioValueCents,
-        asOfDate,
-      }),
-    ]),
+  const supplierRiskProfiles = buildSupplierRiskProfiles(
+    supplierRows.results,
+    Number(metricRow?.current_value_cents ?? 0),
+    asOfDate,
   );
 
   return {
@@ -654,6 +498,7 @@ export async function getWorkspace() {
     suppliers: supplierRows.results,
     supplierRiskProfiles,
     intakes: intakeRows.results,
+    pendingReviews: pendingReviewRows.results,
     keyDates: keyDateRows.results,
     registerLimit: WORKSPACE_REGISTER_LIMIT,
     aiBudget: await aiBudgetStatus(),

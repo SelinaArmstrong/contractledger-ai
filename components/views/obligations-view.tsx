@@ -10,7 +10,8 @@ import {
   LoaderCircle,
   RotateCcw,
 } from 'lucide-react';
-import { useState } from 'react';
+import { SUPPLIER_ALERTS_ID } from '@/components/workspace/view-routing';
+import { useEffect, useState } from 'react';
 import { ObligationEditor } from '@/components/dialogs/obligation-editor';
 import { SupplierComplianceAlert } from '@/components/workspace/alerts';
 import {
@@ -42,6 +43,14 @@ export function AlertsExportsView({
   onSelectContract: (id: string) => void;
   onSelectSupplier: (id: string) => void;
 }) {
+  const loaded = Boolean(workspace);
+  useEffect(() => {
+    if (!loaded || window.location.hash !== '#' + SUPPLIER_ALERTS_ID) return;
+    const panel = document.getElementById(SUPPLIER_ALERTS_ID);
+    panel?.focus({ preventScroll: true });
+    panel?.scrollIntoView({ block: 'start' });
+  }, [loaded]);
+
   const obligations = workspace?.keyDates ?? [];
   const supplierAlerts = workspace?.supplierAlerts ?? [];
   const metrics = workspace?.obligationMetrics;
@@ -443,7 +452,12 @@ export function AlertsExportsView({
           </div>
         </Panel>
 
-        <Panel className="overflow-hidden">
+        <Panel
+          id={SUPPLIER_ALERTS_ID}
+          tabIndex={-1}
+          aria-label="Supplier evidence alerts"
+          className="scroll-mt-20 overflow-hidden"
+        >
           <PanelHeader
             title="Supplier evidence alerts"
             description="This separate queue tracks missing, expired, and expiring supplier documents."

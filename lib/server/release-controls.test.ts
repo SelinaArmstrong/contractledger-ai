@@ -9,7 +9,20 @@ import {
   it,
   vi,
 } from 'vitest';
-import type { ContractAnalysis, Workspace } from '@/lib/contract-ledger-types';
+import type {
+  ContractAnalysis,
+  RecordDetails,
+  Workspace,
+} from '@/lib/contract-ledger-types';
+import {
+  buildRegisterWorkbook,
+  type RegisterExportData,
+} from '@/lib/export-registers';
+import type {
+  RegisterDetail,
+  RegisterOptions,
+  RegisterPage,
+} from '@/lib/registers';
 import { roleCanApproveStep, type WorkspaceRole } from '@/lib/workspace-roles';
 
 vi.mock('cloudflare:workers', () => ({ env: {} }));
@@ -17,9 +30,13 @@ const { env } = await import('cloudflare:workers');
 const { ensureWorkspaceDatabase, resetWorkspaceDatabase } =
   await import('@/db/bootstrap');
 const workspaceRoute = await import('@/app/api/workspace/route');
+const intakesRoute = await import('@/app/api/intakes/route');
 const approvalsRoute = await import('@/app/api/approvals/route');
 const supplierRoute = await import('@/app/api/supplier-documents/route');
 const documentRoute = await import('@/app/api/document/route');
+const recordDetailsRoute = await import('@/app/api/record-details/route');
+const registerRoute = await import('@/app/api/registers/route');
+const registerExportRoute = await import('@/app/api/exports/registers/route');
 const { createDemoSessionToken } = await import('@/lib/workspace-auth');
 
 // Real SQLite statements and atomic batches, with only platform bindings
@@ -28,28 +45,46 @@ const sqlite = new DatabaseSync(':memory:');
 sqlite.exec('PRAGMA foreign_keys = ON');
 class Statement {
   constructor(
+    readonly database: DatabaseSync,
     readonly sql: string,
     readonly values: SQLInputValue[] = [],
   ) {}
   bind(...values: SQLInputValue[]) {
-    return new Statement(this.sql, values);
+    return new Statement(this.database, this.sql, values);
   }
   async first(column?: string) {
-    const row = sqlite.prepare(this.sql).get(...this.values);
+    const row = this.database.prepare(this.sql).get(...this.values);
     return row ? (column ? row[column] : row) : null;
   }
   async all() {
     return {
-      results: sqlite.prepare(this.sql).all(...this.values),
+      results: this.database.prepare(this.sql).all(...this.values),
       success: true,
     };
   }
   async run() {
     return {
-      meta: sqlite.prepare(this.sql).run(...this.values),
+      meta: this.database.prepare(this.sql).run(...this.values),
       success: true,
     };
   }
+}
+function databaseBinding(database: DatabaseSync) {
+  return {
+    prepare: (sql: string) => new Statement(database, sql),
+    batch: async (statements: Statement[]) => {
+      database.exec('BEGIN');
+      try {
+        const results = [];
+        for (const statement of statements) results.push(await statement.all());
+        database.exec('COMMIT');
+        return results;
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
+      }
+    },
+  };
 }
 const files = new Map<string, ArrayBuffer>();
 const pdf = readFileSync(
@@ -73,22 +108,7 @@ const originalEnvironment = Object.fromEntries(
 beforeAll(async () => {
   Object.assign(process.env, testEnvironment);
   Object.assign(env, {
-    DB: {
-      prepare: (sql: string) => new Statement(sql),
-      batch: async (statements: Statement[]) => {
-        sqlite.exec('BEGIN');
-        try {
-          const results = [];
-          for (const statement of statements)
-            results.push(await statement.all());
-          sqlite.exec('COMMIT');
-          return results;
-        } catch (error) {
-          sqlite.exec('ROLLBACK');
-          throw error;
-        }
-      },
-    },
+    DB: databaseBinding(sqlite),
     FILES: {
       put: async (key: string, bytes: ArrayBuffer) => {
         files.set(key, bytes);
@@ -590,4 +610,385 @@ describe('stored document framing', () => {
       expect(response.headers.get('x-content-type-options')).toBe('nosniff');
     },
   );
+});
+
+describe('workspace approval-rule migration', () => {
+  it.each([24, 25])(
+    'preserves a recorded decline when upgrading from v%i and retrying',
+    async (version) => {
+      const decline = await approvalsRoute.PATCH(
+        request(
+          '/api/approvals',
+          {
+            stepId: 'approval-step-demo-int-001-law',
+            action: 'decline',
+            reason: 'The governing-law exception was declined.',
+          },
+          'PATCH',
+        ),
+      );
+      expect(decline.status, await decline.clone().text()).toBe(200);
+      const decisions = () =>
+        sqlite
+          .prepare(`SELECT i.approval_status, ar.status, ast.status AS step_status, h.reason
+      FROM contract_intakes i
+      JOIN approval_requests ar ON ar.intake_id = i.id
+      JOIN approval_steps ast ON ast.request_id = ar.id
+      JOIN approval_decision_history h ON h.step_id = ast.id
+      WHERE i.id = 'int-001' AND h.action = 'decline'`)
+          .all();
+      const recorded = decisions();
+      expect(recorded).toEqual([
+        {
+          approval_status: 'declined',
+          status: 'declined',
+          step_status: 'declined',
+          reason: 'The governing-law exception was declined.',
+        },
+      ]);
+      sqlite.prepare('DELETE FROM schema_migrations').run();
+      sqlite
+        .prepare('INSERT INTO schema_migrations VALUES (?, ?)')
+        .run(version, '2026-09-01');
+      const retired = [
+        'approval-rule-financial-v1',
+        'approval-rule-financial-director-v1',
+      ];
+      for (const id of retired) {
+        sqlite
+          .prepare(`INSERT INTO approval_rules
+        SELECT ?, ?, version, name, description, trigger_type, trigger_config_json,
+          owner_role, due_days, mandatory, 1, created_at
+        FROM approval_rules WHERE id = 'approval-rule-financial-v2'`)
+          .run(id, id);
+      }
+      sqlite
+        .prepare(
+          "UPDATE suppliers SET legal_name = 'Saved supplier name' WHERE id = 'sup-westline'",
+        )
+        .run();
+
+      const binding = env.DB;
+      const batch = binding.batch.bind(binding);
+      const migration = vi
+        .spyOn(binding, 'batch')
+        .mockImplementation(async (statements) => {
+          if (
+            (statements[0] as unknown as Statement).sql.includes(
+              'WHERE active = 1 AND id IN',
+            )
+          )
+            throw new Error('Temporary D1 failure');
+          return batch(statements);
+        });
+      vi.resetModules();
+      const { ensureWorkspaceDatabase: initialize } =
+        await import('@/db/bootstrap');
+      await expect(initialize()).rejects.toThrow('Temporary D1 failure');
+      expect(
+        sqlite
+          .prepare('SELECT MAX(version) AS version FROM schema_migrations')
+          .get()?.version,
+      ).toBe(25);
+      migration.mockRestore();
+      await initialize();
+      await initialize();
+
+      expect(
+        sqlite
+          .prepare('SELECT MAX(version) AS version FROM schema_migrations')
+          .get()?.version,
+      ).toBe(26);
+      expect(decisions()).toEqual(recorded);
+      expect(
+        sqlite
+          .prepare('SELECT active FROM approval_rules WHERE id = ?')
+          .get(retired[0])?.active,
+      ).toBe(0);
+      expect(
+        sqlite
+          .prepare('SELECT active FROM approval_rules WHERE id = ?')
+          .get(retired[1])?.active,
+      ).toBe(0);
+      expect(
+        sqlite
+          .prepare(
+            "SELECT active FROM approval_rules WHERE id = 'approval-rule-financial-v2'",
+          )
+          .get()?.active,
+      ).toBe(1);
+      if (version === 25) {
+        expect(
+          sqlite
+            .prepare(
+              "SELECT legal_name FROM suppliers WHERE id = 'sup-westline'",
+            )
+            .get()?.legal_name,
+        ).toBe('Saved supplier name');
+      }
+    },
+  );
+
+  it('resumes a partially seeded new database', async () => {
+    const fresh = new DatabaseSync(':memory:');
+    fresh.exec('PRAGMA foreign_keys = ON');
+    const previous = env.DB;
+    const binding = databaseBinding(fresh);
+    const batch = binding.batch.bind(binding);
+    let failOnce = true;
+    binding.batch = async (statements) => {
+      if (
+        failOnce &&
+        statements[0].sql.includes('INSERT OR IGNORE INTO contract_intakes')
+      ) {
+        failOnce = false;
+        throw new Error('Interrupted initial seed');
+      }
+      return batch(statements);
+    };
+    Object.assign(env, { DB: binding });
+    try {
+      vi.resetModules();
+      const { ensureWorkspaceDatabase: initialize } =
+        await import('@/db/bootstrap');
+      await expect(initialize()).rejects.toThrow('Interrupted initial seed');
+      expect(
+        fresh.prepare('SELECT COUNT(*) AS n FROM suppliers').get()?.n,
+      ).toBeGreaterThan(0);
+      expect(
+        fresh.prepare('SELECT COUNT(*) AS n FROM contract_intakes').get()?.n,
+      ).toBe(0);
+      await initialize();
+      expect(
+        fresh
+          .prepare('SELECT MAX(version) AS version FROM schema_migrations')
+          .get()?.version,
+      ).toBe(26);
+      expect(
+        fresh
+          .prepare(
+            "SELECT approval_status FROM contract_intakes WHERE id = 'int-001'",
+          )
+          .get()?.approval_status,
+      ).toBe('pending');
+      expect(
+        fresh
+          .prepare(
+            "SELECT COUNT(*) AS n FROM approval_rules WHERE active = 1 AND id IN ('approval-rule-financial-v1', 'approval-rule-financial-director-v1')",
+          )
+          .get()?.n,
+      ).toBe(0);
+    } finally {
+      Object.assign(env, { DB: previous });
+      fresh.close();
+    }
+  });
+});
+
+describe('registers beyond the workspace snapshot', () => {
+  beforeEach(() => {
+    sqlite.exec(`
+      WITH RECURSIVE fixture(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM fixture WHERE n < 501)
+      INSERT INTO suppliers (
+        id, legal_name, normalized_name, vendor_number, category, status,
+        risk_tier, qualification_status, w9_status, insurance_status,
+        created_at, updated_at
+      )
+      SELECT 'supplier-' || n, PRINTF('Zulu Supplier %03d', n),
+        'zulu supplier ' || n, PRINTF('TEST-VENDOR-%03d', n),
+        CASE WHEN n = 501 THEN 'Late category' ELSE 'Fixture' END,
+        'active', CASE WHEN n = 501 THEN 'high' ELSE 'low' END,
+        CASE WHEN n = 501 THEN 'under_review' ELSE 'complete' END,
+        'received', 'current', '2026-09-01', '2026-09-01'
+      FROM fixture;
+
+      WITH RECURSIVE fixture(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM fixture WHERE n < 501)
+      INSERT INTO contracts (
+        id, contract_number, supplier_id, title, contract_type, department,
+        owner, original_value_cents, current_value_cents, effective_date,
+        expiration_date, status, last_updated
+      )
+      SELECT 'contract-' || n, PRINTF('TEST-CONTRACT-%03d', n), 'supplier-' || n,
+        CASE WHEN n = 501 THEN 'Énergie agreement 100%' ELSE 'Fixture agreement' END,
+        'Services', CASE WHEN n = 501 THEN 'Late department' ELSE 'Fixture' END,
+        'Case owner', 1234567, 1234567, '2026-09-01', '2030-09-01', 'executed',
+        CASE WHEN n = 501 THEN '2000-01-01' ELSE '2026-09-01' END
+      FROM fixture;
+
+      WITH RECURSIVE fixture(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM fixture WHERE n < 501)
+      INSERT INTO documents (
+        id, supplier_id, file_name, file_type, lifecycle_stage, storage_key,
+        mime_type, review_status, uploaded_at
+      )
+      SELECT 'qual-' || n, 'supplier-' || n, PRINTF('Qualification %03d.pdf', n),
+        'w9', 'supplier_record', 'fixture/qualification-' || n,
+        'application/pdf', 'approved', '2026-09-01'
+      FROM fixture;
+    `);
+  });
+
+  const readPage = async (query: string) => {
+    const response = await registerRoute.GET(
+      new Request(`http://localhost/api/registers?${query}`),
+    );
+    expect(response.status, await response.clone().text()).toBe(200);
+    return response.json() as Promise<RegisterPage>;
+  };
+
+  it('includes older pending reviews even when the snapshot contains only completed intakes', async () => {
+    sqlite.exec(`
+      UPDATE contract_intakes SET review_status = 'complete';
+      UPDATE contract_intakes SET review_status = 'pending', received_at = '2000-01-01' WHERE id = 'int-001';
+      WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<501)
+      INSERT INTO contract_intakes(id, intake_number, proposed_supplier_name, title, contract_type, review_status, received_at, updated_at)
+      SELECT 'completed-' || x, 'TEST-' || x, 'Example supplier', 'Completed draft', 'Service', 'complete', '2026-01-01', '2026-01-01' FROM n;
+    `);
+    const workspace = await workspaceRoute.getWorkspace();
+    expect(workspace.intakes.some((row) => row.id === 'int-001')).toBe(false);
+    expect(workspace.metrics?.records_to_verify).toBe(1);
+    expect(workspace.pendingReviews.map((row) => row.id)).toEqual(['int-001']);
+    const last = workspace.intakes.at(-1)!;
+    const params = new URLSearchParams({
+      beforeDate: String(last.received_at),
+      afterId: String(last.id),
+    });
+    const response = await intakesRoute.GET(
+      new Request('http://localhost/api/intakes?' + params),
+    );
+    expect(response.ok).toBe(true);
+    const history = (await response.json()) as {
+      rows: Workspace['intakes'];
+      hasMore: boolean;
+    };
+    expect(history.rows.map((row) => row.id)).toContain('int-001');
+    expect(history.rows.some((row) => row.id === last.id)).toBe(false);
+    expect(history.hasMore).toBe(false);
+  });
+
+  it('searches, filters, paginates, and opens records excluded from the initial snapshot', async () => {
+    const workspace = (await (
+      await workspaceRoute.GET(new Request('http://localhost/api/workspace'))
+    ).json()) as Workspace;
+    expect(workspace.contracts).toHaveLength(500);
+    expect(workspace.suppliers).toHaveLength(500);
+    expect(workspace.metrics.total_contracts).toBeGreaterThan(501);
+    expect(workspace.metrics.total_suppliers).toBeGreaterThan(501);
+    expect(workspace.metrics.supplier_documentation_follow_up).toBeGreaterThan(
+      workspace.suppliers.filter(
+        (row) => row.qualification_status !== 'complete',
+      ).length,
+    );
+    expect(workspace.contracts.some((row) => row.id === 'contract-501')).toBe(
+      false,
+    );
+    expect(workspace.suppliers.some((row) => row.id === 'supplier-501')).toBe(
+      false,
+    );
+
+    const contracts = await readPage(
+      'scope=contracts&search=test-contract-501&department=Late+department&amountComparison=greater&amountValue=12000&expirationCondition=on_or_after&expirationDate=2029-01-01',
+    );
+    expect(contracts.matchCount).toBe(1);
+    expect(contracts.totalCount).toBe(workspace.metrics.total_contracts);
+    expect(contracts.rows[0]).toMatchObject({
+      id: 'contract-501',
+      supplier_name: 'Zulu Supplier 501',
+    });
+    expect(
+      (await readPage('scope=contracts&search=%C3%A9NERGIE+AGREEMENT+100%25'))
+        .rows[0]?.id,
+    ).toBe('contract-501');
+    expect(
+      (await readPage('scope=contracts&search=TEST-CONTRACT-501&status=active'))
+        .matchCount,
+    ).toBe(0);
+
+    const suppliers = await readPage(
+      'scope=suppliers&search=test-contract-501&category=Late+category&risk=high&documentExpiry=no_expiration',
+    );
+    expect(suppliers.rows[0]?.id).toBe('supplier-501');
+    expect(suppliers.matchCount).toBe(1);
+    expect(suppliers.totalCount).toBe(workspace.metrics.total_suppliers);
+    expect(suppliers.riskProfiles['supplier-501'].level).toBe('high');
+    const page = await readPage('scope=suppliers&page=6&pageSize=100');
+    expect(page.page).toBe(6);
+    expect(page.rows.some((row) => row.id === 'supplier-501')).toBe(true);
+    expect(page.matchCount).toBe(workspace.metrics.total_suppliers);
+    const options = (await (
+      await registerRoute.GET(
+        new Request(
+          'http://localhost/api/registers?scope=suppliers&options=true',
+        ),
+      )
+    ).json()) as RegisterOptions;
+    expect(options.category).toContain('Late category');
+
+    const readDetail = async (scope: string, id: string) => {
+      const response = await registerRoute.GET(
+        new Request(`http://localhost/api/registers?scope=${scope}&id=${id}`),
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+      return response.json() as Promise<RegisterDetail>;
+    };
+    expect(await readDetail('contracts', 'contract-501')).toMatchObject({
+      contract: { id: 'contract-501' },
+      supplier: { id: 'supplier-501' },
+    });
+    expect(await readDetail('suppliers', 'supplier-501')).toMatchObject({
+      supplier: { id: 'supplier-501' },
+      supplierRiskProfile: { level: 'high' },
+    });
+    const details = (await (
+      await recordDetailsRoute.GET(
+        new Request(
+          'http://localhost/api/record-details?type=supplier&id=supplier-501',
+        ),
+      )
+    ).json()) as RecordDetails;
+    expect(details.documents).toEqual([
+      expect.objectContaining({ file_name: 'Qualification 501.pdf' }),
+    ]);
+  });
+
+  it('includes every supplier and document in Excel while enforcing the export role', async () => {
+    const cookie = `contractledger_demo_session=${await createDemoSessionToken('reviewer')}`;
+    const path = '/api/exports/registers?scope=suppliers';
+    const denied = await registerExportRoute.POST(
+      request(path, {}, 'POST', cookie),
+    );
+    expect(denied.status).toBe(403);
+
+    const response = await registerExportRoute.POST(request(path, {}));
+    expect(response.status, await response.clone().text()).toBe(200);
+    const data = (await response.json()) as RegisterExportData;
+    const ExcelJS = await import('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await buildRegisterWorkbook(data, 'suppliers'));
+    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual([
+      'Supplier Register',
+      'Supplier Documents',
+    ]);
+    const suppliers = workbook.getWorksheet('Supplier Register')!;
+    const documents = workbook.getWorksheet('Supplier Documents')!;
+    const supplierCount = Number(
+      sqlite.prepare('SELECT COUNT(*) AS n FROM suppliers').get()?.n,
+    );
+    const documentCount = Number(
+      sqlite
+        .prepare(
+          "SELECT COUNT(*) AS n FROM documents WHERE lifecycle_stage = 'supplier_record'",
+        )
+        .get()?.n,
+    );
+    expect(supplierCount).toBeGreaterThan(501);
+    expect(documentCount).toBeGreaterThan(501);
+    expect(suppliers.rowCount).toBe(supplierCount + 1);
+    expect(documents.rowCount).toBe(documentCount + 1);
+    expect(suppliers.getRow(suppliers.rowCount).getCell('A').value).toBe(
+      'supplier-501',
+    );
+    expect(documents.getRow(documents.rowCount).getCell('D').value).toBe(
+      'Qualification 501.pdf',
+    );
+  });
 });

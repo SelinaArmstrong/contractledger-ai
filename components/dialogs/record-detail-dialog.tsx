@@ -3,6 +3,7 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import {
   Table,
   TableBody,
@@ -12,6 +13,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { RecordDetails, Workspace } from '@/lib/contract-ledger-types';
+import type { RegisterRow } from '@/lib/registers';
+import type { SupplierRiskProfile as SupplierRiskProfileData } from '@/lib/supplier-risk';
 import {
   AlertCircle,
   Building2,
@@ -47,28 +50,26 @@ import type { DetailSelection } from '@/components/workspace/types';
 import { useDraggableDialog } from '@/components/workspace/use-draggable-dialog';
 
 export function RecordDetailDialog({
-  workspace,
+  contract,
+  supplier,
+  supplierRiskProfile,
   selection,
   onClose,
   onRefresh,
+  canAmend,
+  canUploadSupplierFiles,
+  canExport,
 }: {
-  workspace: Workspace;
+  contract: RegisterRow | null;
+  supplier: RegisterRow | null;
+  supplierRiskProfile?: SupplierRiskProfileData;
   selection: DetailSelection;
   onClose: () => void;
   onRefresh: () => Promise<void>;
+  canAmend: boolean;
+  canUploadSupplierFiles: boolean;
+  canExport: boolean;
 }) {
-  const contract =
-    selection.type === 'contract'
-      ? workspace.contracts.find((item) => item.id === selection.id)
-      : null;
-  const supplier =
-    selection.type === 'supplier'
-      ? workspace.suppliers.find((item) => item.id === selection.id)
-      : workspace.suppliers.find((item) => item.id === contract?.supplier_id);
-  const record = selection.type === 'contract' ? contract : supplier;
-  const supplierRiskProfile = supplier
-    ? workspace.supplierRiskProfiles?.[String(supplier.id)]
-    : undefined;
   const [details, setDetails] = useState<RecordDetails>({
     documents: [],
     aiReviews: [],
@@ -85,7 +86,7 @@ export function RecordDetailDialog({
   const [amendmentOpen, setAmendmentOpen] = useState(false);
   const [reviewPackageExporting, setReviewPackageExporting] = useState(false);
   const [reviewPackageError, setReviewPackageError] = useState('');
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const draggable = useDraggableDialog({ surfaceRef: dialogRef });
   const exportReviewPackage = async () => {
     if (!contract) return;
@@ -172,7 +173,6 @@ export function RecordDetailDialog({
   }, [loadDetails]);
 
   const documents = details.documents;
-  if (!record) return null;
   const selectedDocument =
     documents.find((item) => String(item.id) === selectedDocumentId) ??
     documents[0];
@@ -191,24 +191,21 @@ export function RecordDetailDialog({
       : `${valueText(supplier?.category)} supplier`;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 p-4 backdrop-blur-[2px]"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
       }}
     >
-      <dialog
+      <DialogContent
         ref={dialogRef}
+        showCloseButton={false}
         style={draggable.surfaceStyle}
         onPointerDown={draggable.onPointerDown}
         onPointerMove={draggable.onPointerMove}
         onPointerUp={draggable.onPointerUp}
         onPointerCancel={draggable.onPointerCancel}
-        open
-        aria-modal="true"
-        aria-labelledby="detail-dialog-title"
-        className={`${dialogSurfaceClass} overflow-y-auto`}
+        className={`${dialogSurfaceClass} fixed block overflow-y-auto sm:max-w-[1440px]`}
       >
         <button
           type="button"
@@ -235,36 +232,37 @@ export function RecordDetailDialog({
           </div>
           <div className="flex flex-col justify-between gap-3 pr-10 sm:flex-row sm:items-end">
             <div>
-              <h2
-                id="detail-dialog-title"
-                className="text-xl font-semibold text-foreground"
-              >
+              <DialogTitle className="text-xl font-semibold text-foreground">
                 {title}
-              </h2>
+              </DialogTitle>
               <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
             </div>
             {selection.type === 'contract' && contract ? (
               <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void exportReviewPackage()}
-                  disabled={reviewPackageExporting}
-                >
-                  {reviewPackageExporting ? (
-                    <LoaderCircle className="animate-spin" />
-                  ) : (
-                    <Download />
-                  )}
-                  Review package PDF
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => setAmendmentOpen(true)}
-                  className="bg-primary hover:bg-primary/90"
-                >
-                  <Plus /> Add amendment
-                </Button>
+                {canExport ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void exportReviewPackage()}
+                    disabled={reviewPackageExporting}
+                  >
+                    {reviewPackageExporting ? (
+                      <LoaderCircle className="animate-spin" />
+                    ) : (
+                      <Download />
+                    )}
+                    Review package PDF
+                  </Button>
+                ) : null}
+                {canAmend ? (
+                  <Button
+                    type="button"
+                    onClick={() => setAmendmentOpen(true)}
+                    className="bg-primary hover:bg-primary/90"
+                  >
+                    <Plus /> Add amendment
+                  </Button>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -284,6 +282,61 @@ export function RecordDetailDialog({
               <AlertDescription>{reviewPackageError}</AlertDescription>
             </Alert>
           ) : null}
+          {selection.type === 'supplier' && supplier ? (
+            <section
+              aria-labelledby="supplier-contact-heading"
+              className="rounded-xl border border-border bg-card p-4"
+            >
+              <h3 id="supplier-contact-heading" className="app-section-title">
+                Supplier contact details
+              </h3>
+              <dl className="mt-3 grid gap-4 text-sm sm:grid-cols-2">
+                {[
+                  ['Primary contact', supplier.primary_contact],
+                  [
+                    'Email',
+                    supplier.email,
+                    supplier.email ? `mailto:${supplier.email}` : null,
+                  ],
+                  [
+                    'Phone',
+                    supplier.phone,
+                    supplier.phone ? `tel:${supplier.phone}` : null,
+                  ],
+                  [
+                    'Business address',
+                    [
+                      supplier.address_line1,
+                      supplier.address_line2,
+                      supplier.city,
+                      [supplier.state, supplier.postal_code]
+                        .filter(Boolean)
+                        .join(' '),
+                      supplier.country,
+                    ]
+                      .filter(Boolean)
+                      .join(', '),
+                  ],
+                ].map(([label, value, href]) => (
+                  <div key={String(label)} className="min-w-0">
+                    <dt className="text-xs text-muted-foreground">{label}</dt>
+                    <dd className="mt-1 break-words">
+                      {typeof href === 'string' ? (
+                        <a
+                          className="inline-block text-accent-foreground underline underline-offset-4"
+                          href={href}
+                        >
+                          {valueText(value)}
+                        </a>
+                      ) : (
+                        valueText(value)
+                      )}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ) : null}
           {selection.type === 'supplier' && supplierRiskProfile ? (
             <SupplierRiskProfilePanel profile={supplierRiskProfile} />
           ) : null}
@@ -293,7 +346,9 @@ export function RecordDetailDialog({
               amendments={details.amendments}
               auditLogs={details.auditLogs}
               loading={detailsLoading}
-              onAddAmendment={() => setAmendmentOpen(true)}
+              onAddAmendment={
+                canAmend ? () => setAmendmentOpen(true) : undefined
+              }
             />
           ) : null}
           {selection.type === 'contract' && details.approvalRequests.length ? (
@@ -407,13 +462,15 @@ export function RecordDetailDialog({
                 <p className="mt-2 max-w-md text-xs leading-5 text-slate-500">
                   {selection.type === 'contract'
                     ? 'This legacy register record has no digital file attached. Use Register executed contract from the Contract Register and its verified PDF will open here as the source of truth.'
-                    : 'The status may come from a legacy register, but no digital file is attached. Upload the applicable W-9, insurance, registration, license, or risk-review evidence below.'}
+                    : 'Supplier qualification documents appear here when attached.'}
                 </p>
               </div>
             )}
           </section>
 
-          {selection.type === 'supplier' && supplier ? (
+          {selection.type === 'supplier' &&
+          supplier &&
+          canUploadSupplierFiles ? (
             <SupplierDocumentUpload
               supplierId={String(supplier.id)}
               supplierName={String(supplier.legal_name)}
@@ -425,8 +482,8 @@ export function RecordDetailDialog({
             />
           ) : null}
         </div>
-      </dialog>
-      {selection.type === 'contract' && contract ? (
+      </DialogContent>
+      {canAmend && selection.type === 'contract' && contract ? (
         <AmendmentDialog
           open={amendmentOpen}
           contract={contract}
@@ -437,7 +494,7 @@ export function RecordDetailDialog({
           }}
         />
       ) : null}
-    </div>
+    </Dialog>
   );
 }
 
@@ -595,7 +652,7 @@ export function ContractVersionPanel({
   amendments: RecordDetails['amendments'];
   auditLogs: RecordDetails['auditLogs'];
   loading: boolean;
-  onAddAmendment: () => void;
+  onAddAmendment?: () => void;
 }) {
   const ordered = [...amendments].sort(
     (a, b) => Number(a.version_number) - Number(b.version_number),
@@ -619,14 +676,16 @@ export function ContractVersionPanel({
             and change history.
           </p>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          onClick={onAddAmendment}
-          className="bg-primary hover:bg-primary/90"
-        >
-          <Plus /> Add amendment
-        </Button>
+        {onAddAmendment ? (
+          <Button
+            type="button"
+            size="sm"
+            onClick={onAddAmendment}
+            className="bg-primary hover:bg-primary/90"
+          >
+            <Plus /> Add amendment
+          </Button>
+        ) : null}
       </div>
       <div className="grid gap-3 border-b border-[#dbe6ea] bg-card p-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
@@ -726,9 +785,11 @@ export function ContractVersionPanel({
             <p className="text-[11px] text-slate-500">
               No amendment has been recorded for this contract.
             </p>
-            <Button variant="outline" size="sm" onClick={onAddAmendment}>
-              <Plus /> Record the first amendment
-            </Button>
+            {onAddAmendment ? (
+              <Button variant="outline" size="sm" onClick={onAddAmendment}>
+                <Plus /> Record the first amendment
+              </Button>
+            ) : null}
           </div>
         ) : null}
         {amendmentAudits.length ? (

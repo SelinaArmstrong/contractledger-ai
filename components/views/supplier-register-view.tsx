@@ -1,7 +1,6 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -11,14 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { Workspace } from '@/lib/contract-ledger-types';
-import {
-  FileSpreadsheet,
-  LoaderCircle,
-  Plus,
-  RotateCcw,
-  Search,
-  Sparkles,
-} from 'lucide-react';
+import { Plus, RotateCcw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ManagementInsightsSheet } from '@/components/dialogs/management-insights-sheet';
 import {
@@ -31,49 +23,50 @@ import {
 import {
   PageHeading,
   Panel,
-  PanelHeader,
   StatusBadge,
 } from '@/components/workspace/primitives';
 import {
   FilterSelect,
   FloatingTableScrollbar,
+  RegisterRecord,
+  RegisterToolbar,
+  RegisterUtilities,
   TablePagination,
   useFloatingTableScrollbar,
 } from '@/components/workspace/table';
-import type { RegisterTruncation } from '@/lib/workspace-limits';
+import { useRegisterPage } from '@/components/workspace/use-register-page';
 
 export function SupplierRegisterView({
-  suppliers,
-  allSuppliers,
-  riskProfiles,
+  workspace,
   search,
   onSearch,
   onSelect,
   onAdd,
+  canExport,
+  canUseInsights,
+  workspaceUnavailable,
   onExport,
   exporting,
   onOpenAlerts,
   openInsightsRequest,
   onInsightsRequestHandled,
-  truncation,
 }: {
-  suppliers: Workspace['suppliers'];
-  allSuppliers: Workspace['suppliers'];
-  riskProfiles: NonNullable<Workspace['supplierRiskProfiles']>;
+  workspace: Workspace | null;
   search: string;
   onSearch: (value: string) => void;
   onSelect: (id: string) => void;
-  onAdd: () => void;
+  onAdd?: () => void;
+  canExport: boolean;
+  canUseInsights: boolean;
+  workspaceUnavailable: boolean;
   onExport: () => void;
   exporting: boolean;
   onOpenAlerts: () => void;
   openInsightsRequest: boolean;
   onInsightsRequestHandled: () => void;
-  truncation: RegisterTruncation;
 }) {
   const supplierTableScroll = useFloatingTableScrollbar();
   const [insightsOpen, setInsightsOpen] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [relationshipFilter, setRelationshipFilter] = useState('all');
   const [supplierStatusFilter, setSupplierStatusFilter] = useState('all');
@@ -84,86 +77,36 @@ export function SupplierRegisterView({
   const [w9Filter, setW9Filter] = useState('all');
   const [insuranceFilter, setInsuranceFilter] = useState('all');
   const [documentExpiryFilter, setDocumentExpiryFilter] = useState('all');
-  useEffect(() => {
-    if (!openInsightsRequest) return;
-    const timer = window.setTimeout(() => {
-      setInsightsOpen(true);
-      onInsightsRequestHandled();
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [onInsightsRequestHandled, openInsightsRequest]);
-  const options = (key: string) =>
-    Array.from(
-      new Set(
-        suppliers
-          .map((item) => valueText(item[key]))
-          .filter((value) => value !== 'Not found'),
-      ),
-    ).sort((a, b) => a.localeCompare(b));
-  const today = new Date().toISOString().slice(0, 10);
-  const expiryCutoffDate = new Date(`${today}T12:00:00Z`);
-  expiryCutoffDate.setUTCDate(expiryCutoffDate.getUTCDate() + 90);
-  const expiryCutoff = expiryCutoffDate.toISOString().slice(0, 10);
-  const visibleSuppliers = suppliers.filter((item) => {
-    if (
-      relationshipFilter !== 'all' &&
-      item.relationship_stage !== relationshipFilter
-    )
-      return false;
-    if (supplierStatusFilter !== 'all' && item.status !== supplierStatusFilter)
-      return false;
-    if (
-      qualificationFilter !== 'all' &&
-      item.qualification_status !== qualificationFilter
-    )
-      return false;
-    if (
-      riskFilter !== 'all' &&
-      riskProfiles[String(item.id)]?.level !== riskFilter
-    )
-      return false;
-    if (categoryFilter !== 'all' && item.category !== categoryFilter)
-      return false;
-    if (stateFilter !== 'all' && item.state !== stateFilter) return false;
-    if (w9Filter !== 'all' && item.w9_status !== w9Filter) return false;
-    if (insuranceFilter !== 'all' && item.insurance_status !== insuranceFilter)
-      return false;
-    const nextExpiry =
-      typeof item.next_compliance_expiration === 'string'
-        ? item.next_compliance_expiration
-        : '';
-    if (documentExpiryFilter === 'expiring_90_days')
-      return Boolean(
-        nextExpiry && nextExpiry >= today && nextExpiry <= expiryCutoff,
-      );
-    const hasExpiredCompliance = Number(item.has_expired_compliance ?? 0) > 0;
-    if (documentExpiryFilter === 'expired') return hasExpiredCompliance;
-    if (documentExpiryFilter === 'no_expiration')
-      return !nextExpiry && !hasExpiredCompliance;
-    return true;
-  });
-  const pageCount = Math.max(1, Math.ceil(visibleSuppliers.length / pageSize));
-  const activePage = Math.min(currentPage, pageCount);
-  const pageStart = (activePage - 1) * pageSize;
-  const paginatedSuppliers = visibleSuppliers.slice(
-    pageStart,
-    pageStart + pageSize,
-  );
-  useEffect(() => {
-    const timer = window.setTimeout(() => setCurrentPage(1), 0);
-    return () => window.clearTimeout(timer);
-  }, [
-    categoryFilter,
-    documentExpiryFilter,
-    insuranceFilter,
-    qualificationFilter,
-    relationshipFilter,
-    riskFilter,
+  const criteria = new URLSearchParams({
     search,
-    stateFilter,
-    supplierStatusFilter,
-    w9Filter,
-  ]);
+    relationship_stage: relationshipFilter,
+    status: supplierStatusFilter,
+    qualification_status: qualificationFilter,
+    risk: riskFilter,
+    category: categoryFilter,
+    state: stateFilter,
+    w9_status: w9Filter,
+    insurance_status: insuranceFilter,
+    documentExpiry: documentExpiryFilter,
+  }).toString();
+  const [pagination, setPagination] = useState({ criteria, page: 1 });
+  if (pagination.criteria !== criteria) setPagination({ criteria, page: 1 });
+  const setCurrentPage = (page: number) => setPagination({ criteria, page });
+  const register = useRegisterPage(
+    'suppliers',
+    workspace,
+    criteria,
+    pagination.criteria === criteria ? pagination.page : 1,
+    pageSize,
+  );
+  const paginatedSuppliers = register.page?.rows ?? [];
+  const matchCount = register.page?.matchCount ?? 0;
+  const totalCount =
+    register.page?.totalCount ?? workspace?.metrics.total_suppliers ?? 0;
+  const activePage = register.page?.page ?? 1;
+  const loading = register.loading && !workspaceUnavailable;
+  const options = (key: string) => register.options[key] ?? [];
+  const riskProfiles = register.page?.riskProfiles ?? {};
   const clearFilters = () => {
     setRelationshipFilter('all');
     setSupplierStatusFilter('all');
@@ -177,158 +120,183 @@ export function SupplierRegisterView({
     setCurrentPage(1);
   };
 
+  useEffect(() => {
+    if (!openInsightsRequest || loading) return;
+    const timer = window.setTimeout(() => {
+      setInsightsOpen(true);
+      onInsightsRequestHandled();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loading, onInsightsRequestHandled, openInsightsRequest]);
+  const filterCount = [
+    relationshipFilter !== 'all',
+    supplierStatusFilter !== 'all',
+    qualificationFilter !== 'all',
+    riskFilter !== 'all',
+    categoryFilter !== 'all',
+    stateFilter !== 'all',
+    w9Filter !== 'all',
+    insuranceFilter !== 'all',
+    documentExpiryFilter !== 'all',
+  ].filter(Boolean).length;
+
   return (
     <>
       <PageHeading
-        eyebrow="Lifecycle supplier master"
+        eyebrow="Records"
         title="Supplier register"
-        description="Supplier records originate from uploaded supplier files or executed contracts. A supplier does not need an active contract to remain in this lifecycle master."
+        description="Find supplier records, qualification status, and supporting documents."
         action={
           <div className="flex flex-wrap gap-2">
-            <Button onClick={onAdd} className="bg-primary hover:bg-primary/90">
-              <Plus />
-              Create supplier from files
-            </Button>
-            <Button
-              variant="outline"
-              onClick={onExport}
-              disabled={exporting || !allSuppliers.length}
-              className="bg-card"
-            >
-              {exporting ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <FileSpreadsheet />
-              )}
-              Export all suppliers
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setInsightsOpen(true)}
-              disabled={!visibleSuppliers.length}
-              className="border-input bg-accent text-accent-foreground hover:bg-accent"
-            >
-              <Sparkles />
-              AI management insights
-            </Button>
+            {onAdd ? (
+              <Button onClick={onAdd} className="workspace-primary-action h-11">
+                <Plus /> Create supplier from files
+              </Button>
+            ) : null}
+            <RegisterUtilities
+              hasPrimaryAction={Boolean(onAdd)}
+              exportLabel="Export all suppliers"
+              onExport={canExport ? onExport : undefined}
+              exportDisabled={exporting || !totalCount}
+              exporting={exporting}
+              onInsights={
+                canUseInsights ? () => setInsightsOpen(true) : undefined
+              }
+              insightsDisabled={!matchCount}
+            />
           </div>
         }
       />
       <Panel className="overflow-hidden">
-        <PanelHeader
-          title="Supplier master data"
-          description={`${visibleSuppliers.length} of ${suppliers.length} supplier record${suppliers.length === 1 ? '' : 's'} match the current view`}
-          action={
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-              <Input
-                value={search}
-                onChange={(event) => onSearch(event.target.value)}
-                placeholder="Filter suppliers…"
-                className="pl-9"
+        <RegisterToolbar
+          label="Search suppliers"
+          placeholder="Search suppliers…"
+          search={search}
+          onSearch={onSearch}
+          matchCount={matchCount}
+          totalCount={totalCount}
+          filterCount={filterCount}
+          loading={loading}
+          unavailable={Boolean(register.error) || workspaceUnavailable}
+        >
+          <div className="border-b border-border bg-muted p-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              <FilterSelect
+                label="Relationship stage"
+                value={relationshipFilter}
+                onChange={setRelationshipFilter}
+                options={options('relationship_stage')}
+                titleCaseOptions
               />
+              <FilterSelect
+                label="Supplier status"
+                value={supplierStatusFilter}
+                onChange={setSupplierStatusFilter}
+                options={options('status')}
+                titleCaseOptions
+              />
+              <FilterSelect
+                label="Documentation status"
+                value={qualificationFilter}
+                onChange={setQualificationFilter}
+                options={options('qualification_status')}
+                titleCaseOptions
+              />
+              <FilterSelect
+                label="Risk tier"
+                value={riskFilter}
+                onChange={setRiskFilter}
+                options={['high', 'low', 'medium']}
+                titleCaseOptions
+              />
+              <FilterSelect
+                label="Category"
+                value={categoryFilter}
+                onChange={setCategoryFilter}
+                options={options('category')}
+              />
+              <FilterSelect
+                label="State"
+                value={stateFilter}
+                onChange={setStateFilter}
+                options={options('state')}
+              />
+              <FilterSelect
+                label="W-9 status"
+                value={w9Filter}
+                onChange={setW9Filter}
+                options={options('w9_status')}
+                titleCaseOptions
+              />
+              <FilterSelect
+                label="Insurance status"
+                value={insuranceFilter}
+                onChange={setInsuranceFilter}
+                options={options('insurance_status')}
+                titleCaseOptions
+              />
+              <FilterSelect
+                label="Supplier file / insurance expiry"
+                value={documentExpiryFilter}
+                onChange={setDocumentExpiryFilter}
+                options={['expiring_90_days', 'expired', 'no_expiration']}
+                titleCaseOptions
+              />
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={clearFilters}
+                  className="h-9 w-full bg-card"
+                  disabled={!filterCount}
+                >
+                  <RotateCcw />
+                  Clear filters
+                </Button>
+              </div>
             </div>
-          }
-        />
-        <div className="border-b border-border bg-muted p-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <FilterSelect
-              label="Relationship stage"
-              value={relationshipFilter}
-              onChange={setRelationshipFilter}
-              options={options('relationship_stage')}
-              titleCaseOptions
-            />
-            <FilterSelect
-              label="Supplier status"
-              value={supplierStatusFilter}
-              onChange={setSupplierStatusFilter}
-              options={options('status')}
-              titleCaseOptions
-            />
-            <FilterSelect
-              label="Documentation status"
-              value={qualificationFilter}
-              onChange={setQualificationFilter}
-              options={options('qualification_status')}
-              titleCaseOptions
-            />
-            <FilterSelect
-              label="Risk tier"
-              value={riskFilter}
-              onChange={setRiskFilter}
-              options={Array.from(
-                new Set(
-                  suppliers
-                    .map((item) => riskProfiles[String(item.id)]?.level)
-                    .filter((value): value is 'low' | 'medium' | 'high' =>
-                      Boolean(value),
-                    ),
-                ),
-              ).sort()}
-              titleCaseOptions
-            />
-            <FilterSelect
-              label="Category"
-              value={categoryFilter}
-              onChange={setCategoryFilter}
-              options={options('category')}
-            />
-            <FilterSelect
-              label="State"
-              value={stateFilter}
-              onChange={setStateFilter}
-              options={options('state')}
-            />
-            <FilterSelect
-              label="W-9 status"
-              value={w9Filter}
-              onChange={setW9Filter}
-              options={options('w9_status')}
-              titleCaseOptions
-            />
-            <FilterSelect
-              label="Insurance status"
-              value={insuranceFilter}
-              onChange={setInsuranceFilter}
-              options={options('insurance_status')}
-              titleCaseOptions
-            />
-            <FilterSelect
-              label="Supplier file / insurance expiry"
-              value={documentExpiryFilter}
-              onChange={setDocumentExpiryFilter}
-              options={['expiring_90_days', 'expired', 'no_expiration']}
-              titleCaseOptions
-            />
-            <div className="flex items-end">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={clearFilters}
-                className="h-9 w-full bg-card"
-              >
-                <RotateCcw />
-                Clear filters
-              </Button>
-            </div>
+            <p className="mt-3 text-[11px] text-slate-500">
+              Filters can be combined with keyword search. “Expiring 90 days”
+              uses the earliest dated supplier or insurance record on each
+              supplier. Dates are displayed in U.S. English format (MM/DD/YYYY).
+            </p>
           </div>
-          <p className="mt-3 text-[11px] text-slate-500">
-            Filters can be combined with keyword search. “Expiring 90 days” uses
-            the earliest dated supplier or insurance record on each supplier.
-            Dates are displayed in U.S. English format (MM/DD/YYYY).
-          </p>
-        </div>
+        </RegisterToolbar>
+        {paginatedSuppliers.length ? (
+          <ul
+            className="divide-y divide-border md:hidden"
+            aria-label="Supplier records"
+          >
+            {paginatedSuppliers.map((item) => (
+              <RegisterRecord
+                key={String(item.id)}
+                title={valueText(item.legal_name)}
+                subtitle={`${valueText(item.vendor_number)} · ${valueText(item.category)}`}
+                onOpen={() => onSelect(String(item.id))}
+              >
+                <StatusBadge tone={toneForStatus(item.qualification_status)}>
+                  {titleCase(item.qualification_status)}
+                </StatusBadge>
+                {riskProfiles[String(item.id)] ? (
+                  <span className="text-xs font-medium">
+                    {titleCase(riskProfiles[String(item.id)].level)} risk
+                  </span>
+                ) : null}
+              </RegisterRecord>
+            ))}
+          </ul>
+        ) : null}
         <div>
           <Table
-            className="min-w-[2260px]"
+            aria-label="Supplier records"
+            containerClassName="hidden md:block"
+            className="register-table min-w-[2260px]"
             containerRef={supplierTableScroll.tableScrollerRef}
             onContainerScroll={supplierTableScroll.syncTableToFloating}
           >
             <TableHeader>
               <TableRow className="bg-muted">
-                <TableHead className="w-14 px-4 text-center">No.</TableHead>
-                <TableHead>Supplier</TableHead>
+                <TableHead className="register-key-column">Supplier</TableHead>
                 <TableHead>Vendor number</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Tax classification</TableHead>
@@ -346,12 +314,9 @@ export function SupplierRegisterView({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedSuppliers.map((item, index) => (
+              {paginatedSuppliers.map((item) => (
                 <TableRow key={String(item.id)}>
-                  <TableCell className="px-4 py-3.5 text-center text-xs font-medium text-slate-500">
-                    {pageStart + index + 1}
-                  </TableCell>
-                  <TableCell className="py-3.5">
+                  <TableCell className="register-key-column">
                     <button
                       type="button"
                       onClick={() => onSelect(String(item.id))}
@@ -503,35 +468,40 @@ export function SupplierRegisterView({
                   </TableCell>
                 </TableRow>
               ))}
-              {!paginatedSuppliers.length ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={16}
-                    className="h-36 text-center text-xs text-slate-500"
-                  >
-                    No suppliers match the current search and filters.
-                  </TableCell>
-                </TableRow>
-              ) : null}
             </TableBody>
           </Table>
-          {truncation.truncated ? (
-            <p className="border-t border-border px-5 py-3 text-xs text-amber-700">
-              {truncation.message}
+          {!loading &&
+          !register.error &&
+          !workspaceUnavailable &&
+          !paginatedSuppliers.length ? (
+            <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+              {search.trim() || filterCount
+                ? 'No suppliers match your search or filters.'
+                : 'No suppliers to display.'}
             </p>
           ) : null}
-          <TablePagination
-            label="Supplier register pagination"
-            page={activePage}
-            pageSize={pageSize}
-            total={visibleSuppliers.length}
-            onPageChange={setCurrentPage}
-            onPageSizeChange={(nextPageSize) => {
-              setPageSize(nextPageSize);
-              setCurrentPage(1);
-            }}
-            floating={supplierTableScroll.floating}
-          />
+          {register.error || register.optionsError ? (
+            <p
+              role="alert"
+              className="border-t border-border px-5 py-3 text-sm text-destructive"
+            >
+              {register.error || register.optionsError}
+            </p>
+          ) : null}
+          {matchCount ? (
+            <TablePagination
+              label="Supplier register pagination"
+              page={activePage}
+              pageSize={pageSize}
+              total={matchCount}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(nextPageSize) => {
+                setPageSize(nextPageSize);
+                setCurrentPage(1);
+              }}
+              floating={supplierTableScroll.floating}
+            />
+          ) : null}
           <FloatingTableScrollbar
             label="Supplier register horizontal scrollbar"
             floating={supplierTableScroll.floating}
@@ -544,8 +514,9 @@ export function SupplierRegisterView({
         open={insightsOpen}
         onOpenChange={setInsightsOpen}
         scope="suppliers"
-        currentRecordIds={visibleSuppliers.map((item) => String(item.id))}
-        allRecordIds={allSuppliers.map((item) => String(item.id))}
+        criteria={criteria}
+        matchCount={matchCount}
+        totalCount={totalCount}
         onSelectRecord={onSelect}
         onOpenAlerts={onOpenAlerts}
       />

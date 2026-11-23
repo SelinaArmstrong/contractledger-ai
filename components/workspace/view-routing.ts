@@ -21,6 +21,8 @@ export const VIEW_SLUGS: Record<ViewName, string> = {
   'Playbook & Approval Rules': 'rules',
 };
 
+export const SUPPLIER_ALERTS_ID = 'supplier-evidence-alerts';
+
 export const DEFAULT_VIEW: ViewName = 'Dashboard';
 
 const SLUG_TO_VIEW = new Map<string, ViewName>(

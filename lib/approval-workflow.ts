@@ -84,20 +84,6 @@ export type ApprovalRequirement = {
 
 export const APPROVAL_RULES_V1: readonly ApprovalRuleDefinition[] = [
   {
-    id: 'approval-rule-financial-director-v1',
-    ruleKey: 'financial_value_director',
-    version: 1,
-    name: 'Director approval from USD 50,000',
-    description:
-      'Proposed or executed value from USD 50,000 up to USD 500,000 requires Procurement Director approval.',
-    triggerType: 'value_above',
-    triggerConfig: { thresholdCents: 5_000_000, maxCents: 50_000_000 },
-    ownerRole: 'Procurement Director',
-    dueDays: 2,
-    mandatory: true,
-    active: true,
-  },
-  {
     id: 'approval-rule-financial-v2',
     ruleKey: 'financial_value_threshold',
     version: 2,

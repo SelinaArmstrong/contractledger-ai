@@ -2,9 +2,6 @@
 
 import type { WorkspaceRole } from '@/lib/workspace-roles';
 
-import Link from 'next/link';
-import { BrandMark } from '@/components/brand-mark';
-
 import {
   Alert,
   AlertAction,
@@ -12,24 +9,20 @@ import {
   AlertTitle,
 } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import type { Workspace } from '@/lib/contract-ledger-types';
-import { exportCurrentRegisters } from '@/lib/export-registers';
+import {
+  exportCurrentRegisters,
+  type RegisterExportData,
+} from '@/lib/export-registers';
+import type { RegisterDetail } from '@/lib/registers';
 import {
   AlertCircle,
   BellRing,
   Check,
+  ChevronRight,
   Database,
   FileText,
   LoaderCircle,
-  MoreHorizontal,
   ShieldCheck,
   Sparkles,
   Upload,
@@ -52,11 +45,7 @@ import { PortfolioCaseStudyView } from '@/components/views/portfolio-case-study-
 import { SupplierRegisterView } from '@/components/views/supplier-register-view';
 import { AnalysisReview } from '@/components/workspace/analysis-review';
 import { DraftIntakePanel } from '@/components/workspace/draft-intake-panel';
-import {
-  dialogSurfaceClass,
-  navItems,
-  navigationGroups,
-} from '@/components/workspace/constants';
+import { dialogSurfaceClass } from '@/components/workspace/constants';
 import {
   LiveStatus,
   SkipToContentLink,
@@ -68,14 +57,18 @@ import type {
   ViewName,
 } from '@/components/workspace/types';
 import {
-  WORKSPACE_REGISTER_LIMIT,
-  registerTruncation,
-} from '@/lib/workspace-limits';
-import { pathForView, viewForSlug } from '@/components/workspace/view-routing';
+  pathForView,
+  SUPPLIER_ALERTS_ID,
+  viewForSlug,
+} from '@/components/workspace/view-routing';
 import { useDraggableDialog } from '@/components/workspace/use-draggable-dialog';
 import { useIntakeWorkflow } from '@/components/workspace/use-intake-workflow';
 import type { IntakeSaveResult } from '@/components/workspace/use-intake-workflow';
 import { AccountMenu } from '@/components/workspace/account-menu';
+import {
+  WorkspaceMobileMenu,
+  WorkspaceSidebar,
+} from '@/components/workspace/navigation';
 import { GUEST_NOTICE_DISMISSED_COOKIE } from '@/lib/ui-preferences';
 
 const workspaceContentId = 'workspace-content';
@@ -105,7 +98,8 @@ export function ContractLedgerApp({
   const [activeView, setActiveViewState] = useState<ViewName>(initialView);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [workspaceError, setWorkspaceError] = useState('');
-  const [search, setSearch] = useState('');
+  const [contractSearch, setContractSearch] = useState('');
+  const [supplierSearch, setSupplierSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -134,6 +128,9 @@ export function ContractLedgerApp({
     .join('');
   const can = (permission: string) =>
     currentUser.permissions.includes(permission);
+  const canUseAssistant = can('run_ai_assistant');
+  const canSubmit = can('submit_documents');
+  const canRegister = canSubmit && can('edit_verified_fields');
 
   const dismissGuestNotice = useCallback(() => {
     document.cookie = `${GUEST_NOTICE_DISMISSED_COOKIE}=1; Path=/; Max-Age=315360000; SameSite=Lax${window.location.protocol === 'https:' ? '; Secure' : ''}`;
@@ -141,7 +138,9 @@ export function ContractLedgerApp({
   }, []);
 
   useEffect(() => {
+    if (!canUseAssistant) return;
     const openAssistantShortcut = (event: KeyboardEvent) => {
+      if (document.querySelector('[aria-modal="true"]')) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         setAssistantOpen(true);
@@ -149,7 +148,7 @@ export function ContractLedgerApp({
     };
     window.addEventListener('keydown', openAssistantShortcut);
     return () => window.removeEventListener('keydown', openAssistantShortcut);
-  }, []);
+  }, [canUseAssistant]);
 
   const loadWorkspace = useCallback(async () => {
     try {
@@ -173,38 +172,18 @@ export function ContractLedgerApp({
     return () => window.clearTimeout(timer);
   }, [loadWorkspace]);
 
-  const exportRegisters = async () => {
-    if (!workspace) return;
+  const exportRegisters = async (scope: 'all' | 'suppliers' = 'all') => {
     setExporting(true);
     try {
-      const authorization = await fetch('/api/exports/authorize', {
+      const response = await fetch(`/api/exports/registers?scope=${scope}`, {
         method: 'POST',
       });
-      const result = (await authorization.json()) as { error?: string };
-      if (!authorization.ok)
+      const result = (await response.json()) as RegisterExportData & {
+        error?: string;
+      };
+      if (!response.ok)
         throw new Error(result.error || 'Export is not permitted.');
-      await exportCurrentRegisters(workspace);
-      setWorkspaceError('');
-    } catch (error) {
-      setWorkspaceError(
-        error instanceof Error ? error.message : 'Export is not permitted.',
-      );
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const exportSuppliers = async () => {
-    if (!workspace) return;
-    setExporting(true);
-    try {
-      const authorization = await fetch('/api/exports/authorize', {
-        method: 'POST',
-      });
-      const result = (await authorization.json()) as { error?: string };
-      if (!authorization.ok)
-        throw new Error(result.error || 'Export is not permitted.');
-      await exportCurrentRegisters(workspace, 'suppliers');
+      await exportCurrentRegisters(result, scope);
       setWorkspaceError('');
     } catch (error) {
       setWorkspaceError(
@@ -234,7 +213,8 @@ export function ContractLedgerApp({
         throw new Error(body.error || 'The demo could not be reset.');
       setWorkspace(body.workspace);
       setDetail(null);
-      setSearch('');
+      setContractSearch('');
+      setSupplierSearch('');
     } catch (error) {
       setWorkspaceError(
         error instanceof Error ? error.message : 'The demo could not be reset.',
@@ -244,10 +224,82 @@ export function ContractLedgerApp({
     }
   };
 
+  const selectedContract =
+    detail?.type === 'contract'
+      ? workspace?.contracts.find((row) => row.id === detail.id)
+      : undefined;
+  const selectedSupplierId =
+    detail?.type === 'supplier' ? detail.id : selectedContract?.supplier_id;
+  const selectedSupplier = workspace?.suppliers.find(
+    (row) => row.id === selectedSupplierId,
+  );
+  const detailLookup =
+    detail &&
+    workspace &&
+    (!selectedSupplier || (detail.type === 'contract' && !selectedContract))
+      ? new URLSearchParams({
+          scope: detail.type === 'contract' ? 'contracts' : 'suppliers',
+          id: detail.id,
+        }).toString()
+      : '';
+  const [detailLookupResult, setDetailLookupResult] = useState<{
+    key: string;
+    workspace: Workspace;
+    data?: RegisterDetail;
+    error?: string;
+  }>();
+
+  useEffect(() => {
+    if (!detailLookup || !workspace) return;
+    const controller = new AbortController();
+    const load = async () => {
+      try {
+        const response = await fetch(`/api/registers?${detailLookup}`, {
+          signal: controller.signal,
+        });
+        const body = (await response.json()) as RegisterDetail & {
+          error?: string;
+        };
+        if (!response.ok)
+          throw new Error(body.error || 'Unable to open the record.');
+        if (!controller.signal.aborted) {
+          setDetailLookupResult({ key: detailLookup, workspace, data: body });
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setDetailLookupResult({
+            key: detailLookup,
+            workspace,
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Unable to open the record.',
+          });
+        }
+      }
+    };
+    void load();
+    return () => controller.abort();
+  }, [detailLookup, workspace]);
+
+  const lookup =
+    detailLookupResult?.key === detailLookup ? detailLookupResult : undefined;
+  const detailError =
+    lookup?.workspace === workspace ? lookup?.error : undefined;
+  const detailLoading = Boolean(
+    detailLookup && lookup?.workspace !== workspace,
+  );
+  const lookupData = lookup?.data;
+  const detailContract = lookupData?.contract ?? selectedContract ?? null;
+  const detailSupplier = lookupData?.supplier ?? selectedSupplier ?? null;
+  const detailRiskProfile =
+    lookupData?.supplierRiskProfile ??
+    (detailSupplier
+      ? workspace?.supplierRiskProfiles?.[String(detailSupplier.id)]
+      : undefined);
+
   const counts = {
-    review:
-      workspace?.intakes.filter((item) => item.review_status !== 'complete')
-        .length ?? 0,
+    review: workspace?.metrics.records_to_verify ?? 0,
     alerts:
       (workspace?.keyDates.filter((item) => item.status !== 'completed')
         .length ?? 0) + (workspace?.supplierAlerts.length ?? 0),
@@ -260,80 +312,6 @@ export function ContractLedgerApp({
     if (label === 'Obligations & Evidence') return counts.alerts;
     return 0;
   };
-  const mobilePrimaryViews: ViewName[] = [
-    'Dashboard',
-    'New Contract Review',
-    'Approvals & Exceptions',
-  ];
-  const mobilePrimaryItems = navItems.filter((item) =>
-    mobilePrimaryViews.includes(item.label),
-  );
-  const mobileSecondaryItems = navItems.filter(
-    (item) => !mobilePrimaryViews.includes(item.label),
-  );
-  const mobileNavLabel = (label: ViewName) => {
-    if (label === 'New Contract Review') return 'Reviews';
-    if (label === 'Approvals & Exceptions') return 'Approvals';
-    if (label === 'Obligations & Evidence') return 'Obligations';
-    return label;
-  };
-
-  const filteredContracts = useMemo(() => {
-    const query = search.toLowerCase().trim();
-    if (!workspace || !query) return workspace?.contracts ?? [];
-    return workspace.contracts.filter((item) =>
-      [
-        item.contract_number,
-        item.title,
-        item.supplier_name,
-        item.contract_type,
-        item.department,
-        item.owner,
-        item.status,
-        item.effective_date,
-        item.expiration_date,
-        item.payment_terms,
-        item.governing_law,
-        typeof item.current_value_cents === 'number'
-          ? String(item.current_value_cents / 100)
-          : '',
-      ]
-        .join(' ')
-        .toLowerCase()
-        .includes(query),
-    );
-  }, [search, workspace]);
-
-  const filteredSuppliers = useMemo(() => {
-    const query = search.toLowerCase().trim();
-    if (!workspace || !query) return workspace?.suppliers ?? [];
-    return workspace.suppliers.filter((item) =>
-      [
-        item.vendor_number,
-        item.legal_name,
-        item.dba_name,
-        item.category,
-        item.status,
-        item.primary_contact,
-        item.email,
-        item.phone,
-        item.city,
-        item.state,
-        item.tax_classification,
-        item.risk_tier,
-        item.qualification_status,
-        item.relationship_stage,
-        item.linked_contracts,
-        item.linked_intakes,
-        typeof item.total_contract_value_cents === 'number'
-          ? String(item.total_contract_value_cents / 100)
-          : '',
-      ]
-        .join(' ')
-        .toLowerCase()
-        .includes(query),
-    );
-  }, [search, workspace]);
 
   /**
    * Switching views is a navigation: it pushes a history entry so the view can
@@ -344,12 +322,20 @@ export function ContractLedgerApp({
   // navigation; pushing from inside a state updater would double-fire under
   // StrictMode's repeated invocation.
   const activeViewRef = useRef(initialView);
-  const setActiveView = useCallback((view: ViewName) => {
-    if (activeViewRef.current === view) return;
-    activeViewRef.current = view;
-    window.history.pushState({ view }, '', pathForView(view));
-    setActiveViewState(view);
-  }, []);
+  const setActiveView = useCallback(
+    (view: ViewName, section?: typeof SUPPLIER_ALERTS_ID) => {
+      if (activeViewRef.current === view) return;
+      activeViewRef.current = view;
+      window.history.pushState(
+        { view },
+        '',
+        pathForView(view) + (section ? '#' + section : ''),
+      );
+      setActiveViewState(view);
+      window.scrollTo(0, 0);
+    },
+    [],
+  );
 
   // Back and forward move through the views pushed above.
   useEffect(() => {
@@ -373,7 +359,7 @@ export function ContractLedgerApp({
       setWorkspace(result.workspace);
       if (result.stage === 'executed' && result.registeredContract) {
         setActiveView('Contract Register');
-        setSearch(result.registeredContract.contractNumber);
+        setContractSearch(result.registeredContract.contractNumber);
         setDialogOpen(false);
         return true;
       }
@@ -413,25 +399,13 @@ export function ContractLedgerApp({
     setDialogOpen(true);
   };
 
-  // Each register snapshot in the workspace payload is capped, so the views
-  // need to know when they are showing a partial list.
-  const contractTruncation = registerTruncation(
-    workspace?.contracts.length ?? 0,
-    Number(workspace?.metrics.total_contracts ?? 0),
-    Number(workspace?.registerLimit ?? WORKSPACE_REGISTER_LIMIT),
-  );
-  const supplierTruncation = registerTruncation(
-    workspace?.suppliers.length ?? 0,
-    Number(workspace?.metrics.total_suppliers ?? 0),
-    Number(workspace?.registerLimit ?? WORKSPACE_REGISTER_LIMIT),
-  );
-
   // Long-running work happens without a navigation, so the live region below
   // is the only signal a screen reader gets that the workspace is busy.
   const activityMessage = useMemo(() => {
     if (workspaceError) return `Workspace unavailable. ${workspaceError}`;
     if (resetting) return 'Resetting the demonstration workspace.';
     if (exporting) return 'Preparing the register export.';
+    if (detailLoading) return 'Loading record details.';
     if (
       analysisStatus === 'analyzing' ||
       draftIntake.analysisStatus === 'analyzing'
@@ -449,137 +423,73 @@ export function ContractLedgerApp({
     analysisStatus,
     draftIntake.analysisError,
     draftIntake.analysisStatus,
+    detailLoading,
     exporting,
     resetting,
     workspaceError,
   ]);
 
+  const navigation = {
+    activeView,
+    countForView: navCount,
+    onNavigate: setActiveView,
+  };
+
   return (
-    <main className="contract-ledger-app min-h-screen bg-background text-foreground">
+    <div className="contract-ledger-app min-h-screen bg-background text-foreground">
       <SkipToContentLink targetId={workspaceContentId} />
       <LiveStatus message={activityMessage} />
       <LiveStatus message={`${activeView} view`} />
-      <aside className="workspace-sidebar fixed inset-y-0 left-0 z-20 hidden w-[272px] bg-sidebar text-sidebar-foreground lg:flex lg:flex-col">
-        <div className="flex h-[88px] items-center gap-3 border-b border-sidebar-border px-5">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl ring-1 ring-white/15">
-            <BrandMark />
-          </div>
-          <div>
-            <div className="text-[15px] font-semibold tracking-[-0.01em]">
-              ContractLedger AI
-            </div>
-            <div className="mt-0.5 text-[11px] text-slate-300">
-              Contract & supplier operations
-            </div>
-          </div>
-        </div>
+      <WorkspaceSidebar {...navigation} />
 
-        <nav
-          className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-6 [scrollbar-gutter:stable]"
-          aria-label="Primary navigation"
-        >
-          {navigationGroups.map((group, groupIndex) => (
-            <div key={group.label} className={groupIndex ? 'pt-5' : ''}>
-              <p className="mb-2 px-3 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400">
-                {group.label}
-              </p>
-              <div className="space-y-1">
-                {group.items.map((item) => {
-                  const Icon = item.icon;
-                  const count = navCount(item.label);
-                  const active = activeView === item.label;
-                  return (
-                    <button
-                      key={item.label}
-                      type="button"
-                      onClick={() => {
-                        setActiveView(item.label);
-                        setSearch('');
-                      }}
-                      aria-current={active ? 'page' : undefined}
-                      title={item.label}
-                      className={`workspace-nav-item grid min-h-11 w-full grid-cols-[18px_minmax(0,1fr)_24px] items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors duration-150 ${
-                        active
-                          ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                          : 'text-slate-300 hover:bg-sidebar-accent hover:text-white'
-                      }`}
-                    >
-                      <Icon
-                        className={`size-[17px] ${active ? 'text-sidebar-primary-foreground' : 'text-slate-400'}`}
-                      />
-                      <span className="min-w-0 leading-[1.4]">
-                        {item.label}
-                      </span>
-                      <span
-                        aria-hidden={!count}
-                        className={`flex h-5 min-w-6 items-center justify-center rounded-md px-1 text-[10px] tabular-nums ${count ? (active ? 'bg-sidebar/10 text-sidebar' : 'bg-white/8 text-slate-300') : 'invisible'}`}
-                      >
-                        {count || 0}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </nav>
-
-        <div className="m-3 rounded-xl border border-white/10 bg-card/5 p-4">
-          <div className="flex items-center gap-2 text-xs font-medium">
-            <ShieldCheck className="size-4 text-[#62c0dc]" />
-            Demo workspace
+      <div className="workspace-shell">
+        <header className="workspace-topbar">
+          <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+            <WorkspaceMobileMenu {...navigation} />
+            <span className="hidden text-sm text-muted-foreground lg:inline">
+              Workspace
+            </span>
+            <ChevronRight
+              aria-hidden="true"
+              className="hidden size-3.5 text-slate-400 lg:block"
+            />
+            <span className="truncate text-[13px] font-semibold sm:text-sm">
+              {activeView}
+            </span>
           </div>
-          <p className="mt-2 text-[11px] leading-5 text-slate-400">
-            <Link
-              href="/about"
-              className="mb-2 block text-slate-200 underline underline-offset-4"
-            >
-              About this project
-            </Link>
-            All contracts, suppliers, and company policies are fictional.
-          </p>
-        </div>
-      </aside>
-
-      <div className="workspace-shell lg:pl-[272px]">
-        <header className="workspace-topbar sticky top-0 z-10 flex h-[88px] items-center justify-between gap-3 border-b border-border bg-background/95 px-4 backdrop-blur md:px-8">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <div className="flex shrink-0 items-center gap-3 lg:hidden">
-              <div className="flex size-9 items-center justify-center rounded-lg bg-[#12344a] text-white">
-                <BrandMark className="size-9" />
-              </div>
-              <span className="hidden text-sm font-semibold sm:inline">
-                ContractLedger AI
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setAssistantOpen(true)}
-              aria-label="Open AI Contract Operations Assistant"
-              className="workspace-assistant-trigger group flex h-10 min-w-0 max-w-[480px] flex-1 items-center gap-3 rounded-lg border border-border bg-card px-3 text-left transition hover:border-ring hover:bg-card"
-            >
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-accent text-accent-foreground">
-                <Sparkles className="size-3.5" />
-              </span>
-              <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
-                Ask about your contracts, suppliers or renewals…
-              </span>
-              <span className="hidden shrink-0 rounded border border-border bg-card px-1.5 py-0.5 text-[11px] font-medium text-slate-400 sm:inline">
-                ⌘ K
-              </span>
-            </button>
-          </div>
-          <div className="ml-auto flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+            {canUseAssistant ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAssistantOpen(true)}
+                aria-label="Open AI Contract Operations Assistant"
+                className="size-11 bg-card px-0 text-accent-foreground sm:h-9 sm:w-auto sm:px-3"
+              >
+                <Sparkles aria-hidden="true" />
+                <span className="hidden sm:inline">AI Assistant</span>
+                <kbd className="ml-1 hidden rounded border border-border px-1.5 py-0.5 font-sans text-[10px] text-muted-foreground md:inline">
+                  ⌘/Ctrl K
+                </kbd>
+              </Button>
+            ) : null}
             <button
               type="button"
               onClick={() => setActiveView('Obligations & Evidence')}
-              aria-label="Notifications"
-              className="relative flex size-9 items-center justify-center rounded-lg border border-border bg-card text-slate-600"
+              aria-label={
+                counts.alerts
+                  ? `Notifications, ${counts.alerts} alerts`
+                  : 'Notifications'
+              }
+              className="relative grid size-11 place-items-center rounded-lg text-slate-600 transition-colors hover:bg-accent hover:text-accent-foreground"
             >
-              <BellRing className="size-4" />
+              <BellRing aria-hidden="true" className="size-[17px]" />
               {counts.alerts ? (
-                <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-rose-500 text-[11px] font-semibold text-white">
-                  {counts.alerts}
+                <span
+                  aria-hidden="true"
+                  className="absolute right-0.5 top-0.5 min-w-4 rounded-full bg-rose-700 px-1 text-center text-[10px] font-semibold leading-4 text-white"
+                >
+                  {counts.alerts > 99 ? '99+' : counts.alerts}
                 </span>
               ) : null}
             </button>
@@ -592,78 +502,18 @@ export function ContractLedgerApp({
           </div>
         </header>
 
-        <div className="workspace-mobile-nav border-b border-border bg-background px-3 py-2 lg:hidden">
-          <nav
-            className="flex items-center gap-1"
-            aria-label="Mobile navigation"
-          >
-            <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
-              {mobilePrimaryItems.map((item) => (
-                <button
-                  key={item.label}
-                  onClick={() => setActiveView(item.label)}
-                  aria-current={activeView === item.label ? 'page' : undefined}
-                  className={`shrink-0 rounded-md px-3 py-1.5 text-xs ${activeView === item.label ? 'bg-accent font-medium text-accent-foreground' : 'text-slate-500'}`}
-                >
-                  {mobileNavLabel(item.label)}
-                  {navCount(item.label) ? (
-                    <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">
-                      {navCount(item.label)}
-                    </span>
-                  ) : null}
-                </button>
-              ))}
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className={`flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                  mobileSecondaryItems.some((item) => item.label === activeView)
-                    ? 'bg-accent font-medium text-accent-foreground'
-                    : 'text-slate-500'
-                }`}
-              >
-                <MoreHorizontal className="size-4" /> More
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel>More workspace views</DropdownMenuLabel>
-                  {mobileSecondaryItems.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <DropdownMenuItem
-                        key={item.label}
-                        onClick={() => setActiveView(item.label)}
-                        className="gap-2 px-2 py-2"
-                      >
-                        <Icon className="size-4 text-slate-500" />
-                        <span className="flex-1">{item.label}</span>
-                        {activeView === item.label ? (
-                          <Check className="size-4 text-accent-foreground" />
-                        ) : null}
-                      </DropdownMenuItem>
-                    );
-                  })}
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </nav>
-        </div>
-
-        <div
+        <main
           id={workspaceContentId}
           tabIndex={-1}
-          className="workspace-content mx-auto w-full max-w-[1660px] px-4 py-7 md:px-7 md:py-9 xl:px-9"
+          className="workspace-content mx-auto w-full max-w-[1540px] px-4 py-6 sm:px-6 md:py-8 xl:px-9"
         >
           {currentUser.guest && showGuestNotice ? (
             <Alert className="mb-6 border-border bg-accent text-foreground">
               <ShieldCheck />
               <AlertTitle>Read-only public demo</AlertTitle>
               <AlertDescription>
-                You are browsing every register, approval, obligation and
-                validation record with read-only access. Uploading documents,
-                recording decisions and running AI analysis require a signed-in
-                workspace role. All organisations, people and agreements shown
-                here are fictional.
+                Browse fictional workspace records. Sign in with a workspace
+                role to upload documents, record decisions, or run AI analysis.
               </AlertDescription>
               <AlertAction>
                 <Button
@@ -680,27 +530,44 @@ export function ContractLedgerApp({
               </AlertAction>
             </Alert>
           ) : null}
-          {workspaceError ? (
+          {workspaceError || detailError ? (
             <Alert variant="destructive" className="mb-5">
               <AlertCircle />
-              <AlertTitle>Workspace unavailable</AlertTitle>
-              <AlertDescription>{workspaceError}</AlertDescription>
+              <AlertTitle>
+                {workspaceError
+                  ? 'Workspace unavailable'
+                  : 'Record unavailable'}
+              </AlertTitle>
+              <AlertDescription>
+                {workspaceError || detailError}
+              </AlertDescription>
             </Alert>
           ) : null}
           {activeView === 'Dashboard' ? (
             <DashboardView
               workspace={workspace}
               onOpen={openIntake}
+              onSelectIntake={setIntakeDetailId}
               onNavigate={setActiveView}
               onReset={resetDemo}
               resetting={resetting}
               canReset={can('reset_workspace')}
+              canReview={canSubmit}
+              canRegister={canRegister}
+              canImport={can('manage_imports')}
             />
           ) : null}
           {activeView === 'New Contract Review' ? (
             <NewContractReviewView
               workspace={workspace}
-              intakePanel={<DraftIntakePanel intake={draftIntake} />}
+              intakePanel={
+                canSubmit ? (
+                  <DraftIntakePanel
+                    intake={draftIntake}
+                    canVerify={canRegister}
+                  />
+                ) : null
+              }
               canEditWorkflow={can('edit_verified_fields')}
               onSelectIntake={setIntakeDetailId}
               onUpdated={setWorkspace}
@@ -720,13 +587,16 @@ export function ContractLedgerApp({
           ) : null}
           {activeView === 'Contract Register' ? (
             <ContractRegisterView
-              contracts={filteredContracts}
-              allContracts={workspace?.contracts ?? []}
-              recentContracts={workspace?.contracts.slice(0, 5) ?? []}
-              search={search}
-              onSearch={setSearch}
-              onRegister={() => openIntake('executed')}
-              onExport={exportRegisters}
+              workspace={workspace}
+              search={contractSearch}
+              onSearch={setContractSearch}
+              onRegister={
+                canRegister ? () => openIntake('executed') : undefined
+              }
+              canUseInsights={canUseAssistant}
+              workspaceUnavailable={!workspace && Boolean(workspaceError)}
+              canExport={can('export_data')}
+              onExport={() => void exportRegisters()}
               exporting={exporting}
               onSelect={(id) => setDetail({ type: 'contract', id })}
               onOpenAlerts={() => setActiveView('Obligations & Evidence')}
@@ -734,32 +604,37 @@ export function ContractLedgerApp({
               onInsightsRequestHandled={() =>
                 setManagementInsightsRequest(null)
               }
-              truncation={contractTruncation}
             />
           ) : null}
           {activeView === 'Supplier Register' ? (
             <SupplierRegisterView
-              suppliers={filteredSuppliers}
-              allSuppliers={workspace?.suppliers ?? []}
-              riskProfiles={workspace?.supplierRiskProfiles ?? {}}
-              search={search}
-              onSearch={setSearch}
+              workspace={workspace}
+              search={supplierSearch}
+              onSearch={setSupplierSearch}
               onSelect={(id) => setDetail({ type: 'supplier', id })}
-              onAdd={() => setSupplierDialogOpen(true)}
-              onExport={exportSuppliers}
+              onAdd={
+                can('edit_supplier_records')
+                  ? () => setSupplierDialogOpen(true)
+                  : undefined
+              }
+              canUseInsights={canUseAssistant}
+              workspaceUnavailable={!workspace && Boolean(workspaceError)}
+              canExport={can('export_data')}
+              onExport={() => void exportRegisters('suppliers')}
               exporting={exporting}
-              onOpenAlerts={() => setActiveView('Obligations & Evidence')}
+              onOpenAlerts={() =>
+                setActiveView('Obligations & Evidence', SUPPLIER_ALERTS_ID)
+              }
               openInsightsRequest={managementInsightsRequest === 'suppliers'}
               onInsightsRequestHandled={() =>
                 setManagementInsightsRequest(null)
               }
-              truncation={supplierTruncation}
             />
           ) : null}
           {activeView === 'Obligations & Evidence' ? (
             <AlertsExportsView
               workspace={workspace}
-              onExport={exportRegisters}
+              onExport={() => void exportRegisters()}
               exporting={exporting}
               onRefresh={loadWorkspace}
               onSelectContract={(id) => setDetail({ type: 'contract', id })}
@@ -786,7 +661,7 @@ export function ContractLedgerApp({
               onCompleted={(nextWorkspace) => setWorkspace(nextWorkspace)}
             />
           ) : null}
-        </div>
+        </main>
       </div>
 
       <AIAssistantDialog
@@ -810,7 +685,8 @@ export function ContractLedgerApp({
         }}
         onOpenManagementInsights={(scope) => {
           setAssistantOpen(false);
-          setSearch('');
+          if (scope === 'contracts') setContractSearch('');
+          else setSupplierSearch('');
           setManagementInsightsRequest(scope);
           setActiveView(
             scope === 'contracts' ? 'Contract Register' : 'Supplier Register',
@@ -1164,12 +1040,13 @@ export function ContractLedgerApp({
         onOpenChange={setSupplierDialogOpen}
         onCreated={(nextWorkspace, supplierName) => {
           setWorkspace(nextWorkspace);
-          setSearch(supplierName);
+          setSupplierSearch(supplierName);
         }}
       />
       {intakeDetailId ? (
         <IntakeReviewDialog
           intakeId={intakeDetailId}
+          canEditWorkflow={can('edit_verified_fields')}
           onClose={() => setIntakeDetailId(null)}
           onUpdated={(nextWorkspace) => setWorkspace(nextWorkspace)}
           onOpenSupplier={(supplierId) => {
@@ -1182,14 +1059,24 @@ export function ContractLedgerApp({
           }}
         />
       ) : null}
-      {detail && workspace ? (
+      {detail &&
+      (detail.type === 'contract' ? detailContract : detailSupplier) ? (
         <RecordDetailDialog
-          workspace={workspace}
+          canAmend={can('apply_amendments')}
+          canUploadSupplierFiles={can('edit_supplier_records')}
+          canExport={can('export_data')}
+          key={detail.id}
+          contract={detailContract}
+          supplier={detailSupplier}
+          supplierRiskProfile={detailRiskProfile}
           selection={detail}
-          onClose={() => setDetail(null)}
+          onClose={() => {
+            setDetail(null);
+            setDetailLookupResult(undefined);
+          }}
           onRefresh={loadWorkspace}
         />
       ) : null}
-    </main>
+    </div>
   );
 }

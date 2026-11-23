@@ -6,7 +6,7 @@ import type {
   ExtractedField,
 } from '@/lib/contract-ledger-types';
 import { FileText } from 'lucide-react';
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { titleCase } from '@/components/workspace/formatters';
 
 export function StatusBadge({
@@ -36,12 +36,11 @@ export function StatusBadge({
 export function Panel({
   children,
   className = '',
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
+  ...props
+}: ComponentProps<'section'>) {
   return (
     <section
+      {...props}
       className={`workspace-panel rounded-xl border border-border bg-card ${className}`}
     >
       {children}
