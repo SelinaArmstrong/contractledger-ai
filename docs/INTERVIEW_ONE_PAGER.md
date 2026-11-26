@@ -22,7 +22,7 @@ Eight workspace roles across thirteen server-enforced permissions; rule-driven a
 
 ## What the evidence supports
 
-**Can claim:** implemented controls, reproducible fictional scenarios, dataset size, test coverage (25 files / 182 tests), and saved workflow metrics.
+**Can claim:** implemented controls, reproducible fictional scenarios, dataset size, test coverage (28 files / 270 tests), and saved workflow metrics.
 
 **Cannot claim yet:** real-company time savings, production-scale duplicate precision, legal outcome quality, or external notification delivery. The validation page ships a _seeded demonstration report_ that is labelled in the UI as replayed fixture data rather than a model measurement, and the timed-evidence panel refuses to state a percentage reduction until both manual and assisted modes have at least three recorded runs.
 

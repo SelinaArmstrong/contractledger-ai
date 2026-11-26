@@ -1,7 +1,7 @@
 # ContractLedger AI Resume Evidence Ledger
 
 **Evidence baseline:** 2026-09-02  
-**Repository quality gate:** 182 automated tests passing, phase-execution and Definition of Done gates passing, lint passing, TypeScript passing, production build passing
+**Repository quality gate (verified 2026-11-26):** 270 automated tests across 28 files passing, phase-execution and Definition of Done gates passing, lint passing, TypeScript passing, production build passing
 **Release:** v1.0.0 portfolio-ready fictional baseline
 
 ## Claim rules

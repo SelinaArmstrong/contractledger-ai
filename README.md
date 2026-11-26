@@ -379,10 +379,12 @@ npm run quality
 
 ## Quality and release baseline
 
+Verified by `npm run quality` and `npm run check:baseline` on 2026-11-26.
+
 | Item                               | Current baseline     |
 | ---------------------------------- | -------------------- |
-| Schema version                     | 21                   |
-| Automated tests                    | 25 files / 182 tests |
+| Schema version                     | 26                   |
+| Automated tests                    | 28 files / 270 tests |
 | Fictional evaluation documents     | 15                   |
 | Contracts after reset              | 7                    |
 | Suppliers after reset              | 8                    |
