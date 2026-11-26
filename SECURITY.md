@@ -58,15 +58,11 @@ Several properties are deliberate and are covered by tests in
 
 ## Known advisories in the dependency tree
 
-`npm audit` reports 13 moderate advisories, no high and no critical, across
-four distinct problems. Three of them are listed below: each was checked against
+`npm audit` reports 9 moderate advisories, no high and no critical, across
+three distinct problems. All three are listed below: each was checked against
 how the code actually uses the package, and none is reachable here. They are
 listed rather than silenced, and will be cleared when the upstream projects
 release fixes that do not require a breaking change.
-
-The fourth, [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249)
-(`minimatch`, reached through the `shadcn` CLI), is not an exception: upstream
-fixed it, and updating `shadcn` clears it.
 
 | Advisory | Path | Why it does not apply |
 | --- | --- | --- |
@@ -76,6 +72,6 @@ fixed it, and updating `shadcn` clears it.
 
 Every high-severity advisory in the tree has been cleared.
 
-Audit rechecked on 2026-11-26: zero high/critical and 13 moderate reports.
+Audit rechecked on 2026-11-26: zero high/critical and 9 moderate reports.
 `sharp` is pinned to 0.35.4 and overridden across the dependency tree, including
 Miniflare, to remove the vulnerable libheif version. CI rejects high/critical reports.
