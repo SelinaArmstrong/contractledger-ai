@@ -9,7 +9,7 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",
-    "deploy": "npm run build && wrangler deploy --config dist/server/wrangler.json",
+    "deploy": "node scripts/check-deploy-target.mjs && npm run build && wrangler deploy --config dist/server/wrangler.json",
     "lint": "oxlint app components db lib scripts tests middleware.ts next.config.ts playwright.config.ts",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
