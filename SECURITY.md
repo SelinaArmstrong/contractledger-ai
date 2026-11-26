@@ -58,7 +58,7 @@ Several properties are deliberate and are covered by tests in
 
 ## Known advisories in the dependency tree
 
-`npm audit` reports 9 moderate advisories, no high and no critical, across
+`npm audit` reports 10 moderate advisories, no high and no critical, across
 three distinct problems. All three are listed below: each was checked against
 how the code actually uses the package, and none is reachable here. They are
 listed rather than silenced, and will be cleared when the upstream projects
@@ -68,10 +68,14 @@ release fixes that do not require a breaking change.
 | --- | --- | --- |
 | [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq) (`uuid`) | `exceljs` → `uuid` | The advisory needs `uuid` v3/v5/v6 called with a `buf` argument. `exceljs` calls only `uuid.v4()` with no arguments, in `lib/xlsx/xform/sheet/cf-ext/cf-rule-ext-xform.js`. The only fix offered is `exceljs@3.4.0`, a breaking downgrade. |
 | [GHSA-67mh-4wv8-2f99](https://github.com/advisories/GHSA-67mh-4wv8-2f99) (`esbuild`) | `drizzle-kit` → `@esbuild-kit/*` → `esbuild` | Concerns the esbuild development server. `drizzle-kit` is a development dependency invoked by hand through `npm run db:generate`; it is not part of `npm run quality`, CI, the build, or anything that runs in production. |
-| [GHSA-wx4j-mvgx-mqwp](https://github.com/advisories/GHSA-wx4j-mvgx-mqwp) (`satori`) | `vinext` → `@vercel/og` → `satori` | Improper escaping in SVG that Satori generates. Nothing here generates any: there is no `ImageResponse` or `@vercel/og` call in the application, and the social card at `public/og.jpg` is a committed file written by `scripts/generate-brand-assets.mjs`, which composes the SVG itself and rasterises it with `sharp`. Satori arrives only because it is bundled inside the framework. The fix offered is `vinext@1.4.6`, up from the pinned `1.0.0-beta.8`; taking it fails `npm run check:baseline` with `doc-demo-draft-westline blocks its same-origin reader`, so the document viewer would have to be reworked first. |
+| [GHSA-px8p-9vwx-vf98](https://github.com/advisories/GHSA-px8p-9vwx-vf98) (`fflate`) | `vinext` → `@vercel/og` → `satori` → `fflate` | `unzipSync` can loop forever on a malformed ZIP64 archive. Reaching it means asking Satori to rasterise text, which decompresses a font. Nothing here does: there is no `ImageResponse` or `@vercel/og` call in the application, and the social card at `public/og.jpg` is a committed file written by `scripts/generate-brand-assets.mjs`, which composes the SVG itself and rasterises it with `sharp`. The whole `@vercel/og` branch arrives bundled inside the framework and is never entered. `npm audit` offers `vinext@0.2.1` as the fix, which is a major downgrade of the framework this application is built on. |
 
 Every high-severity advisory in the tree has been cleared.
 
-Audit rechecked on 2026-11-26: zero high/critical and 9 moderate reports.
+Audit rechecked on 2026-11-26 after the move to `vinext@1.4.6`: zero
+high/critical and 10 moderate reports. That upgrade cleared the Satori SVG
+escaping advisory, GHSA-wx4j-mvgx-mqwp, and introduced the `fflate` one above
+through the same unused `@vercel/og` branch — so it is close to a wash on
+advisory count, and its real value is leaving a beta framework behind.
 `sharp` is pinned to 0.35.4 and overridden across the dependency tree, including
 Miniflare, to remove the vulnerable libheif version. CI rejects high/critical reports.
