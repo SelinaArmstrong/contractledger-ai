@@ -467,7 +467,20 @@ npm run deploy
 
 ## 许可证
 
-[MIT](LICENSE) © 2026 Selina Armstrong。`public/demo-documents/` 中的虚构演示文件属于本仓库，适用同一许可证。
+本仓库不只有代码，因此分三套条款。权威表述见 [LICENSE](LICENSE)。
+
+- **代码** —— `app/`、`components/`、`db/`、`drizzle/`、`hooks/`、`lib/`、
+  `scripts/`、`tests/`、各配置文件，以及 `public/demo-documents/` 中的虚构
+  fixture，采用 MIT。可自由取用、学习和发布。
+- **内容与品牌** —— 两种语言的 README、案例研究、简历证据台账、演示手册、
+  Roadmap、`docs/marketing/`、产品截图、`public/brand/`、`public/social/`、
+  各图标以及页面文案，均保留全部权利。"Selina Armstrong" 与
+  "ContractLedger AI" 这两个名称同样不在授权范围内。
+- **第三方** —— `components/ui/` 是 vendored 的 shadcn/ui，按其作者的 MIT 条款；
+  `CODE_OF_CONDUCT.md` 改编自 Contributor Covenant 2.1，采用 CC BY 4.0。
+
+也就是说：欢迎 clone 下来研究实现方式、自由复用代码，但在部署之前请把品牌与
+文案替换成你自己的。
 
 ## 关于作者
 

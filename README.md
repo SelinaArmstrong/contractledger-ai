@@ -439,9 +439,25 @@ Before adding a significant feature:
 5. Update the README, roadmap, demo path, limitations and bounded metrics.
 6. Run `npm run quality`, and `npm run check:baseline` against a running local app when relevant.
 
-## License
+## Licence
 
-[MIT](LICENSE) © 2026 Selina Armstrong. The fictional demo documents in `public/demo-documents/` are part of this repository and carry the same licence.
+Three sets of terms, because this repository is not only code. See
+[LICENSE](LICENSE) for the authoritative wording.
+
+- **Code** — `app/`, `components/`, `db/`, `drizzle/`, `hooks/`, `lib/`,
+  `scripts/`, `tests/`, the config files and the fictional fixtures in
+  `public/demo-documents/` are MIT. Take them, learn from them, ship them.
+- **Content and brand** — the README in both languages, the case study, the
+  resume evidence ledger, the runbook, the roadmap, `docs/marketing/`, the
+  screenshots, `public/brand/`, `public/social/`, the icons and the page copy
+  are all rights reserved. The names "Selina Armstrong" and "ContractLedger AI"
+  are not licensed either.
+- **Third-party** — `components/ui/` is vendored shadcn/ui and stays MIT under
+  its own authors; `CODE_OF_CONDUCT.md` is adapted from the Contributor
+  Covenant 2.1 under CC BY 4.0.
+
+So: clone it to see how the product is built, reuse the code freely, and
+replace the branding and copy with your own before you deploy anything.
 
 ## About
 
