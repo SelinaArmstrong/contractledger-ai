@@ -1,29 +1,23 @@
 import type { NextConfig } from 'next';
-import { securityHeaders } from './lib/security-headers';
 
 /**
- * Response headers applied to every route.
+ * No `headers()` rule here, deliberately.
  *
- * `frame-ancestors` is the one that closes a real hole: the workspace has
- * one-click approve, reject and reset controls, and without it any site could
- * frame them and harvest a reviewer's clicks. `nosniff` keeps a browser from
- * re-interpreting a stored contract as something executable, and the narrow
- * `form-action` / `base-uri` values stop injected markup from redirecting the
- * sign-in POST or rewriting relative URLs.
+ * There used to be one matching `/:path*` with the shared security headers.
+ * It was added because rendered pages were not receiving them, and for a while
+ * it was harmless. From vinext 1.4.6 a configured header wins over whatever a
+ * route handler has already set, so that one rule silently replaced
+ * `/api/document`'s policy: the stored-contract reader went out with
+ * `X-Frame-Options: DENY` and `frame-ancestors 'none'` instead of its own
+ * same-origin values, and a browser refused to render any contract in the
+ * workspace. The build was clean and the deployment succeeded; only the HTTP
+ * release check caught it.
  *
- * `script-src` is deliberately absent. React Server Components stream inline
- * bootstrap scripts, so a useful script policy needs per-response nonces that
- * this stack does not thread through yet; asserting `'unsafe-inline'` here
- * would look like a policy while permitting exactly what it claims to stop.
- * Stored files, which are the one place untrusted bytes are served, carry
- * their own restrictive policy in `app/api/document`; only PDF responses omit
- * sandbox to support native readers.
+ * Each layer now states its own headers where the response is made, so none of
+ * this depends on how configured headers are merged: `middleware.ts` for the
+ * two pages, `withSecurityHeaders` for every API route, and `public/_headers`
+ * for static assets.
  */
-
-const nextConfig: NextConfig = {
-  async headers() {
-    return [{ source: '/:path*', headers: securityHeaders }];
-  },
-};
+const nextConfig: NextConfig = {};
 
 export default nextConfig;

@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 
 import { ensureWorkspaceDatabase } from '@/db/bootstrap';
+import { withSecurityHeaders } from '@/lib/security-headers';
 import { clientAddress, sameOrigin } from '@/lib/server/request-security';
 import {
   authenticateWorkspaceCredentials,
@@ -36,7 +37,17 @@ async function loginRateLimited(request: Request) {
   return (result?.request_count ?? 1) > 5;
 }
 
+/**
+ * Sign-in does not go through `withApiRoute` — it authenticates rather than
+ * checking an existing session — so the one exit here applies the same header
+ * floor every other route gets. A redirect carrying a session cookie is worth
+ * protecting as much as the pages it leads to.
+ */
 export async function POST(request: Request) {
+  return withSecurityHeaders(await handleLogin(request));
+}
+
+async function handleLogin(request: Request) {
   if (!sameOrigin(request))
     return Response.redirect(redirectTo(request, 'invalid'), 303);
 

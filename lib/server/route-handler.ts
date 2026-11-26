@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { ensureWorkspaceDatabase } from '@/db/bootstrap';
 import { DocumentQualityError } from '@/lib/document-quality';
+import { withSecurityHeaders } from '@/lib/security-headers';
 import {
   authorizeApiRequest,
   type RequestActor,
@@ -98,6 +99,11 @@ function errorResponse(error: unknown, options: RouteOptions): Response {
  * permission check, workspace database readiness, and consistent error
  * mapping. Handlers keep their own try/catch only when they need to undo a
  * side effect before the error is reported.
+ *
+ * Every exit also passes through `withSecurityHeaders`, including the refusal
+ * from the permission check and the mapped error, so a 403 is as protected as
+ * a 200. It fills in only what a handler left unsaid, so `/api/document` keeps
+ * the same-origin framing its reader needs.
  */
 export function withApiRoute(
   options: RouteOptions,
@@ -111,13 +117,15 @@ export function withApiRoute(
         : options.permission;
 
     const access = await authorizeApiRequest(request, { permission });
-    if (!access.ok) return access.response;
+    if (!access.ok) return withSecurityHeaders(access.response);
 
     try {
       if (options.database !== false) await ensureWorkspaceDatabase();
-      return await handler({ request, url, actor: access.actor });
+      return withSecurityHeaders(
+        await handler({ request, url, actor: access.actor }),
+      );
     } catch (error) {
-      return errorResponse(error, options);
+      return withSecurityHeaders(errorResponse(error, options));
     }
   };
 }
