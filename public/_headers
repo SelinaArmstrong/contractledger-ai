@@ -1,0 +1,73 @@
+# Static assets that are not content-hashed, so they cannot be immutable.
+# Workers Assets otherwise serves all of these as
+# `public, max-age=0, must-revalidate`, which revalidates on every view.
+#
+# Matching rules MERGE rather than override, and when two rules both match a
+# path their Cache-Control values are concatenated and the shorter one wins.
+# Every path below is therefore explicit and non-overlapping.
+#
+# IMPORTANT: this file REPLACES the _headers vinext generates at build time —
+# verified by building with it in place and reading dist/client/_headers, which
+# came out as this file with vinext's own rule gone. So the immutable rule for
+# content-hashed assets has to be carried here, or it is silently lost.
+#
+# nosniff is set here too. In production these assets do carry it, but not from
+# anything in this repository — it arrives from the Cloudflare zone, which is a
+# dependency on a dashboard setting nobody reading this repo can see. The demo
+# contracts are PDFs served as plain assets, so the guarantee belongs in-tree.
+
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+  X-Content-Type-Options: nosniff
+
+/demo-documents/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  X-Content-Type-Options: nosniff
+
+/brand/*
+  Cache-Control: public, max-age=86400
+  X-Content-Type-Options: nosniff
+
+/social/*
+  Cache-Control: public, max-age=86400
+  X-Content-Type-Options: nosniff
+
+/og.jpg
+  Cache-Control: public, max-age=86400
+  X-Content-Type-Options: nosniff
+
+/favicon.ico
+  Cache-Control: public, max-age=604800
+  X-Content-Type-Options: nosniff
+
+/favicon.svg
+  Cache-Control: public, max-age=604800
+  X-Content-Type-Options: nosniff
+
+/favicon-16.png
+  Cache-Control: public, max-age=604800
+  X-Content-Type-Options: nosniff
+
+/favicon-32.png
+  Cache-Control: public, max-age=604800
+  X-Content-Type-Options: nosniff
+
+/favicon-48.png
+  Cache-Control: public, max-age=604800
+  X-Content-Type-Options: nosniff
+
+/apple-touch-icon.png
+  Cache-Control: public, max-age=604800
+  X-Content-Type-Options: nosniff
+
+/icon-192.png
+  Cache-Control: public, max-age=604800
+  X-Content-Type-Options: nosniff
+
+/icon-512.png
+  Cache-Control: public, max-age=604800
+  X-Content-Type-Options: nosniff
+
+/icon-maskable-512.png
+  Cache-Control: public, max-age=604800
+  X-Content-Type-Options: nosniff
