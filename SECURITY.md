@@ -58,18 +58,24 @@ Several properties are deliberate and are covered by tests in
 
 ## Known advisories in the dependency tree
 
-`npm audit` reports six moderate advisories. Both clusters were checked against
-how the code actually uses the package, and neither is reachable here. They are
+`npm audit` reports 13 moderate advisories, no high and no critical, across
+four distinct problems. Three of them are listed below: each was checked against
+how the code actually uses the package, and none is reachable here. They are
 listed rather than silenced, and will be cleared when the upstream projects
-release fixes that do not require a breaking downgrade.
+release fixes that do not require a breaking change.
+
+The fourth, [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249)
+(`minimatch`, reached through the `shadcn` CLI), is not an exception: upstream
+fixed it, and updating `shadcn` clears it.
 
 | Advisory | Path | Why it does not apply |
 | --- | --- | --- |
 | [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq) (`uuid`) | `exceljs` → `uuid` | The advisory needs `uuid` v3/v5/v6 called with a `buf` argument. `exceljs` calls only `uuid.v4()` with no arguments, in `lib/xlsx/xform/sheet/cf-ext/cf-rule-ext-xform.js`. The only fix offered is `exceljs@3.4.0`, a breaking downgrade. |
 | [GHSA-67mh-4wv8-2f99](https://github.com/advisories/GHSA-67mh-4wv8-2f99) (`esbuild`) | `drizzle-kit` → `@esbuild-kit/*` → `esbuild` | Concerns the esbuild development server. `drizzle-kit` is a development dependency invoked by hand through `npm run db:generate`; it is not part of `npm run quality`, CI, the build, or anything that runs in production. |
+| [GHSA-wx4j-mvgx-mqwp](https://github.com/advisories/GHSA-wx4j-mvgx-mqwp) (`satori`) | `vinext` → `@vercel/og` → `satori` | Improper escaping in SVG that Satori generates. Nothing here generates any: there is no `ImageResponse` or `@vercel/og` call in the application, and the social card at `public/og.jpg` is a committed file written by `scripts/generate-brand-assets.mjs`, which composes the SVG itself and rasterises it with `sharp`. Satori arrives only because it is bundled inside the framework. The fix offered is `vinext@1.4.6`, up from the pinned `1.0.0-beta.8`; taking it fails `npm run check:baseline` with `doc-demo-draft-westline blocks its same-origin reader`, so the document viewer would have to be reworked first. |
 
 Every high-severity advisory in the tree has been cleared.
 
-Audit rechecked on 2026-09-14: zero high/critical and six moderate reports.
+Audit rechecked on 2026-11-26: zero high/critical and 13 moderate reports.
 `sharp` is pinned to 0.35.4 and overridden across the dependency tree, including
 Miniflare, to remove the vulnerable libheif version. CI rejects high/critical reports.
